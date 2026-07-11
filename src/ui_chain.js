@@ -132,6 +132,10 @@ let laneHoldUsed = false;
 
 /* Hold Re-Roll >= this long: unlock every pinned slice and roll fresh */
 const REROLL_HOLD_MS = 600;
+/* A/B pad: tap = toggle; hold >= AB_HOLD_MS = momentary punch (restore
+ * the previous side on release) */
+const AB_HOLD_MS = 350;
+let abHeld = null;         /* { at, prev } */
 /* BPM detection: Shift+Capture analyses the last 8 s of input */
 let shiftHeld = false;
 let detecting = false;
@@ -570,6 +574,18 @@ function onMidiMessageInternal(data) {
         return;
     }
 
+    /* A/B pad release: a long hold was a momentary punch — snap back */
+    if ((status === 0x80 || (status === 0x90 && d2 === 0)) && d1 === PAD_AB) {
+        if (abHeld && Date.now() - abHeld.at >= AB_HOLD_MS && ab !== abHeld.prev) {
+            ab = abHeld.prev;
+            host_module_set_param('ab', `${ab}`);
+            announce(ab ? 'B, pattern' : 'A, clean loop');
+            refreshSoon();
+        }
+        abHeld = null;
+        return;
+    }
+
     /* re-roll pad release ends the hold window */
     if ((status === 0x80 || (status === 0x90 && d2 === 0)) && d1 === PAD_REROLL) {
         rerollHeldAt = 0;
@@ -613,6 +629,7 @@ function onMidiMessageInternal(data) {
         }
         if (d1 === PAD_CLEAR)   { host_module_set_param('clear', '1');   announce('Clear');    refreshSoon(); return; }
         if (d1 === PAD_AB) {
+            abHeld = { at: Date.now(), prev: ab };
             ab = ab ? 0 : 1;
             host_module_set_param('ab', `${ab}`);
             announce(ab ? 'B, pattern' : 'A, clean loop');
