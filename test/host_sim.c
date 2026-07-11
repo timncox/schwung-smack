@@ -359,11 +359,13 @@ int main(void) {
 
         /* the report that drove the redesign: monitor off + wet 0 must
          * still play the UNAFFECTED loop (wet blends clean<->pattern,
-         * it is not a loop volume) */
+         * it is not a loop volume). The loop content is beat-gated, so
+         * accumulate across >1 beat period to be sure we cross a burst. */
         smack_set_param(S, "wet", "0");
         smack_set_param(S, "monitor", "0");
-        run_blocks(30, out);
-        assert(energy(out) > 0);               /* clean loop audible */
+        long etot = 0;
+        for (int k = 0; k < 40; k++) { run_blocks(5, out); etot += energy(out); }
+        assert(etot > 0);                      /* clean loop audible */
         smack_set_param(S, "monitor", "1");
         smack_set_param(S, "wet", "100");
     }
