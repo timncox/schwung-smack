@@ -1064,7 +1064,13 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
                 ll = l0 * s->pan_gain[0][0] + l1 * s->pan_gain[1][0];
                 rr = r0 * s->pan_gain[0][1] + r1 * s->pan_gain[1][1];
             }
-            float dry = s->monitor ? (1.0f - s->wet) : 0.0f;
+            /* Mix law differs by build: the chain/master FX build crossfades
+             * wet<->dry (it processes upstream audio); the input builds
+             * (hw_input: smack-in, oversmack) mix ADDITIVELY — dry follows
+             * the Monitor switch at full level, Wet is the loop's own
+             * volume, so the live instrument never ducks under the loop. */
+            float dry = s->hw_input ? (s->monitor ? 1.0f : 0.0f)
+                                    : (s->monitor ? (1.0f - s->wet) : 0.0f);
             out[n * 2]     = clip16(ll * s->wet + inl * dry);
             out[n * 2 + 1] = clip16(rr * s->wet + inr * dry);
 
@@ -1094,6 +1100,17 @@ static void set_lock(smack_t *s, smack_lane_t *ln, int i, int f) {
         ln->fx[i] = (uint8_t)f;
         ln->locked[i] = 1;
     }
+}
+
+/* Soft assign: change a slice's effect WITHOUT pinning it — the next
+ * re-roll (or any pattern-shaping knob) replaces it. On a pinned slice
+ * the pin follows the new effect. */
+static void set_soft(smack_t *s, smack_lane_t *ln, int i, int f) {
+    (void)s;
+    if (f < 0) return;
+    f = clampi(f, 0, SMACK_FX_COUNT - 1);
+    if (ln->fx[i] != (uint8_t)f) ln->fxp[i] = default_fxp(f);
+    ln->fx[i] = (uint8_t)f;
 }
 
 /* Parse a locks string ("i:f:p,i:f:p,..."; bare i:f pairs from older
@@ -1235,6 +1252,10 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         set_lock(s, &s->lane[1], clampi(atoi(key + 13), 0, SMACK_MAX_SLICES - 1), atoi(val));
     } else if (!strncmp(key, "lock_slice_", 11)) {
         set_lock(s, &s->lane[0], clampi(atoi(key + 11), 0, SMACK_MAX_SLICES - 1), atoi(val));
+    } else if (!strncmp(key, "set_slice_r_", 12)) {
+        set_soft(s, &s->lane[1], clampi(atoi(key + 12), 0, SMACK_MAX_SLICES - 1), atoi(val));
+    } else if (!strncmp(key, "set_slice_", 10)) {
+        set_soft(s, &s->lane[0], clampi(atoi(key + 10), 0, SMACK_MAX_SLICES - 1), atoi(val));
     }
 }
 

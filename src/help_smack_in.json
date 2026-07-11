@@ -71,7 +71,12 @@
             "Channels, Transport,",
             "BPM, Monitor); the",
             "steps show only the",
-            "pinned slices."
+            "pinned slices.",
+            "",
+            "Wet = the loop's",
+            "volume. Dry input",
+            "follows the Monitor",
+            "pad, always full."
           ]
         },
         {

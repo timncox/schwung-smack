@@ -338,7 +338,41 @@ int main(void) {
         smack_get_param(S, "bpm_override", db, sizeof(db));
         assert(atof(db) > 114.0 && atof(db) < 126.0);
     }
+    /* capture a fresh loop (state went IDLE for the detection feed) so the
+     * additive-mix and soft-assign checks run against real loop playback */
+    smack_set_param(S, "channel_mode", "0");
+    smack_set_param(S, "capture", "1");
+    assert(gp("run_state") == '3');
+
+    /* additive mix for input builds: with hw_input set, dry rides the
+     * monitor switch at full level even at wet=100 (the chain build keeps
+     * the crossfade, where monitor at wet=100 makes no difference) */
+    {
+        smack_set_param(S, "wet", "100");
+        smack_set_param(S, "monitor", "0");
+        run_blocks(30, out);
+        long e0 = energy(out);
+        smack_set_param(S, "monitor", "1");
+        run_blocks(30, out);
+        long e1 = energy(out);
+        assert(e1 > e0);                       /* dry added on top of loop */
+    }
+
+    /* soft assign (set_slice): changes the effect without pinning; the
+     * next canonical roll replaces it */
+    smack_set_param(S, "seed", "888");
+    smack_get_param(S, "pattern", patseed, sizeof(patseed)); /* re-baseline */
+    smack_set_param(S, "set_slice_0", "7");    /* bitcrush, soft */
+    smack_get_param(S, "pattern", buf, sizeof(buf));
+    assert(buf[0] == '0' + 7);
+    smack_get_param(S, "locked", buf, sizeof(buf));
+    assert(buf[0] == '0');                     /* NOT pinned */
+    smack_set_param(S, "seed", "888");         /* canonical roll replaces it */
+    smack_get_param(S, "pattern", buf, sizeof(buf));
+    assert(strcmp(buf, patseed) == 0);
+
     smack_set_param(S, "bpm_override", "0");   /* back to project tempo */
+    smack_set_param(S, "clear", "1");          /* IDLE: ring records again */
     run_blocks(3500, NULL);                    /* ~10 s of steady saw */
     smack_set_param(S, "detect_bpm", "trigger");
     {

@@ -163,6 +163,10 @@ let detecting = false;
 let bpmOverride = 0;
 let rerollHeldAt = 0;      /* Date.now() at press, 0 = not held */
 let rerollHoldFired = false;
+/* Palette gesture: tap = set the effect (soft, next re-roll replaces it);
+ * hold >= PIN_HOLD_MS = pin it (survives re-roll). */
+const PIN_HOLD_MS = 600;
+let paletteHeld = null;    /* { pad, code, slice, at, fired } */
 
 /* Feedback guard: the host's slot guard never sees overtake modules, so we
  * mirror it here — speakers on + no line-in cable = the internal mic would
@@ -322,6 +326,10 @@ function editPattern() {
 
 function lockKey(i) {
     return (chanMode && editLane) ? `lock_slice_r_${i}` : `lock_slice_${i}`;
+}
+
+function softKey(i) {
+    return (chanMode && editLane) ? `set_slice_r_${i}` : `set_slice_${i}`;
 }
 
 function laneSpeech() {
@@ -498,7 +506,7 @@ function assignFx(code) {
         announce('Select a step first');
         return;
     }
-    host_module_set_param(lockKey(selectedSlice), `${code}`);
+    host_module_set_param(softKey(selectedSlice), `${code}`);
     const where = chanMode ? `, ${laneSpeech()}` : '';
     announce(`Slice ${selectedSlice + 1}, ${FX_SPEECH[code]}${where}`);
     refreshSoon();
@@ -581,6 +589,18 @@ globalThis.tick = function() {
             }
             needsRedraw = true;
         }
+    }
+
+    /* palette pad held long enough: upgrade the soft assign to a pin */
+    if (paletteHeld && !paletteHeld.fired &&
+        Date.now() - paletteHeld.at >= PIN_HOLD_MS) {
+        paletteHeld.fired = true;
+        host_module_set_param(
+            (chanMode && editLane) ? `lock_slice_r_${paletteHeld.slice}`
+                                   : `lock_slice_${paletteHeld.slice}`,
+            `${paletteHeld.code}`);
+        announce(`Slice ${paletteHeld.slice + 1} pinned`);
+        refreshSoon();
     }
 
     /* Re-Roll held long enough: clear every pin and roll fresh */
@@ -681,6 +701,13 @@ globalThis.onMidiMessageInternal = function(data) {
         return;
     }
 
+    /* palette pad release ends the pin-hold window */
+    if ((status === 0x80 || (status === 0x90 && d2 === 0)) &&
+        paletteHeld && d1 === paletteHeld.pad) {
+        paletteHeld = null;
+        return;
+    }
+
     /* re-roll pad release ends the hold window */
     if ((status === 0x80 || (status === 0x90 && d2 === 0)) && d1 === PAD_REROLL) {
         rerollHeldAt = 0;
@@ -770,10 +797,15 @@ globalThis.onMidiMessageInternal = function(data) {
             return;
         }
 
-        /* Effect palette */
+        /* Effect palette: tap = set (soft); hold = pin */
         if (d1 === PAD_UNLOCK) { unlockSlice(); return; }
         if (d1 >= PAD_PALETTE_FIRST && d1 < PAD_PALETTE_FIRST + FX_COLORS.length) {
-            assignFx(d1 - PAD_PALETTE_FIRST);
+            const code = d1 - PAD_PALETTE_FIRST;
+            const slice = selectedSlice;
+            assignFx(code);
+            if (state === 3 && slice >= 0 && slice < nSlices) {
+                paletteHeld = { pad: d1, code, slice, at: Date.now(), fired: false };
+            }
             return;
         }
 
