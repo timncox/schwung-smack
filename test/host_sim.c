@@ -134,6 +134,20 @@ int main(void) {
     run_blocks(700, out);
     assert(energy(out) > 0);               /* resumed */
 
+    /* seed: readable, settable, and deterministic (same seed = same pattern) */
+    char p1[64], p2[64];
+    assert(smack_get_param(S, "seed", buf, sizeof(buf)) > 0);
+    smack_set_param(S, "seed", "4242");
+    smack_get_param(S, "seed", buf, sizeof(buf));
+    assert(atoi(buf) == 4242);
+    smack_get_param(S, "pattern", p1, sizeof(p1));
+    smack_set_param(S, "reroll", "0");     /* change 1->0 fires */
+    smack_get_param(S, "seed", buf, sizeof(buf));
+    assert(atoi(buf) >= 1 && atoi(buf) <= 9999); /* stays dialable */
+    smack_set_param(S, "seed", "4242");
+    smack_get_param(S, "pattern", p2, sizeof(p2));
+    assert(strcmp(p1, p2) == 0);           /* seed 4242 reproduces exactly */
+
     /* state round-trip: snapshot, mutate, restore, verify */
     char snap[1024], check[64];
     assert(smack_get_param(S, "state", snap, sizeof(snap)) > 0);

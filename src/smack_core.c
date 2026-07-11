@@ -324,7 +324,7 @@ smack_t *smack_create(const host_api_v1_t *host) {
     s->ab = 1;
     s->ab_pending = -1;
     s->quantize_mode = 1;        /* next slice */
-    s->seed = 0x5EEDu;
+    s->seed = 4303u;  /* within the knob's 1..9999 range */
     s->follow_transport = 1;
     s->flt_slice = -1;
     s->vow_slice = -1;
@@ -759,7 +759,9 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         if (s->state == SMACK_LOOPING) roll_pattern(s);
     } else if (!strcmp(key, "reroll")) {
         if (trig_fired(s, 2, val)) {
-            s->seed = s->seed * 1664525u + 1013904223u;
+            /* keep the seed in the knob's displayable 1..9999 range so
+             * re-rolled patterns stay dialable/reproducible by number */
+            s->seed = (s->seed * 1664525u + 1013904223u) % 9999u + 1u;
             if (s->state == SMACK_LOOPING) roll_pattern(s);
         }
     } else if (!strcmp(key, "capture")) {
@@ -846,6 +848,8 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
         return snprintf(buf, (size_t)buf_len, "%d", s->ab);
     if (!strcmp(key, "quantize"))
         return snprintf(buf, (size_t)buf_len, "%d", s->quantize_mode);
+    if (!strcmp(key, "seed"))
+        return snprintf(buf, (size_t)buf_len, "%u", s->seed);
     /* trigger params always read back as 0 so autosave never re-fires them */
     if (!strcmp(key, "capture") || !strcmp(key, "arm") ||
         !strcmp(key, "reroll") || !strcmp(key, "clear"))

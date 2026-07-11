@@ -80,7 +80,7 @@ const KNOBS = [
     { key: 'seed',          name: 'Seed', min: 1, max: 9999, step: 1 }
 ];
 
-let knobValues = [50, 0, 4, 1, 100, 12, 1, 24301];
+let knobValues = [50, 0, 4, 1, 100, 12, 1, 4303];
 let state = 0;          /* 0 idle, 1 armed, 2 rec, 3 looping */
 let ab = 1;
 let pattern = '';
