@@ -356,6 +356,16 @@ int main(void) {
         run_blocks(30, out);
         long e1 = energy(out);
         assert(e1 > e0);                       /* dry added on top of loop */
+
+        /* the report that drove the redesign: monitor off + wet 0 must
+         * still play the UNAFFECTED loop (wet blends clean<->pattern,
+         * it is not a loop volume) */
+        smack_set_param(S, "wet", "0");
+        smack_set_param(S, "monitor", "0");
+        run_blocks(30, out);
+        assert(energy(out) > 0);               /* clean loop audible */
+        smack_set_param(S, "monitor", "1");
+        smack_set_param(S, "wet", "100");
     }
 
     /* soft assign (set_slice): changes the effect without pinning; the

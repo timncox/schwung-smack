@@ -99,10 +99,13 @@
         "steps show only the",
         "pinned slices.",
         "",
-        "Wet = the loop's",
-        "volume. Dry input",
-        "follows the Monitor",
-        "pad, always full."
+        "Wet = how effected",
+        "the loop is: 0 =",
+        "clean loop, 100 =",
+        "full pattern. The",
+        "loop always plays;",
+        "dry input follows",
+        "the Monitor pad."
       ]
     },
     {

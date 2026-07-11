@@ -554,8 +554,10 @@ static inline int16_t clip16(float v) {
 
 /* Render one looped output frame at play_pos into l/r, through one lane.
  * ch: -1 = stereo (lane 0, classic mode), 0/1 = dual-mono lane reading
- * that input channel. */
-static void render_lane(smack_t *s, smack_lane_t *ln, int ch, float *l, float *r) {
+ * that input channel.
+ * side: -1 = follow s->ab, 0 = force clean, 1 = force pattern (the input
+ * builds render both sides and blend them per `wet`). */
+static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l, float *r) {
     double sf = s->slice_frames;
     int oslice = (sf > 0.0) ? (int)(s->play_pos / sf) : 0;
     if (oslice >= s->n_slices) oslice = s->n_slices - 1;
@@ -565,9 +567,10 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, float *l, float *r
     double src;
     double src2 = -1.0;   /* FREEZE: second grain tap (slice-relative) */
     float  mix2 = 0.0f;   /* FREEZE: crossfade toward primary tap */
+    int use_pattern = (side < 0) ? s->ab : side;
 
-    if (!s->ab) {
-        src = s->play_pos;                      /* A: clean, original order */
+    if (!use_pattern) {
+        src = s->play_pos;                      /* clean, original order */
     } else {
         int sslice = ln->order[oslice];
         f  = ln->fx[oslice];
@@ -1059,28 +1062,47 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
             }
 
             float ll, rr;
-            if (!s->chan_mode || !s->ab) {
-                /* stereo mode — and the A side of dual mode, which plays
-                 * the raw loop with its original stereo placement */
-                render_lane(s, &s->lane[0], -1, &ll, &rr);
+            if (s->hw_input) {
+                /* Input builds: three layers. The loop is ALWAYS audible;
+                 * `wet` blends its clean tap against the pattern render
+                 * (0 = unaffected loop, 100 = fully effected); the A side
+                 * hard-punches to clean; the live input rides Monitor. */
+                float w = s->ab ? s->wet : 0.0f;
+                float cl = 0.0f, cr = 0.0f, pl = 0.0f, pr = 0.0f;
+                if (w < 1.0f)
+                    render_lane(s, &s->lane[0], -1, 0, &cl, &cr);
+                if (w > 0.0f) {
+                    if (!s->chan_mode) {
+                        render_lane(s, &s->lane[0], -1, 1, &pl, &pr);
+                    } else {
+                        float l0, r0, l1, r1;
+                        render_lane(s, &s->lane[0], 0, 1, &l0, &r0);
+                        render_lane(s, &s->lane[1], 1, 1, &l1, &r1);
+                        pl = l0 * s->pan_gain[0][0] + l1 * s->pan_gain[1][0];
+                        pr = r0 * s->pan_gain[0][1] + r1 * s->pan_gain[1][1];
+                    }
+                }
+                ll = cl * (1.0f - w) + pl * w;
+                rr = cr * (1.0f - w) + pr * w;
+                float dry = s->monitor ? 1.0f : 0.0f;
+                out[n * 2]     = clip16(ll + inl * dry);
+                out[n * 2 + 1] = clip16(rr + inr * dry);
             } else {
-                /* dual mono: each lane renders its input channel through
-                 * its own pattern, then pans into the field */
-                float l0, r0, l1, r1;
-                render_lane(s, &s->lane[0], 0, &l0, &r0);
-                render_lane(s, &s->lane[1], 1, &l1, &r1);
-                ll = l0 * s->pan_gain[0][0] + l1 * s->pan_gain[1][0];
-                rr = r0 * s->pan_gain[0][1] + r1 * s->pan_gain[1][1];
+                /* Chain/master FX build: classic insert behavior — wet
+                 * crossfades the loop against the upstream (dry) signal. */
+                if (!s->chan_mode || !s->ab) {
+                    render_lane(s, &s->lane[0], -1, -1, &ll, &rr);
+                } else {
+                    float l0, r0, l1, r1;
+                    render_lane(s, &s->lane[0], 0, 1, &l0, &r0);
+                    render_lane(s, &s->lane[1], 1, 1, &l1, &r1);
+                    ll = l0 * s->pan_gain[0][0] + l1 * s->pan_gain[1][0];
+                    rr = r0 * s->pan_gain[0][1] + r1 * s->pan_gain[1][1];
+                }
+                float dry = s->monitor ? (1.0f - s->wet) : 0.0f;
+                out[n * 2]     = clip16(ll * s->wet + inl * dry);
+                out[n * 2 + 1] = clip16(rr * s->wet + inr * dry);
             }
-            /* Mix law differs by build: the chain/master FX build crossfades
-             * wet<->dry (it processes upstream audio); the input builds
-             * (hw_input: smack-in, oversmack) mix ADDITIVELY — dry follows
-             * the Monitor switch at full level, Wet is the loop's own
-             * volume, so the live instrument never ducks under the loop. */
-            float dry = s->hw_input ? (s->monitor ? 1.0f : 0.0f)
-                                    : (s->monitor ? (1.0f - s->wet) : 0.0f);
-            out[n * 2]     = clip16(ll * s->wet + inl * dry);
-            out[n * 2 + 1] = clip16(rr * s->wet + inr * dry);
 
             s->play_pos += 1.0;
             if (s->play_pos >= (double)s->loop_len) s->play_pos = 0.0;
