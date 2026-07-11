@@ -31,12 +31,12 @@
  */
 
 import {
-    MoveKnob1, MoveCapture, MoveShift, MoveMainKnob,
+    MoveKnob1, MoveCapture, MoveShift, MoveMainKnob, MoveLeft, MoveRight,
     Black, White, LightGrey, Red, BrightRed, Blue, Green, BrightGreen,
     Cyan, Purple, YellowGreen, OrangeRed
 } from '/data/UserData/schwung/shared/constants.mjs';
 
-import { decodeDelta, setLED } from '/data/UserData/schwung/shared/input_filter.mjs';
+import { decodeDelta, setLED, setButtonLED } from '/data/UserData/schwung/shared/input_filter.mjs';
 
 import {
     drawMenuHeader as drawHeader,
@@ -407,6 +407,9 @@ function paintPalette(force) {
 }
 
 function paintSteps(force) {
+    const pages = stepPages();
+    setButtonLED(MoveLeft, (state === 3 && stepPage > 0) ? 1 : 0, force);
+    setButtonLED(MoveRight, (state === 3 && stepPage < pages - 1) ? 1 : 0, force);
     const base = stepPage * STEP_COUNT;
     for (let i = 0; i < STEP_COUNT; i++) {
         const s = base + i;
@@ -636,10 +639,18 @@ globalThis.onMidiMessageInternal = function(data) {
             refreshSoon();
             return;
         }
-        /* Jog wheel pages through the steps for loops > 16 slices */
+        /* Jog wheel or arrow buttons page through the steps (bars) */
         if (d1 === MoveMainKnob) {
             const delta = decodeDelta(d2);
             if (delta !== 0 && state === 3) stepPageBy(delta);
+            return;
+        }
+        if (d1 === MoveLeft && d2 >= 64) {
+            if (state === 3) stepPageBy(-1);
+            return;
+        }
+        if (d1 === MoveRight && d2 >= 64) {
+            if (state === 3) stepPageBy(1);
             return;
         }
         /* Knobs 1-8; while the lane pad is held, knobs 1-2 are the pans */
