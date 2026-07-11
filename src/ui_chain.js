@@ -60,7 +60,10 @@ const FX_COLORS = [
     Purple,      /* SCRATCH   — pitch family */
     0x30,        /* ENV       — mid white */
     Cyan,        /* PAN       — stereo/speed family */
-    YellowGreen  /* FILTER    — sweep family */
+    YellowGreen, /* FILTER    — sweep family */
+    Green,       /* VOWEL */
+    OrangeRed,   /* TONALDELAY — buzz/delay family */
+    White        /* FREEZE */
 ];
 
 const STATE_NAMES = ['IDLE', 'ARMED', 'REC', 'LOOP'];

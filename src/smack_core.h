@@ -42,6 +42,9 @@ typedef enum {
     SMACK_FX_ENV,        /* volume shape: fade-in/out, wobble, half-gate */
     SMACK_FX_PAN,        /* hard L / hard R / ping-pong within slice */
     SMACK_FX_FILTER,     /* LP/HP sweep across the slice (fxp direction) */
+    SMACK_FX_VOWEL,      /* morphing 3-formant vowel filter (fxp pair) */
+    SMACK_FX_TONALDELAY, /* feedback delay with swept time = pitched repeats */
+    SMACK_FX_FREEZE,     /* granular freeze on the slice head (fxp spray) */
     SMACK_FX_COUNT
 } smack_fx_t;
 

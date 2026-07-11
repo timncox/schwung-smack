@@ -63,6 +63,33 @@ static void bq_set(smack_bq_t *q, float freq, int highpass) {
     q->a2 = (1.0f - alpha) * inv;
 }
 
+/* constant-peak bandpass, used by the vowel filter's formant bands */
+static void bq_set_bandpass(smack_bq_t *q, float freq, float Q) {
+    float w0 = 6.2831853f * freq / (float)SMACK_SR;
+    float cw = cosf(w0), sw = sinf(w0);
+    float alpha = sw / (2.0f * Q);
+    float inv = 1.0f / (1.0f + alpha);
+    q->b0 = alpha * inv;
+    q->b1 = 0.0f;
+    q->b2 = -alpha * inv;
+    q->a1 = -2.0f * cw * inv;
+    q->a2 = (1.0f - alpha) * inv;
+}
+
+/* Formant frequencies F1-F3 for A E I O U, and the morph pairs the VOWEL
+ * effect sweeps across a slice (Looperator-style vowel transitions). */
+static const float vowel_f[5][3] = {
+    { 730.0f, 1090.0f, 2440.0f },  /* A */
+    { 530.0f, 1840.0f, 2480.0f },  /* E */
+    { 390.0f, 1990.0f, 2550.0f },  /* I */
+    { 570.0f,  840.0f, 2410.0f },  /* O */
+    { 440.0f, 1020.0f, 2240.0f },  /* U */
+};
+static const int vowel_pair[4][2] = { {0, 2}, {3, 2}, {0, 4}, {1, 3} }; /* A>I O>I A>U E>O */
+static const float vowel_gain[3] = { 1.0f, 0.7f, 0.45f };
+
+#define SMACK_DLY_LEN 8192  /* tonal-delay line, frames */
+
 struct smack {
     const host_api_v1_t *host;
 
@@ -109,6 +136,16 @@ struct smack {
     smack_bq_t fltL, fltR;
     int flt_slice;               /* output slice the filter is tracking, -1 none */
     int flt_counter;             /* frames until coefficient recompute */
+
+    /* VOWEL effect runtime: 3 formant bands per channel */
+    smack_bq_t vowL[3], vowR[3];
+    int vow_slice;
+    int vow_counter;
+
+    /* TONALDELAY runtime: swept feedback delay line */
+    float   *dly;                /* SMACK_DLY_LEN * 2 floats, interleaved */
+    uint32_t dly_w;
+    int      dly_slice;
 
     /* Pattern */
     int      n_slices;
@@ -202,6 +239,9 @@ static void roll_pattern(smack_t *s) {
             case SMACK_FX_ENV:      s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
             case SMACK_FX_PAN:      s->fxp[i] = (int8_t)rnd_below(&s->rng, 3); break;
             case SMACK_FX_FILTER:   s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_VOWEL:    s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_TONALDELAY: s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_FREEZE:   s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
             default:             s->fxp[i] = 0; break;
             }
         } else {
@@ -271,6 +311,8 @@ smack_t *smack_create(const host_api_v1_t *host) {
     if (!s) return NULL;
     s->ring = calloc((size_t)SMACK_RING_FRAMES * 2, sizeof(int16_t));
     if (!s->ring) { free(s); return NULL; }
+    s->dly = calloc((size_t)SMACK_DLY_LEN * 2, sizeof(float));
+    if (!s->dly) { free(s->ring); free(s); return NULL; }
     s->host = host;
     s->frames_per_tick = 918.75; /* 120 BPM */
     s->loop_len_idx = 4;         /* 1 bar */
@@ -285,6 +327,8 @@ smack_t *smack_create(const host_api_v1_t *host) {
     s->seed = 0x5EEDu;
     s->follow_transport = 1;
     s->flt_slice = -1;
+    s->vow_slice = -1;
+    s->dly_slice = -1;
     memset(s->last_trig, 0xFF, sizeof(s->last_trig));
     return s;
 }
@@ -309,6 +353,7 @@ static int json_int(const char *js, const char *key, int def) {
 
 void smack_destroy(smack_t *s) {
     if (!s) return;
+    free(s->dly);
     free(s->ring);
     free(s);
 }
@@ -389,6 +434,8 @@ static void render_loop_frame(smack_t *s, float *l, float *r) {
     float g = 1.0f, gl = 1.0f, gr = 1.0f;
     int f = SMACK_FX_NONE, fp = 0;
     double src;
+    double src2 = -1.0;   /* FREEZE: second grain tap (slice-relative) */
+    float  mix2 = 0.0f;   /* FREEZE: crossfade toward primary tap */
 
     if (!s->ab) {
         src = s->play_pos;                      /* A: clean, original order */
@@ -486,11 +533,32 @@ static void render_loop_frame(smack_t *s, float *l, float *r) {
             }
             }
             break;
+        case SMACK_FX_FREEZE: {
+            /* 50%-overlap grains frozen on the slice head; per-grain start
+             * jitter (deterministic from grain index + seed) sprays the
+             * texture. Two taps, triangular crossfade. */
+            const double H = 512.0;                 /* half grain (~12 ms) */
+            double region = sf * 0.25 - 2.0 * H;
+            if (region < 0.0) region = 0.0;
+            double spray = region * (double)((fp & 3) + 1) * 0.25;
+            int a = (int)(p / H);
+            double local = p - (double)a * H;
+            uint32_t h1 = ((uint32_t)a * 2654435761u) ^ s->seed;
+            uint32_t h0 = ((uint32_t)(a - 1) * 2654435761u) ^ s->seed;
+            rp = (double)(h1 & 0xFFFF) / 65535.0 * spray + local;
+            src2 = (double)(h0 & 0xFFFF) / 65535.0 * spray + H + local;
+            mix2 = (float)(local / H);              /* 0 -> old tap, 1 -> new */
+            break;
+        }
         default: break;
         }
         if (rp < 0.0) rp = 0.0;
         if (rp > sf - 1.0) rp = sf - 1.0;
         src = (double)sslice * sf + rp;
+        if (src2 >= 0.0) {
+            if (src2 > sf - 1.0) src2 = sf - 1.0;
+            src2 = (double)sslice * sf + src2;
+        }
 
         /* slice-edge fade masks discontinuities from reorder/fx */
         if (p < SMACK_EDGE_FADE) g *= (float)(p / SMACK_EDGE_FADE);
@@ -505,6 +573,13 @@ static void render_loop_frame(smack_t *s, float *l, float *r) {
     if (ltail < SMACK_EDGE_FADE) g *= (float)(ltail / SMACK_EDGE_FADE);
 
     ring_read_lerp(s, src, l, r);
+
+    if (src2 >= 0.0) { /* FREEZE: blend the second grain tap */
+        float l2, r2;
+        ring_read_lerp(s, src2, &l2, &r2);
+        *l = *l * mix2 + l2 * (1.0f - mix2);
+        *r = *r * mix2 + r2 * (1.0f - mix2);
+    }
 
     if (f == SMACK_FX_FILTER) {
         if (s->flt_slice != oslice) { /* fresh sweep on slice entry */
@@ -531,6 +606,64 @@ static void render_loop_frame(smack_t *s, float *l, float *r) {
         *r = bq_run(&s->fltR, *r);
     } else {
         s->flt_slice = -1;
+    }
+
+    if (f == SMACK_FX_VOWEL) {
+        if (s->vow_slice != oslice) {
+            for (int k = 0; k < 3; k++) { bq_reset(&s->vowL[k]); bq_reset(&s->vowR[k]); }
+            s->vow_slice = oslice;
+            s->vow_counter = 0;
+        }
+        if (s->vow_counter-- <= 0) {
+            s->vow_counter = 32;
+            float t = (float)(p / sf);
+            const int *pr = vowel_pair[fp & 3];
+            for (int k = 0; k < 3; k++) {
+                float fc = vowel_f[pr[0]][k] + (vowel_f[pr[1]][k] - vowel_f[pr[0]][k]) * t;
+                bq_set_bandpass(&s->vowL[k], fc, 8.0f);
+                s->vowR[k] = s->vowL[k];
+            }
+        }
+        float xl = *l, xr = *r, ol = 0.0f, orr = 0.0f;
+        for (int k = 0; k < 3; k++) {
+            ol  += vowel_gain[k] * bq_run(&s->vowL[k], xl);
+            orr += vowel_gain[k] * bq_run(&s->vowR[k], xr);
+        }
+        *l = ol * 2.4f;
+        *r = orr * 2.4f;
+    } else {
+        s->vow_slice = -1;
+    }
+
+    if (f == SMACK_FX_TONALDELAY) {
+        if (s->dly_slice != oslice) { /* fresh line per slice entry */
+            memset(s->dly, 0, (size_t)SMACK_DLY_LEN * 2 * sizeof(float));
+            s->dly_w = 0;
+            s->dly_slice = oslice;
+        }
+        double t = p / sf;
+        const double dmax = 3000.0, dmin = 700.0;
+        double d;
+        switch (fp & 3) {
+        case 0:  d = dmax - (dmax - dmin) * t; break;   /* repeats pitch up */
+        case 1:  d = dmin + (dmax - dmin) * t; break;   /* repeats pitch down */
+        case 2:  d = dmin + (dmax - dmin) * 0.5 * (1.0 + sin(6.2831853 * 2.0 * t)); break;
+        default: d = dmax - (dmax - dmin) * (floor(t * 4.0) * 0.25); break; /* stepped */
+        }
+        double rpos = (double)s->dly_w - d;
+        while (rpos < 0.0) rpos += (double)SMACK_DLY_LEN;
+        uint32_t i0 = (uint32_t)rpos % SMACK_DLY_LEN;
+        uint32_t i1 = (i0 + 1) % SMACK_DLY_LEN;
+        float fr2 = (float)(rpos - floor(rpos));
+        float dl = s->dly[i0 * 2]     + fr2 * (s->dly[i1 * 2]     - s->dly[i0 * 2]);
+        float dr = s->dly[i0 * 2 + 1] + fr2 * (s->dly[i1 * 2 + 1] - s->dly[i0 * 2 + 1]);
+        s->dly[s->dly_w * 2]     = *l * 0.55f + dl * 0.5f;
+        s->dly[s->dly_w * 2 + 1] = *r * 0.55f + dr * 0.5f;
+        s->dly_w = (s->dly_w + 1) % SMACK_DLY_LEN;
+        *l = *l * 0.6f + dl * 0.85f;
+        *r = *r * 0.6f + dr * 0.85f;
+    } else {
+        s->dly_slice = -1;
     }
 
     *l *= g * gl;
