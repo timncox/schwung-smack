@@ -115,7 +115,12 @@
         "Press a step to",
         "mute its effect;",
         "press again to",
-        "restore it."
+        "restore it.",
+        "",
+        "HOLD Re-Roll to",
+        "clear every pinned",
+        "slice and roll a",
+        "fresh pattern."
       ]
     },
     {

@@ -277,6 +277,25 @@ int main(void) {
     assert(energy(out) > 0);               /* loop playback audible while muted */
     smack_set_param(S, "monitor", "1");
 
+    /* unlock_all: drops every pin on both lanes and rolls fresh */
+    smack_set_param(S, "channel_mode", "1");
+    smack_set_param(S, "seed", "888");
+    smack_get_param(S, "pattern", patseed, sizeof(patseed));
+    smack_set_param(S, "lock_slice_0", "5");
+    smack_set_param(S, "lock_slice_r_2", "6");
+    smack_get_param(S, "locked", buf, sizeof(buf));
+    assert(buf[0] == '1');
+    smack_get_param(S, "locked_r", buf, sizeof(buf));
+    assert(buf[2] == '1');
+    smack_set_param(S, "unlock_all", "1");
+    smack_get_param(S, "locked", buf, sizeof(buf));
+    assert(strchr(buf, '1') == NULL);          /* no pins left, lane L */
+    smack_get_param(S, "locked_r", buf, sizeof(buf));
+    assert(strchr(buf, '1') == NULL);          /* no pins left, lane R */
+    smack_set_param(S, "seed", "888");         /* re-dial: canonical roll */
+    smack_get_param(S, "pattern", buf, sizeof(buf));
+    assert(strcmp(buf, patseed) == 0);         /* seeded pattern restored */
+
     printf("host_sim: all assertions passed\n");
     smack_destroy(S);
     return 0;

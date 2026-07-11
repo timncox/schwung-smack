@@ -138,6 +138,8 @@ let state = 0;          /* 0 idle, 1 armed, 2 rec, 3 looping */
 let ab = 1;
 let pattern = '';
 let patternR = '';
+let lockedMask = '';
+let lockedMaskR = '';
 let nSlices = 0;
 let playSlice = -1;
 let selectedSlice = -1;
@@ -151,6 +153,11 @@ let editLane = 0;       /* 0 = left lane, 1 = right lane */
 let panL = 0, panR = 100;
 let lanePadHeld = false;
 let laneHoldUsed = false; /* a pan knob moved during the hold */
+
+/* Hold Re-Roll >= this long: unlock every pinned slice and roll fresh */
+const REROLL_HOLD_MS = 600;
+let rerollHeldAt = 0;      /* Date.now() at press, 0 = not held */
+let rerollHoldFired = false;
 
 /* Feedback guard: the host's slot guard never sees overtake modules, so we
  * mirror it here — speakers on + no line-in cable = the internal mic would
@@ -203,6 +210,8 @@ function fetchAll() {
     ab = parseInt(gp('ab') || '1');
     pattern = gp('pattern') || '';
     patternR = gp('pattern_r') || '';
+    lockedMask = gp('locked') || '';
+    lockedMaskR = gp('locked_r') || '';
     nSlices = parseInt(gp('n_slices') || '0');
     chanMode = parseInt(gp('channel_mode') || '0');
     panL = parseInt(gp('pan_l') || '0');
@@ -222,6 +231,11 @@ function lockKey(i) {
 
 function laneSpeech() {
     return editLane ? 'right lane' : 'left lane';
+}
+
+function sliceLocked(i) {
+    const m = (chanMode && editLane) ? lockedMaskR : lockedMask;
+    return m.charAt(i) === '1';
 }
 
 function sliceFx(i) {
@@ -310,10 +324,11 @@ function drawUI() {
     if (state === 3) title += ab ? ' · B' : ' · A';
     drawHeader(title);
 
-    /* selected-slice line (lane-prefixed in dual mono) */
+    /* selected-slice line (lane-prefixed in dual mono, pin marker) */
     const lanePfx = chanMode ? (editLane ? 'R ' : 'L ') : '';
     if (state === 3 && selectedSlice >= 0 && selectedSlice < nSlices) {
-        print(2, 13, `${lanePfx}Step ${selectedSlice + 1}: ${FX_NAMES[sliceFx(selectedSlice)]}`, 1);
+        const pin = sliceLocked(selectedSlice) ? ' *pin' : '';
+        print(2, 13, `${lanePfx}Step ${selectedSlice + 1}: ${FX_NAMES[sliceFx(selectedSlice)]}${pin}`, 1);
     } else if (state === 3) {
         print(2, 13, lanePfx + 'Press a step to edit', 1);
     } else {
@@ -410,6 +425,16 @@ globalThis.tick = function() {
      * the feedback guard about twice a second */
     if (tickCount % 15 === 0) reconcileFeedbackGuard();
 
+    /* Re-Roll held long enough: clear every pin and roll fresh */
+    if (rerollHeldAt && !rerollHoldFired &&
+        Date.now() - rerollHeldAt >= REROLL_HOLD_MS) {
+        rerollHoldFired = true;
+        host_module_set_param('unlock_all', '1');
+        selectedSlice = -1;
+        announce('Fresh roll, all pins cleared');
+        refreshSoon();
+    }
+
     /* playhead chase: cheap single get_param per tick */
     if (state === 3) {
         const ps = parseInt(gp('play_slice') || '-1');
@@ -426,6 +451,8 @@ globalThis.tick = function() {
         ab = parseInt(gp('ab') || '1');
         pattern = gp('pattern') || '';
         patternR = chanMode ? (gp('pattern_r') || '') : '';
+        lockedMask = gp('locked') || '';
+        lockedMaskR = chanMode ? (gp('locked_r') || '') : '';
         nSlices = parseInt(gp('n_slices') || '0');
         if (state !== 3) selectedSlice = -1;
         /* speak async transitions (armed -> recording -> looping); A/B is
@@ -472,6 +499,13 @@ globalThis.onMidiMessageInternal = function(data) {
         return;
     }
 
+    /* re-roll pad release ends the hold window */
+    if ((status === 0x80 || (status === 0x90 && d2 === 0)) && d1 === PAD_REROLL) {
+        rerollHeldAt = 0;
+        rerollHoldFired = false;
+        return;
+    }
+
     /* lane pad release: a plain tap (no pan knob turned) switches lanes */
     if ((status === 0x80 || (status === 0x90 && d2 === 0)) && d1 === PAD_LANE) {
         if (lanePadHeld && !laneHoldUsed && chanMode) {
@@ -491,7 +525,15 @@ globalThis.onMidiMessageInternal = function(data) {
         /* Transport pads */
         if (d1 === PAD_CAPTURE) { host_module_set_param('capture', '1'); announce('Capture'); refreshSoon(); return; }
         if (d1 === PAD_ARM)     { host_module_set_param('arm', '1');     announce('Arm');     refreshSoon(); return; }
-        if (d1 === PAD_REROLL)  { host_module_set_param('reroll', '1');  announce('Re-roll'); refreshSoon(); return; }
+        if (d1 === PAD_REROLL) {
+            /* tap: re-roll (pins kept); hold: unlock everything + fresh roll */
+            host_module_set_param('reroll', '1');
+            announce('Re-roll');
+            rerollHeldAt = Date.now();
+            rerollHoldFired = false;
+            refreshSoon();
+            return;
+        }
         if (d1 === PAD_CLEAR)   { host_module_set_param('clear', '1');   announce('Clear');   refreshSoon(); return; }
         if (d1 === PAD_AB) {
             ab = ab ? 0 : 1;
@@ -547,13 +589,19 @@ globalThis.onMidiMessageInternal = function(data) {
             return;
         }
 
-        /* Step press: select a slice for editing */
+        /* Step press: select a slice for editing; same step again deselects */
         if (d1 >= STEP_FIRST && d1 < STEP_FIRST + STEP_COUNT) {
             const i = d1 - STEP_FIRST;
             if (state === 3 && i < nSlices) {
-                selectedSlice = i;
-                const where = chanMode ? `, ${laneSpeech()}` : '';
-                announce(`Slice ${i + 1}, ${FX_SPEECH[sliceFx(i)]}${where}`);
+                if (selectedSlice === i) {
+                    selectedSlice = -1;
+                    announce('Selection cleared');
+                } else {
+                    selectedSlice = i;
+                    const where = chanMode ? `, ${laneSpeech()}` : '';
+                    const pin = sliceLocked(i) ? ', pinned' : '';
+                    announce(`Slice ${i + 1}, ${FX_SPEECH[sliceFx(i)]}${pin}${where}`);
+                }
                 paintSteps(false);
                 needsRedraw = true;
             } else if (state !== 3) {

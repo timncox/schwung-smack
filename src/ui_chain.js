@@ -128,6 +128,13 @@ let panL = 0, panR = 100;
 let lanePadHeld = false;
 let laneHoldUsed = false;
 
+/* Hold Re-Roll >= this long: unlock every pinned slice and roll fresh */
+const REROLL_HOLD_MS = 600;
+let rerollHeldAt = 0;
+let rerollHoldFired = false;
+let lockedMask = '';
+let lockedMaskR = '';
+
 /* Feedback guard — smack-in only (hw_input=1: the DSP reads the mic/line
  * input directly). The host's slot guard covers smack-in as a plain slot
  * synth but is blind to it INSIDE a chain patch, so while this editor is
@@ -181,6 +188,8 @@ function fetchAll() {
     ab = parseInt(gp('ab') || '1');
     pattern = gp('pattern') || '';
     patternR = gp('pattern_r') || '';
+    lockedMask = gp('locked') || '';
+    lockedMaskR = gp('locked_r') || '';
     nSlices = parseInt(gp('n_slices') || '0');
     chanMode = parseInt(gp('channel_mode') || '0');
     panL = parseInt(gp('pan_l') || '0');
@@ -291,11 +300,15 @@ function drawUI() {
     /* pattern summary line */
     if (state === 3) {
         const pat = editPattern();
-        let fxCount = 0;
+        const msk = (chanMode && editLane) ? lockedMaskR : lockedMask;
+        let fxCount = 0, pinCount = 0;
         for (let i = 0; i < pat.length; i++)
             if (pat[i] !== '0') fxCount++;
+        for (let i = 0; i < msk.length; i++)
+            if (msk[i] === '1') pinCount++;
         const lanePfx = chanMode ? (editLane ? 'R ' : 'L ') : '';
-        print(2, 55, `${lanePfx}${nSlices} slices  ${fxCount} fx`, 1);
+        const pins = pinCount ? `  ${pinCount}pin` : '';
+        print(2, 55, `${lanePfx}${nSlices} slices  ${fxCount} fx${pins}`, 1);
     }
 
     drawFooter({ left: 'Cap Arm A/B Roll', right: 'Step:mute' });
@@ -322,6 +335,15 @@ function tick() {
     /* jack state can change mid-session — re-check the guard ~2x/second */
     if (hwInput && tickCount % 15 === 0) reconcileFeedbackGuard();
 
+    /* Re-Roll held long enough: clear every pin and roll fresh */
+    if (rerollHeldAt && !rerollHoldFired &&
+        Date.now() - rerollHeldAt >= REROLL_HOLD_MS) {
+        rerollHoldFired = true;
+        host_module_set_param('unlock_all', '1');
+        announce('Fresh roll, all pins cleared');
+        refreshSoon();
+    }
+
     /* playhead chase: cheap single get_param per tick */
     if (state === 3) {
         const ps = parseInt(gp('play_slice') || '-1');
@@ -338,6 +360,8 @@ function tick() {
         ab = parseInt(gp('ab') || '1');
         pattern = gp('pattern') || '';
         patternR = chanMode ? (gp('pattern_r') || '') : '';
+        lockedMask = gp('locked') || '';
+        lockedMaskR = chanMode ? (gp('locked_r') || '') : '';
         nSlices = parseInt(gp('n_slices') || '0');
         /* speak async transitions (armed -> recording -> looping) as they
          * land; A/B is announced at press time instead, because the applied
@@ -384,6 +408,13 @@ function onMidiMessageInternal(data) {
         return;
     }
 
+    /* re-roll pad release ends the hold window */
+    if ((status === 0x80 || (status === 0x90 && d2 === 0)) && d1 === PAD_REROLL) {
+        rerollHeldAt = 0;
+        rerollHoldFired = false;
+        return;
+    }
+
     /* lane pad release: a plain tap (no pan knob turned) switches lanes */
     if ((status === 0x80 || (status === 0x90 && d2 === 0)) && d1 === PAD_LANE) {
         if (lanePadHeld && !laneHoldUsed && chanMode) {
@@ -402,7 +433,15 @@ function onMidiMessageInternal(data) {
         /* Transport pads */
         if (d1 === PAD_CAPTURE) { host_module_set_param('capture', '1'); announce('Capture');  refreshSoon(); return; }
         if (d1 === PAD_ARM)     { host_module_set_param('arm', '1');     announce('Arm');      refreshSoon(); return; }
-        if (d1 === PAD_REROLL)  { host_module_set_param('reroll', '1');  announce('Re-roll');  refreshSoon(); return; }
+        if (d1 === PAD_REROLL) {
+            /* tap: re-roll (pins kept); hold: unlock everything + fresh roll */
+            host_module_set_param('reroll', '1');
+            announce('Re-roll');
+            rerollHeldAt = Date.now();
+            rerollHoldFired = false;
+            refreshSoon();
+            return;
+        }
         if (d1 === PAD_CLEAR)   { host_module_set_param('clear', '1');   announce('Clear');    refreshSoon(); return; }
         if (d1 === PAD_AB) {
             ab = ab ? 0 : 1;

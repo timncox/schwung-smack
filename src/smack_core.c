@@ -1077,6 +1077,13 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         parse_locks(&s->lane[0], strstr(val, "\"locks\":\""), 9);
         parse_locks(&s->lane[1], strstr(val, "\"locks_r\":\""), 11);
         if (s->state == SMACK_LOOPING) roll_pattern(s);
+    } else if (!strcmp(key, "unlock_all")) {
+        /* escape hatch: drop every pin on both lanes and roll fresh */
+        if (trig_active(val)) {
+            memset(s->lane[0].locked, 0, sizeof(s->lane[0].locked));
+            memset(s->lane[1].locked, 0, sizeof(s->lane[1].locked));
+            if (s->state == SMACK_LOOPING) roll_pattern(s);
+        }
     } else if (!strncmp(key, "lock_slice_r_", 13)) {
         set_lock(s, &s->lane[1], clampi(atoi(key + 13), 0, SMACK_MAX_SLICES - 1), atoi(val));
     } else if (!strncmp(key, "lock_slice_", 11)) {
@@ -1155,6 +1162,14 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
         const smack_lane_t *ln = &s->lane[key[7] ? 1 : 0];
         int n = s->n_slices < buf_len - 1 ? s->n_slices : buf_len - 1;
         for (int i = 0; i < n; i++) buf[i] = (char)('0' + ln->fx[i]);
+        buf[n] = 0;
+        return n;
+    }
+    if (!strcmp(key, "locked") || !strcmp(key, "locked_r")) {
+        /* '1' per user-pinned slice, aligned with "pattern" */
+        const smack_lane_t *ln = &s->lane[key[6] ? 1 : 0];
+        int n = s->n_slices < buf_len - 1 ? s->n_slices : buf_len - 1;
+        for (int i = 0; i < n; i++) buf[i] = ln->locked[i] ? '1' : '0';
         buf[n] = 0;
         return n;
     }

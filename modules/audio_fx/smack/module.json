@@ -2,7 +2,7 @@
   "id": "smack",
   "name": "Smack",
   "abbrev": "SMK",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Quantized live-loop capture with probabilistic per-slice glitch FX and slice reordering",
   "dsp": "smack.so",
   "ui_chain": "ui_chain.js",
