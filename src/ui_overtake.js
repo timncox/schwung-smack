@@ -14,7 +14,10 @@
  *                         the seeded roll). Tap to assign to the selected
  *                         slice; re-tap the same effect to lock it as-is.
  *   Bottom row (68-75)    68 Capture / 69 Arm / 70 A-B / 71 Re-Roll /
- *                         72 Clear; hardware Capture button = retro grab
+ *                         72 Clear / 74 Stereo-DualMono toggle / 75 lane
+ *                         select (dual mono: tap = edit L or R lane; HOLD
+ *                         + knob 1/2 = Pan L / Pan R); hardware Capture
+ *                         button = retro grab
  *   Knobs 1-8             FX Density, Order, Loop Len, Slice Res,
  *                         Wet, Pitch Range, AB Quantize, Seed
  *   Play button           passed through to Move (transport + clock
@@ -49,6 +52,8 @@ const PAD_ARM     = 69;
 const PAD_AB      = 70;
 const PAD_REROLL  = 71;
 const PAD_CLEAR   = 72;
+const PAD_MODE    = 74;   /* Stereo <-> Dual Mono */
+const PAD_LANE    = 75;   /* dual mono: tap = lane L/R; hold + knob1/2 = pans */
 
 /* Upper three pad rows: effect palette. Pad 76 + code, codes 0..22;
  * top-right pad 99 = unlock (restore the seeded effect). */
@@ -129,12 +134,20 @@ let knobValues = [50, 0, 4, 1, 100, 12, 1, 4303];
 let state = 0;          /* 0 idle, 1 armed, 2 rec, 3 looping */
 let ab = 1;
 let pattern = '';
+let patternR = '';
 let nSlices = 0;
 let playSlice = -1;
 let selectedSlice = -1;
 let tickCount = 0;
 let needsRedraw = true;
 let dspReady = false;
+
+/* Dual mono */
+let chanMode = 0;       /* 0 stereo, 1 dual mono */
+let editLane = 0;       /* 0 = left lane, 1 = right lane */
+let panL = 0, panR = 100;
+let lanePadHeld = false;
+let laneHoldUsed = false; /* a pan knob moved during the hold */
 
 function gp(key) {
     const v = host_module_get_param(key);
@@ -151,13 +164,31 @@ function fetchAll() {
     state = parseInt(rs);
     ab = parseInt(gp('ab') || '1');
     pattern = gp('pattern') || '';
+    patternR = gp('pattern_r') || '';
     nSlices = parseInt(gp('n_slices') || '0');
+    chanMode = parseInt(gp('channel_mode') || '0');
+    panL = parseInt(gp('pan_l') || '0');
+    panR = parseInt(gp('pan_r') || '100');
     return true;
 }
 
+/* pattern of the lane currently being edited */
+function editPattern() {
+    return (chanMode && editLane) ? patternR : pattern;
+}
+
+function lockKey(i) {
+    return (chanMode && editLane) ? `lock_slice_r_${i}` : `lock_slice_${i}`;
+}
+
+function laneSpeech() {
+    return editLane ? 'right lane' : 'left lane';
+}
+
 function sliceFx(i) {
-    if (i < 0 || i >= pattern.length) return 0;
-    const code = pattern.charCodeAt(i) - 48;
+    const pat = editPattern();
+    if (i < 0 || i >= pat.length) return 0;
+    const code = pat.charCodeAt(i) - 48;
     return (code >= 0 && code < FX_COLORS.length) ? code : 0;
 }
 
@@ -200,7 +231,9 @@ function paintTransport(force) {
     setLED(PAD_AB, state === 3 ? (ab ? White : LightGrey) : Black, force);
     setLED(PAD_REROLL, Blue, force);
     setLED(PAD_CLEAR, state === 3 ? OrangeRed : Black, force);
-    for (let p = 73; p <= 75; p++) setLED(p, Black, force);
+    setLED(73, Black, force);
+    setLED(PAD_MODE, chanMode ? White : 0x10, force);
+    setLED(PAD_LANE, chanMode ? (editLane ? OrangeRed : Cyan) : Black, force);
 }
 
 function paintPalette(force) {
@@ -238,11 +271,12 @@ function drawUI() {
     if (state === 3) title += ab ? ' · B' : ' · A';
     drawHeader(title);
 
-    /* selected-slice line */
+    /* selected-slice line (lane-prefixed in dual mono) */
+    const lanePfx = chanMode ? (editLane ? 'R ' : 'L ') : '';
     if (state === 3 && selectedSlice >= 0 && selectedSlice < nSlices) {
-        print(2, 13, `Step ${selectedSlice + 1}: ${FX_NAMES[sliceFx(selectedSlice)]}`, 1);
+        print(2, 13, `${lanePfx}Step ${selectedSlice + 1}: ${FX_NAMES[sliceFx(selectedSlice)]}`, 1);
     } else if (state === 3) {
-        print(2, 13, 'Press a step to edit', 1);
+        print(2, 13, lanePfx + 'Press a step to edit', 1);
     } else {
         print(2, 13, 'Capture or Arm a loop', 1);
     }
@@ -267,8 +301,9 @@ function assignFx(code) {
         announce('Select a step first');
         return;
     }
-    host_module_set_param(`lock_slice_${selectedSlice}`, `${code}`);
-    announce(`Slice ${selectedSlice + 1}, ${FX_SPEECH[code]}`);
+    host_module_set_param(lockKey(selectedSlice), `${code}`);
+    const where = chanMode ? `, ${laneSpeech()}` : '';
+    announce(`Slice ${selectedSlice + 1}, ${FX_SPEECH[code]}${where}`);
     refreshSoon();
 }
 
@@ -277,9 +312,18 @@ function unlockSlice() {
         announce('Select a step first');
         return;
     }
-    host_module_set_param(`lock_slice_${selectedSlice}`, '-1');
+    host_module_set_param(lockKey(selectedSlice), '-1');
     announce(`Slice ${selectedSlice + 1} unlocked`);
     refreshSoon();
+}
+
+function adjustPan(which, delta) {
+    let v = which ? panR : panL;
+    v = Math.max(0, Math.min(100, v + delta * 5));
+    if (which) { panR = v; host_module_set_param('pan_r', `${v}`); }
+    else       { panL = v; host_module_set_param('pan_l', `${v}`); }
+    announceParameter(which ? 'Pan right lane' : 'Pan left lane', `${v}`);
+    needsRedraw = true;
 }
 
 /* ---- Lifecycle ---- */
@@ -331,17 +375,19 @@ globalThis.tick = function() {
 
     /* periodic state/pattern refresh (knob edits, quantized AB flips) */
     if (tickCount % 12 === 0) {
-        const oldState = state, oldAb = ab, oldPattern = pattern;
+        const oldState = state, oldAb = ab, oldPattern = pattern, oldPatternR = patternR;
         state = parseInt(gp('run_state') || '0');
         ab = parseInt(gp('ab') || '1');
         pattern = gp('pattern') || '';
+        patternR = chanMode ? (gp('pattern_r') || '') : '';
         nSlices = parseInt(gp('n_slices') || '0');
         if (state !== 3) selectedSlice = -1;
         /* speak async transitions (armed -> recording -> looping); A/B is
          * announced at press time (applied value lags a quantized flip) */
         if (state !== oldState)
             announce(state === 3 ? `looping, ${nSlices} slices` : STATE_SPEECH[state]);
-        if (state !== oldState || ab !== oldAb || pattern !== oldPattern) {
+        if (state !== oldState || ab !== oldAb ||
+            pattern !== oldPattern || patternR !== oldPatternR) {
             paintTransport(false);
             paintSteps(false);
             needsRedraw = true;
@@ -364,12 +410,34 @@ globalThis.onMidiMessageInternal = function(data) {
             refreshSoon();
             return;
         }
-        /* Knobs 1-8 */
+        /* Knobs 1-8; while the lane pad is held, knobs 1-2 are the pans */
         if (d1 >= MoveKnob1 && d1 < MoveKnob1 + 8) {
             const delta = decodeDelta(d2);
-            if (delta !== 0) adjustKnob(d1 - MoveKnob1, delta);
+            if (delta === 0) return;
+            const k = d1 - MoveKnob1;
+            if (lanePadHeld && chanMode && k < 2) {
+                laneHoldUsed = true;
+                adjustPan(k, delta);
+            } else {
+                adjustKnob(k, delta);
+            }
             return;
         }
+        return;
+    }
+
+    /* lane pad release: a plain tap (no pan knob turned) switches lanes */
+    if ((status === 0x80 || (status === 0x90 && d2 === 0)) && d1 === PAD_LANE) {
+        if (lanePadHeld && !laneHoldUsed && chanMode) {
+            editLane = editLane ? 0 : 1;
+            selectedSlice = -1;
+            announce('Editing ' + laneSpeech());
+            paintTransport(false);
+            paintSteps(false);
+            needsRedraw = true;
+        }
+        lanePadHeld = false;
+        laneHoldUsed = false;
         return;
     }
 
@@ -388,6 +456,25 @@ globalThis.onMidiMessageInternal = function(data) {
             refreshSoon();
             return;
         }
+        if (d1 === PAD_MODE) {
+            chanMode = chanMode ? 0 : 1;
+            host_module_set_param('channel_mode', `${chanMode}`);
+            if (!chanMode) editLane = 0;
+            announce(chanMode ? 'Dual mono' : 'Stereo');
+            paintTransport(false);
+            paintSteps(false);
+            refreshSoon();
+            return;
+        }
+        if (d1 === PAD_LANE) {
+            if (chanMode) {
+                lanePadHeld = true;
+                laneHoldUsed = false;
+            } else {
+                announce('Stereo mode. Pad 7 switches to dual mono');
+            }
+            return;
+        }
 
         /* Effect palette */
         if (d1 === PAD_UNLOCK) { unlockSlice(); return; }
@@ -401,7 +488,8 @@ globalThis.onMidiMessageInternal = function(data) {
             const i = d1 - STEP_FIRST;
             if (state === 3 && i < nSlices) {
                 selectedSlice = i;
-                announce(`Slice ${i + 1}, ${FX_SPEECH[sliceFx(i)]}`);
+                const where = chanMode ? `, ${laneSpeech()}` : '';
+                announce(`Slice ${i + 1}, ${FX_SPEECH[sliceFx(i)]}${where}`);
                 paintSteps(false);
                 needsRedraw = true;
             } else if (state !== 3) {

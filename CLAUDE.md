@@ -122,6 +122,28 @@ target any loaded FX param — e.g. LFO on Smack's fx_density/order_density.
   side decides whether to speak. Announcing unconditionally is the house
   pattern (shadow_ui.js does the same).
 
+## Dual mono (v0.5.0, engine-level)
+
+- `channel_mode` 0 Stereo / 1 Dual Mono; `pan_l`/`pan_r` 0-100 equal-power
+  (defaults 0/100 = keep input sides). In dual mode the B side renders
+  lane 0 from the LEFT input channel and lane 1 from the RIGHT, each
+  through its own pattern + per-effect runtime (`smack_lane_t`: fx/order/
+  locks + filter/vowel/delay/phaser/verb state), then pans the two lane
+  outputs into the field. The A side always plays the raw stereo loop.
+- Determinism: one rng stream — lane 1's roll continues after lane 0's,
+  so seed+nonce fully determine both lanes, and lane 0 always equals the
+  stereo-mode pattern.
+- Params: `pattern_r`, `lock_slice_r_<i>`; state blob gains `chan`,
+  `pan_l`, `pan_r`, `locks_r`. Old presets (no `chan`) restore as stereo.
+- UIs (chain + oversmack, same pads): pad 74 = mode toggle, pad 75 =
+  lane select (tap) / hold + knob 1-2 = Pan L / Pan R. Steps + locks edit
+  the selected lane. Setup hierarchy page adds Channels/Pan L/Pan R
+  (master-FX LFO can target the pans!).
+- ⚠️ Parallel work: branch `feat/fill` (draft PR timncox/schwung-smack#1,
+  from another session) predates this refactor — it must REBASE onto the
+  lane refactor (roll_pattern/render/params all restructured) and bump to
+  0.6.0 (0.5.0 is taken by dual mono).
+
 ## Chain UI (src/ui_chain.js, shipped in both tarballs)
 
 Loads when Smack's component editor is opened inside a slot's Signal Chain.
@@ -139,14 +161,8 @@ Len / Res / Wet / Pitch / Qnt / Seed.
   playhead chase rate) — untested on hardware. Same for oversmack (LED
   queue pacing, palette pads, suspend/resume repaint, play passthrough,
   and whether standalone DSP output sums into Move's mix at sane gain).
-- **Dual-mono mode (Tim, 2026-07-11)**: treat incoming L and R as two
-  independent mono lanes — each lane gets its own slice pattern/effects,
-  plus a pan knob per lane to place them in the stereo field (two mono
-  synths into Move's stereo line-in). Engine-level: dual fx/order/lock
-  lanes, per-lane render position (order differs), pan_l/pan_r params,
-  lane-select in the editing UIs, locks serialization gains a lane. Seed
-  determinism: lane B continues the same rng stream. Benefits all three
-  builds; oversmack UI has the room for a lane toggle pad.
+- Dual-mono mode: BUILT (v0.5.0, 2026-07-11) — see "Dual mono" section
+  below. On-device verification pending like the rest.
 - Momentary A/B punch (hold pad = temporary flip, release = back) — needs
   press-duration tracking in ui_chain.js.
 - v2 FX: time-preserving pitchshift.

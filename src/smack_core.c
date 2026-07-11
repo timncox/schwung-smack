@@ -95,6 +95,41 @@ static const int verb_comb_len[4] = { 673, 713, 766, 813 };
 #define VERB_AP_LEN 225
 #define VERB_TOTAL (673 + 713 + 766 + 813 + VERB_AP_LEN)
 
+/* One playback lane: a slice pattern plus every per-effect runtime that
+ * must not be shared between simultaneously rendering voices. Stereo mode
+ * uses lane[0] alone; dual-mono mode renders lane[0] from the left input
+ * channel and lane[1] from the right, then pans each into the field. */
+typedef struct {
+    /* FILTER effect runtime */
+    smack_bq_t fltL, fltR;
+    int flt_slice;               /* output slice the filter is tracking, -1 none */
+    int flt_counter;             /* frames until coefficient recompute */
+
+    /* VOWEL effect runtime: 3 formant bands per channel */
+    smack_bq_t vowL[3], vowR[3];
+    int vow_slice;
+    int vow_counter;
+
+    /* TONALDELAY + DELAY runtime: shared feedback delay line */
+    float   *dly;                /* SMACK_DLY_LEN * 2 floats, interleaved */
+    uint32_t dly_w;
+    int      dly_slice;
+
+    /* PHASER runtime: 4 first-order allpass stages per channel */
+    float ph_x[2][4], ph_y[2][4];
+    int   ph_slice;
+
+    /* VERB runtime: mono Schroeder (4 combs + 1 allpass), gated feed */
+    float   *verb;               /* one block, offsets below */
+    uint32_t vb_ci[4], vb_ai;
+
+    /* Pattern */
+    uint16_t order[SMACK_MAX_SLICES];
+    uint8_t  fx[SMACK_MAX_SLICES];
+    int8_t   fxp[SMACK_MAX_SLICES];
+    uint8_t  locked[SMACK_MAX_SLICES]; /* user-pinned: reroll keeps fx[i] */
+} smack_lane_t;
+
 struct smack {
     const host_api_v1_t *host;
 
@@ -137,37 +172,18 @@ struct smack {
     int   transport_paused;      /* loop exists but transport is stopped */
     uint32_t roll_nonce;         /* advanced by reroll; 0 = canonical seed pattern */
 
-    /* FILTER effect runtime */
-    smack_bq_t fltL, fltR;
-    int flt_slice;               /* output slice the filter is tracking, -1 none */
-    int flt_counter;             /* frames until coefficient recompute */
+    /* Dual-mono: L/R inputs as independent mono lanes, each panned back
+     * into the stereo field. 0 = Stereo (lane[0] only), 1 = Dual Mono. */
+    int   chan_mode;
+    int   pan_l, pan_r;          /* 0 hard left .. 100 hard right */
+    float pan_gain[2][2];        /* [lane][out ch], equal-power, precomputed */
 
-    /* VOWEL effect runtime: 3 formant bands per channel */
-    smack_bq_t vowL[3], vowR[3];
-    int vow_slice;
-    int vow_counter;
-
-    /* TONALDELAY + DELAY runtime: shared feedback delay line */
-    float   *dly;                /* SMACK_DLY_LEN * 2 floats, interleaved */
-    uint32_t dly_w;
-    int      dly_slice;
-
-    /* PHASER runtime: 4 first-order allpass stages per channel */
-    float ph_x[2][4], ph_y[2][4];
-    int   ph_slice;
-
-    /* VERB runtime: mono Schroeder (4 combs + 1 allpass), gated feed */
-    float   *verb;               /* one block, offsets below */
-    uint32_t vb_ci[4], vb_ai;
-
-    /* Pattern */
+    /* Pattern geometry (shared by both lanes: same loop, same grid) */
     int      n_slices;
     double   slice_frames;
-    uint16_t order[SMACK_MAX_SLICES];
-    uint8_t  fx[SMACK_MAX_SLICES];
-    int8_t   fxp[SMACK_MAX_SLICES];
-    uint8_t  fx_locked[SMACK_MAX_SLICES]; /* user-pinned: reroll keeps fx[i] */
     uint32_t rng;
+
+    smack_lane_t lane[2];
 };
 
 /* ------------------------------------------------------------------ */
@@ -210,6 +226,56 @@ static uint64_t last_boundary_global(smack_t *s) {
 /*  Pattern                                                            */
 /* ------------------------------------------------------------------ */
 
+static void roll_lane(smack_t *s, smack_lane_t *ln) {
+    int n = s->n_slices;
+
+    for (int i = 0; i < n; i++) ln->order[i] = (uint16_t)i;
+    for (int i = 0; i < n; i++) {
+        if (rnd01(&s->rng) < s->order_density) {
+            int j = rnd_below(&s->rng, n);
+            uint16_t t = ln->order[i]; ln->order[i] = ln->order[j]; ln->order[j] = t;
+        }
+    }
+
+    for (int i = 0; i < n; i++) {
+        if (ln->locked[i]) continue;
+        if (rnd01(&s->rng) < s->fx_density) {
+            int f = 1 + rnd_below(&s->rng, SMACK_FX_COUNT - 1);
+            ln->fx[i] = (uint8_t)f;
+            switch (f) {
+            case SMACK_FX_RETRIG: ln->fxp[i] = (int8_t)(1 + rnd_below(&s->rng, 3)); break;
+            case SMACK_FX_PITCH: {
+                int semi = 1 + rnd_below(&s->rng, s->pitch_range);
+                if (xs32(&s->rng) & 1) semi = -semi;
+                ln->fxp[i] = (int8_t)semi;
+                break;
+            }
+            case SMACK_FX_SPEED: ln->fxp[i] = (int8_t)(xs32(&s->rng) & 1); break;
+            case SMACK_FX_BUZZ:  ln->fxp[i] = (int8_t)(xs32(&s->rng) & 3); break;
+            case SMACK_FX_CRUSH: ln->fxp[i] = (int8_t)(2 + (xs32(&s->rng) & 6)); break;
+            case SMACK_FX_REPEAT:
+            case SMACK_FX_REVAFTER: ln->fxp[i] = (int8_t)(1 + rnd_below(&s->rng, 3)); break;
+            case SMACK_FX_TAPESTOP: ln->fxp[i] = (int8_t)(xs32(&s->rng) & 1); break;
+            case SMACK_FX_SCRATCH:  ln->fxp[i] = (int8_t)(1 + rnd_below(&s->rng, 3)); break;
+            case SMACK_FX_ENV:      ln->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_PAN:      ln->fxp[i] = (int8_t)rnd_below(&s->rng, 3); break;
+            case SMACK_FX_FILTER:   ln->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_VOWEL:    ln->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_TONALDELAY: ln->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_FREEZE:   ln->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_DELAY:    ln->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_DIST:     ln->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_PHASER:   ln->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_VERB:     ln->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
+            default:             ln->fxp[i] = 0; break;
+            }
+        } else {
+            ln->fx[i] = SMACK_FX_NONE;
+            ln->fxp[i] = 0;
+        }
+    }
+}
+
 static void roll_pattern(smack_t *s) {
     int loop_hs  = loop_len_hs_table[s->loop_len_idx];
     int slice_hs = slice_hs_table[s->slice_res_idx];
@@ -222,51 +288,21 @@ static void roll_pattern(smack_t *s) {
     s->rng = s->seed ^ (s->roll_nonce * 2654435761u);
     if (!s->rng) s->rng = 0xC0FFEE01u;
 
-    for (int i = 0; i < n; i++) s->order[i] = (uint16_t)i;
-    for (int i = 0; i < n; i++) {
-        if (rnd01(&s->rng) < s->order_density) {
-            int j = rnd_below(&s->rng, n);
-            uint16_t t = s->order[i]; s->order[i] = s->order[j]; s->order[j] = t;
-        }
-    }
+    /* lane 1 continues the same rng stream, so a given seed + nonce fully
+     * determines both lanes, and lane 0 matches what stereo mode rolls */
+    roll_lane(s, &s->lane[0]);
+    if (s->chan_mode) roll_lane(s, &s->lane[1]);
+}
 
-    for (int i = 0; i < n; i++) {
-        if (s->fx_locked[i]) continue;
-        if (rnd01(&s->rng) < s->fx_density) {
-            int f = 1 + rnd_below(&s->rng, SMACK_FX_COUNT - 1);
-            s->fx[i] = (uint8_t)f;
-            switch (f) {
-            case SMACK_FX_RETRIG: s->fxp[i] = (int8_t)(1 + rnd_below(&s->rng, 3)); break;
-            case SMACK_FX_PITCH: {
-                int semi = 1 + rnd_below(&s->rng, s->pitch_range);
-                if (xs32(&s->rng) & 1) semi = -semi;
-                s->fxp[i] = (int8_t)semi;
-                break;
-            }
-            case SMACK_FX_SPEED: s->fxp[i] = (int8_t)(xs32(&s->rng) & 1); break;
-            case SMACK_FX_BUZZ:  s->fxp[i] = (int8_t)(xs32(&s->rng) & 3); break;
-            case SMACK_FX_CRUSH: s->fxp[i] = (int8_t)(2 + (xs32(&s->rng) & 6)); break;
-            case SMACK_FX_REPEAT:
-            case SMACK_FX_REVAFTER: s->fxp[i] = (int8_t)(1 + rnd_below(&s->rng, 3)); break;
-            case SMACK_FX_TAPESTOP: s->fxp[i] = (int8_t)(xs32(&s->rng) & 1); break;
-            case SMACK_FX_SCRATCH:  s->fxp[i] = (int8_t)(1 + rnd_below(&s->rng, 3)); break;
-            case SMACK_FX_ENV:      s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_PAN:      s->fxp[i] = (int8_t)rnd_below(&s->rng, 3); break;
-            case SMACK_FX_FILTER:   s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_VOWEL:    s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_TONALDELAY: s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_FREEZE:   s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_DELAY:    s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_DIST:     s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_PHASER:   s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_VERB:     s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            default:             s->fxp[i] = 0; break;
-            }
-        } else {
-            s->fx[i] = SMACK_FX_NONE;
-            s->fxp[i] = 0;
-        }
-    }
+/* Equal-power pan: 0 = hard left, 50 = center, 100 = hard right. */
+static void update_pan_gains(smack_t *s) {
+    const double HALF_PI = 1.5707963;
+    double tl = (double)s->pan_l / 100.0 * HALF_PI;
+    double tr = (double)s->pan_r / 100.0 * HALF_PI;
+    s->pan_gain[0][0] = (float)cos(tl);
+    s->pan_gain[0][1] = (float)sin(tl);
+    s->pan_gain[1][0] = (float)cos(tr);
+    s->pan_gain[1][1] = (float)sin(tr);
 }
 
 /* Canonical parameter for a user-pinned effect (lock_slice with an fx code).
@@ -346,10 +382,19 @@ smack_t *smack_create(const host_api_v1_t *host) {
     if (!s) return NULL;
     s->ring = calloc((size_t)SMACK_RING_FRAMES * 2, sizeof(int16_t));
     if (!s->ring) { free(s); return NULL; }
-    s->dly = calloc((size_t)SMACK_DLY_LEN * 2, sizeof(float));
-    if (!s->dly) { free(s->ring); free(s); return NULL; }
-    s->verb = calloc((size_t)VERB_TOTAL, sizeof(float));
-    if (!s->verb) { free(s->dly); free(s->ring); free(s); return NULL; }
+    for (int k = 0; k < 2; k++) {
+        s->lane[k].dly  = calloc((size_t)SMACK_DLY_LEN * 2, sizeof(float));
+        s->lane[k].verb = calloc((size_t)VERB_TOTAL, sizeof(float));
+        if (!s->lane[k].dly || !s->lane[k].verb) {
+            for (int j = 0; j <= k; j++) { free(s->lane[j].dly); free(s->lane[j].verb); }
+            free(s->ring); free(s);
+            return NULL;
+        }
+        s->lane[k].flt_slice = -1;
+        s->lane[k].vow_slice = -1;
+        s->lane[k].dly_slice = -1;
+        s->lane[k].ph_slice  = -1;
+    }
     s->host = host;
     s->frames_per_tick = 918.75; /* 120 BPM */
     s->loop_len_idx = 4;         /* 1 bar */
@@ -363,10 +408,10 @@ smack_t *smack_create(const host_api_v1_t *host) {
     s->quantize_mode = 1;        /* next slice */
     s->seed = 4303u;  /* within the knob's 1..9999 range */
     s->follow_transport = 1;
-    s->flt_slice = -1;
-    s->vow_slice = -1;
-    s->dly_slice = -1;
-    s->ph_slice = -1;
+    s->chan_mode = 0;            /* stereo */
+    s->pan_l = 0;                /* dual-mono defaults keep input sides */
+    s->pan_r = 100;
+    update_pan_gains(s);
     return s;
 }
 
@@ -387,8 +432,7 @@ static int json_int(const char *js, const char *key, int def) {
 
 void smack_destroy(smack_t *s) {
     if (!s) return;
-    free(s->verb);
-    free(s->dly);
+    for (int k = 0; k < 2; k++) { free(s->lane[k].verb); free(s->lane[k].dly); }
     free(s->ring);
     free(s);
 }
@@ -440,7 +484,9 @@ void smack_on_midi(smack_t *s, const uint8_t *msg, int len, int source) {
 /*  Rendering                                                          */
 /* ------------------------------------------------------------------ */
 
-static inline void ring_read_lerp(const smack_t *s, double loop_off,
+/* ch: -1 = stereo, 0/1 = that input channel duplicated to both outputs
+ * (dual-mono lanes render a mono source through the stereo fx path). */
+static inline void ring_read_lerp(const smack_t *s, double loop_off, int ch,
                                   float *l, float *r) {
     if (loop_off < 0.0) loop_off = 0.0;
     double maxo = (double)s->loop_len - 1.0;
@@ -450,8 +496,15 @@ static inline void ring_read_lerp(const smack_t *s, double loop_off,
     uint32_t a = (s->loop_start + i0) % SMACK_RING_FRAMES;
     uint32_t b = (i0 + 1 <= (uint32_t)maxo)
                    ? (s->loop_start + i0 + 1) % SMACK_RING_FRAMES : a;
-    *l = (float)s->ring[a * 2]     + frac * ((float)s->ring[b * 2]     - (float)s->ring[a * 2]);
-    *r = (float)s->ring[a * 2 + 1] + frac * ((float)s->ring[b * 2 + 1] - (float)s->ring[a * 2 + 1]);
+    if (ch < 0) {
+        *l = (float)s->ring[a * 2]     + frac * ((float)s->ring[b * 2]     - (float)s->ring[a * 2]);
+        *r = (float)s->ring[a * 2 + 1] + frac * ((float)s->ring[b * 2 + 1] - (float)s->ring[a * 2 + 1]);
+    } else {
+        float v = (float)s->ring[a * 2 + ch]
+                + frac * ((float)s->ring[b * 2 + ch] - (float)s->ring[a * 2 + ch]);
+        *l = v;
+        *r = v;
+    }
 }
 
 static inline int16_t clip16(float v) {
@@ -460,8 +513,10 @@ static inline int16_t clip16(float v) {
     return (int16_t)v;
 }
 
-/* Render one looped output frame at play_pos into l/r. */
-static void render_loop_frame(smack_t *s, float *l, float *r) {
+/* Render one looped output frame at play_pos into l/r, through one lane.
+ * ch: -1 = stereo (lane 0, classic mode), 0/1 = dual-mono lane reading
+ * that input channel. */
+static void render_lane(smack_t *s, smack_lane_t *ln, int ch, float *l, float *r) {
     double sf = s->slice_frames;
     int oslice = (sf > 0.0) ? (int)(s->play_pos / sf) : 0;
     if (oslice >= s->n_slices) oslice = s->n_slices - 1;
@@ -475,9 +530,9 @@ static void render_loop_frame(smack_t *s, float *l, float *r) {
     if (!s->ab) {
         src = s->play_pos;                      /* A: clean, original order */
     } else {
-        int sslice = s->order[oslice];
-        f  = s->fx[oslice];
-        fp = s->fxp[oslice];
+        int sslice = ln->order[oslice];
+        f  = ln->fx[oslice];
+        fp = ln->fxp[oslice];
         double rp = p;
         switch (f) {
         case SMACK_FX_RETRIG: {
@@ -607,24 +662,24 @@ static void render_loop_frame(smack_t *s, float *l, float *r) {
     double ltail = (double)s->loop_len - s->play_pos;
     if (ltail < SMACK_EDGE_FADE) g *= (float)(ltail / SMACK_EDGE_FADE);
 
-    ring_read_lerp(s, src, l, r);
+    ring_read_lerp(s, src, ch, l, r);
 
     if (src2 >= 0.0) { /* FREEZE: blend the second grain tap */
         float l2, r2;
-        ring_read_lerp(s, src2, &l2, &r2);
+        ring_read_lerp(s, src2, ch, &l2, &r2);
         *l = *l * mix2 + l2 * (1.0f - mix2);
         *r = *r * mix2 + r2 * (1.0f - mix2);
     }
 
     if (f == SMACK_FX_FILTER) {
-        if (s->flt_slice != oslice) { /* fresh sweep on slice entry */
-            bq_reset(&s->fltL);
-            bq_reset(&s->fltR);
-            s->flt_slice = oslice;
-            s->flt_counter = 0;
+        if (ln->flt_slice != oslice) { /* fresh sweep on slice entry */
+            bq_reset(&ln->fltL);
+            bq_reset(&ln->fltR);
+            ln->flt_slice = oslice;
+            ln->flt_counter = 0;
         }
-        if (s->flt_counter-- <= 0) {
-            s->flt_counter = 32;
+        if (ln->flt_counter-- <= 0) {
+            ln->flt_counter = 32;
             float t = (float)(p / sf);
             float fc;
             int hp = (fp & 3) >= 2;
@@ -634,47 +689,47 @@ static void render_loop_frame(smack_t *s, float *l, float *r) {
             case 2:  fc = 120.0f * powf(4000.0f / 120.0f, t); break;  /* HP up */
             default: fc = 4000.0f * powf(120.0f / 4000.0f, t); break; /* HP down */
             }
-            bq_set(&s->fltL, fc, hp);
-            s->fltR = s->fltL;
+            bq_set(&ln->fltL, fc, hp);
+            ln->fltR = ln->fltL;
         }
-        *l = bq_run(&s->fltL, *l);
-        *r = bq_run(&s->fltR, *r);
+        *l = bq_run(&ln->fltL, *l);
+        *r = bq_run(&ln->fltR, *r);
     } else {
-        s->flt_slice = -1;
+        ln->flt_slice = -1;
     }
 
     if (f == SMACK_FX_VOWEL) {
-        if (s->vow_slice != oslice) {
-            for (int k = 0; k < 3; k++) { bq_reset(&s->vowL[k]); bq_reset(&s->vowR[k]); }
-            s->vow_slice = oslice;
-            s->vow_counter = 0;
+        if (ln->vow_slice != oslice) {
+            for (int k = 0; k < 3; k++) { bq_reset(&ln->vowL[k]); bq_reset(&ln->vowR[k]); }
+            ln->vow_slice = oslice;
+            ln->vow_counter = 0;
         }
-        if (s->vow_counter-- <= 0) {
-            s->vow_counter = 32;
+        if (ln->vow_counter-- <= 0) {
+            ln->vow_counter = 32;
             float t = (float)(p / sf);
             const int *pr = vowel_pair[fp & 3];
             for (int k = 0; k < 3; k++) {
                 float fc = vowel_f[pr[0]][k] + (vowel_f[pr[1]][k] - vowel_f[pr[0]][k]) * t;
-                bq_set_bandpass(&s->vowL[k], fc, 8.0f);
-                s->vowR[k] = s->vowL[k];
+                bq_set_bandpass(&ln->vowL[k], fc, 8.0f);
+                ln->vowR[k] = ln->vowL[k];
             }
         }
         float xl = *l, xr = *r, ol = 0.0f, orr = 0.0f;
         for (int k = 0; k < 3; k++) {
-            ol  += vowel_gain[k] * bq_run(&s->vowL[k], xl);
-            orr += vowel_gain[k] * bq_run(&s->vowR[k], xr);
+            ol  += vowel_gain[k] * bq_run(&ln->vowL[k], xl);
+            orr += vowel_gain[k] * bq_run(&ln->vowR[k], xr);
         }
         *l = ol * 2.4f;
         *r = orr * 2.4f;
     } else {
-        s->vow_slice = -1;
+        ln->vow_slice = -1;
     }
 
     if (f == SMACK_FX_TONALDELAY || f == SMACK_FX_DELAY) {
-        if (s->dly_slice != oslice) { /* fresh line per slice entry */
-            memset(s->dly, 0, (size_t)SMACK_DLY_LEN * 2 * sizeof(float));
-            s->dly_w = 0;
-            s->dly_slice = oslice;
+        if (ln->dly_slice != oslice) { /* fresh line per slice entry */
+            memset(ln->dly, 0, (size_t)SMACK_DLY_LEN * 2 * sizeof(float));
+            ln->dly_w = 0;
+            ln->dly_slice = oslice;
         }
         double d;
         if (f == SMACK_FX_TONALDELAY) {
@@ -696,26 +751,26 @@ static void render_loop_frame(smack_t *s, float *l, float *r) {
             if (d > (double)(SMACK_DLY_LEN - 2)) d = (double)(SMACK_DLY_LEN - 2);
             if (d < 64.0) d = 64.0;
         }
-        double rpos = (double)s->dly_w - d;
+        double rpos = (double)ln->dly_w - d;
         while (rpos < 0.0) rpos += (double)SMACK_DLY_LEN;
         uint32_t i0 = (uint32_t)rpos % SMACK_DLY_LEN;
         uint32_t i1 = (i0 + 1) % SMACK_DLY_LEN;
         float fr2 = (float)(rpos - floor(rpos));
-        float dl = s->dly[i0 * 2]     + fr2 * (s->dly[i1 * 2]     - s->dly[i0 * 2]);
-        float dr = s->dly[i0 * 2 + 1] + fr2 * (s->dly[i1 * 2 + 1] - s->dly[i0 * 2 + 1]);
+        float dl = ln->dly[i0 * 2]     + fr2 * (ln->dly[i1 * 2]     - ln->dly[i0 * 2]);
+        float dr = ln->dly[i0 * 2 + 1] + fr2 * (ln->dly[i1 * 2 + 1] - ln->dly[i0 * 2 + 1]);
         if (f == SMACK_FX_DELAY && (fp & 3) == 3) {
-            s->dly[s->dly_w * 2]     = *l * 0.5f + dr * 0.45f; /* ping-pong */
-            s->dly[s->dly_w * 2 + 1] = *r * 0.5f + dl * 0.45f;
+            ln->dly[ln->dly_w * 2]     = *l * 0.5f + dr * 0.45f; /* ping-pong */
+            ln->dly[ln->dly_w * 2 + 1] = *r * 0.5f + dl * 0.45f;
         } else {
-            s->dly[s->dly_w * 2]     = *l * 0.55f + dl * 0.5f;
-            s->dly[s->dly_w * 2 + 1] = *r * 0.55f + dr * 0.5f;
+            ln->dly[ln->dly_w * 2]     = *l * 0.55f + dl * 0.5f;
+            ln->dly[ln->dly_w * 2 + 1] = *r * 0.55f + dr * 0.5f;
         }
-        s->dly_w = (s->dly_w + 1) % SMACK_DLY_LEN;
+        ln->dly_w = (ln->dly_w + 1) % SMACK_DLY_LEN;
         float wetg = (f == SMACK_FX_DELAY) ? 0.75f : 0.85f;
         *l = *l * 0.6f + dl * wetg;
         *r = *r * 0.6f + dr * wetg;
     } else {
-        s->dly_slice = -1;
+        ln->dly_slice = -1;
     }
 
     if (f == SMACK_FX_DIST) {
@@ -747,10 +802,10 @@ static void render_loop_frame(smack_t *s, float *l, float *r) {
     }
 
     if (f == SMACK_FX_PHASER) {
-        if (s->ph_slice != oslice) {
-            memset(s->ph_x, 0, sizeof(s->ph_x));
-            memset(s->ph_y, 0, sizeof(s->ph_y));
-            s->ph_slice = oslice;
+        if (ln->ph_slice != oslice) {
+            memset(ln->ph_x, 0, sizeof(ln->ph_x));
+            memset(ln->ph_y, 0, sizeof(ln->ph_y));
+            ln->ph_slice = oslice;
         }
         double t = p / sf;
         float gph;
@@ -764,15 +819,15 @@ static void render_loop_frame(smack_t *s, float *l, float *r) {
             float x = (ch ? *r : *l);
             float v = x;
             for (int st = 0; st < 4; st++) {
-                float yn = -gph * v + s->ph_x[ch][st] + gph * s->ph_y[ch][st];
-                s->ph_x[ch][st] = v;
-                s->ph_y[ch][st] = yn;
+                float yn = -gph * v + ln->ph_x[ch][st] + gph * ln->ph_y[ch][st];
+                ln->ph_x[ch][st] = v;
+                ln->ph_y[ch][st] = yn;
                 v = yn;
             }
             if (ch) *r = 0.5f * (x + v); else *l = 0.5f * (x + v);
         }
     } else {
-        s->ph_slice = -1;
+        ln->ph_slice = -1;
     }
 
     if (f == SMACK_FX_VERB) {
@@ -783,20 +838,20 @@ static void render_loop_frame(smack_t *s, float *l, float *r) {
         float fb = 0.68f + 0.05f * (float)(fp & 3);
         float acc = 0.0f;
         for (int c = 0; c < 4; c++) {
-            float *b = s->verb + verb_off[c];
-            uint32_t i = s->vb_ci[c];
+            float *b = ln->verb + verb_off[c];
+            uint32_t i = ln->vb_ci[c];
             float y = b[i];
             b[i] = feed + y * fb;
-            s->vb_ci[c] = (i + 1u < (uint32_t)verb_comb_len[c]) ? i + 1u : 0u;
+            ln->vb_ci[c] = (i + 1u < (uint32_t)verb_comb_len[c]) ? i + 1u : 0u;
             acc += y;
         }
         acc *= 0.25f;
-        float *ap = s->verb + (673 + 713 + 766 + 813);
-        uint32_t j = s->vb_ai;
+        float *ap = ln->verb + (673 + 713 + 766 + 813);
+        uint32_t j = ln->vb_ai;
         float apy = ap[j];
         float apout = apy - 0.5f * acc;
         ap[j] = acc + 0.5f * apy;
-        s->vb_ai = (j + 1u < VERB_AP_LEN) ? j + 1u : 0u;
+        ln->vb_ai = (j + 1u < VERB_AP_LEN) ? j + 1u : 0u;
         *l = *l * 0.65f + apout * 0.9f;
         *r = *r * 0.65f + apout * 0.9f;
     }
@@ -847,7 +902,19 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
             }
 
             float ll, rr;
-            render_loop_frame(s, &ll, &rr);
+            if (!s->chan_mode || !s->ab) {
+                /* stereo mode — and the A side of dual mode, which plays
+                 * the raw loop with its original stereo placement */
+                render_lane(s, &s->lane[0], -1, &ll, &rr);
+            } else {
+                /* dual mono: each lane renders its input channel through
+                 * its own pattern, then pans into the field */
+                float l0, r0, l1, r1;
+                render_lane(s, &s->lane[0], 0, &l0, &r0);
+                render_lane(s, &s->lane[1], 1, &l1, &r1);
+                ll = l0 * s->pan_gain[0][0] + l1 * s->pan_gain[1][0];
+                rr = r0 * s->pan_gain[0][1] + r1 * s->pan_gain[1][1];
+            }
             out[n * 2]     = clip16(ll * s->wet + inl * (1.0f - s->wet));
             out[n * 2 + 1] = clip16(rr * s->wet + inr * (1.0f - s->wet));
 
@@ -863,6 +930,45 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
 /* ------------------------------------------------------------------ */
 
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+/* Pin (f >= 0: 0 = clean/mute, 1.. = specific effect) or unlock (f < 0) a
+ * slice on one lane. Pinning a different effect gets that effect's
+ * canonical parameter; re-pinning the current one keeps the rolled flavor. */
+static void set_lock(smack_t *s, smack_lane_t *ln, int i, int f) {
+    if (f < 0) { /* unlock: re-roll restores the seeded value */
+        ln->locked[i] = 0;
+        if (s->state == SMACK_LOOPING) roll_pattern(s);
+    } else {
+        f = clampi(f, 0, SMACK_FX_COUNT - 1);
+        if (ln->fx[i] != (uint8_t)f) ln->fxp[i] = default_fxp(f);
+        ln->fx[i] = (uint8_t)f;
+        ln->locked[i] = 1;
+    }
+}
+
+/* Parse a locks string ("i:f:p,i:f:p,..."; bare i:f pairs from older
+ * presets fall back to the canonical parameter). lk points at the JSON
+ * key match or NULL; skip = strlen of the key prefix incl. quote. */
+static void parse_locks(smack_lane_t *ln, const char *lk, int skip) {
+    if (!lk) return;
+    lk += skip;
+    while (*lk && *lk != '"') {
+        char *end;
+        long i = strtol(lk, &end, 10);
+        if (end == lk || *end != ':') break;
+        long f = strtol(end + 1, &end, 10);
+        int has_p = 0;
+        long p = 0;
+        if (*end == ':') { p = strtol(end + 1, &end, 10); has_p = 1; }
+        if (i >= 0 && i < SMACK_MAX_SLICES) {
+            ln->locked[i] = 1;
+            ln->fx[i] = (uint8_t)clampi((int)f, 0, SMACK_FX_COUNT - 1);
+            ln->fxp[i] = has_p ? (int8_t)clampi((int)p, -128, 127)
+                               : default_fxp(ln->fx[i]);
+        }
+        if (*end == ',') lk = end + 1; else break;
+    }
+}
 
 void smack_set_param(smack_t *s, const char *key, const char *val) {
     if (!s || !key || !val) return;
@@ -919,8 +1025,21 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
             s->state = SMACK_IDLE;
             s->ab_pending = -1;
             s->transport_paused = 0;
-            memset(s->fx_locked, 0, sizeof(s->fx_locked));
+            memset(s->lane[0].locked, 0, sizeof(s->lane[0].locked));
+            memset(s->lane[1].locked, 0, sizeof(s->lane[1].locked));
         }
+    } else if (!strcmp(key, "channel_mode")) {
+        int m = atoi(val) ? 1 : 0;
+        if (m != s->chan_mode) {
+            s->chan_mode = m;
+            if (s->state == SMACK_LOOPING) roll_pattern(s); /* populate lane 1 */
+        }
+    } else if (!strcmp(key, "pan_l")) {
+        s->pan_l = clampi(atoi(val), 0, 100);
+        update_pan_gains(s);
+    } else if (!strcmp(key, "pan_r")) {
+        s->pan_r = clampi(atoi(val), 0, 100);
+        update_pan_gains(s);
     } else if (!strcmp(key, "transport")) {
         s->follow_transport = atoi(val) ? 0 : 1; /* 0 Follow, 1 Free */
         if (!s->follow_transport) s->transport_paused = 0;
@@ -937,45 +1056,19 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         s->seed          = (uint32_t)json_int(val, "seed", (int)s->seed);
         s->roll_nonce    = (uint32_t)json_int(val, "nonce", 0);
         s->follow_transport = json_int(val, "transport", s->follow_transport ? 0 : 1) ? 0 : 1;
-        memset(s->fx_locked, 0, sizeof(s->fx_locked));
-        const char *lk = strstr(val, "\"locks\":\"");
-        if (lk) {
-            lk += 9;
-            while (*lk && *lk != '"') {
-                char *end;
-                long i = strtol(lk, &end, 10);
-                if (end == lk || *end != ':') break;
-                long f = strtol(end + 1, &end, 10);
-                int has_p = 0;
-                long p = 0;
-                if (*end == ':') { p = strtol(end + 1, &end, 10); has_p = 1; }
-                if (i >= 0 && i < SMACK_MAX_SLICES) {
-                    s->fx_locked[i] = 1;
-                    s->fx[i] = (uint8_t)clampi((int)f, 0, SMACK_FX_COUNT - 1);
-                    /* i:f:p triplet (v0.5+); bare i:f pairs from older
-                     * presets fall back to the canonical parameter */
-                    s->fxp[i] = has_p ? (int8_t)clampi((int)p, -128, 127)
-                                      : default_fxp(s->fx[i]);
-                }
-                if (*end == ',') lk = end + 1; else break;
-            }
-        }
+        s->chan_mode = json_int(val, "chan", s->chan_mode) ? 1 : 0;
+        s->pan_l = clampi(json_int(val, "pan_l", s->pan_l), 0, 100);
+        s->pan_r = clampi(json_int(val, "pan_r", s->pan_r), 0, 100);
+        update_pan_gains(s);
+        memset(s->lane[0].locked, 0, sizeof(s->lane[0].locked));
+        memset(s->lane[1].locked, 0, sizeof(s->lane[1].locked));
+        parse_locks(&s->lane[0], strstr(val, "\"locks\":\""), 9);
+        parse_locks(&s->lane[1], strstr(val, "\"locks_r\":\""), 11);
         if (s->state == SMACK_LOOPING) roll_pattern(s);
+    } else if (!strncmp(key, "lock_slice_r_", 13)) {
+        set_lock(s, &s->lane[1], clampi(atoi(key + 13), 0, SMACK_MAX_SLICES - 1), atoi(val));
     } else if (!strncmp(key, "lock_slice_", 11)) {
-        int i = clampi(atoi(key + 11), 0, SMACK_MAX_SLICES - 1);
-        int f = atoi(val);
-        if (f < 0) { /* unlock: re-roll restores the seeded value */
-            s->fx_locked[i] = 0;
-            if (s->state == SMACK_LOOPING) roll_pattern(s);
-        } else {
-            /* pin: 0 = clean/mute, 1..N-1 = a specific effect. Pinning a
-             * different effect gets that effect's canonical parameter;
-             * re-pinning the current one keeps the rolled flavor. */
-            f = clampi(f, 0, SMACK_FX_COUNT - 1);
-            if (s->fx[i] != (uint8_t)f) s->fxp[i] = default_fxp(f);
-            s->fx[i] = (uint8_t)f;
-            s->fx_locked[i] = 1;
-        }
+        set_lock(s, &s->lane[0], clampi(atoi(key + 11), 0, SMACK_MAX_SLICES - 1), atoi(val));
     }
 }
 
@@ -1013,18 +1106,24 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
         int n = snprintf(buf, (size_t)buf_len,
             "{\"loop_len\":%d,\"slice_res\":%d,\"fx_density\":%d,"
             "\"order_density\":%d,\"pitch_range\":%d,\"wet\":%d,\"ab\":%d,"
-            "\"quantize\":%d,\"seed\":%u,\"nonce\":%u,\"transport\":%d,\"locks\":\"",
+            "\"quantize\":%d,\"seed\":%u,\"nonce\":%u,\"transport\":%d,"
+            "\"chan\":%d,\"pan_l\":%d,\"pan_r\":%d,\"locks\":\"",
             s->loop_len_idx, s->slice_res_idx, (int)(s->fx_density * 100.0f),
             (int)(s->order_density * 100.0f), s->pitch_range,
             (int)(s->wet * 100.0f), s->ab, s->quantize_mode, s->seed,
-            s->roll_nonce, s->follow_transport ? 0 : 1);
+            s->roll_nonce, s->follow_transport ? 0 : 1,
+            s->chan_mode, s->pan_l, s->pan_r);
         if (n < 0 || n >= buf_len - 3) return -1;
-        int first = 1;
-        for (int i = 0; i < SMACK_MAX_SLICES && n < buf_len - 16; i++) {
-            if (!s->fx_locked[i]) continue;
-            n += snprintf(buf + n, (size_t)(buf_len - n), "%s%d:%d:%d",
-                          first ? "" : ",", i, s->fx[i], s->fxp[i]);
-            first = 0;
+        for (int k = 0; k < 2; k++) {
+            if (k == 1)
+                n += snprintf(buf + n, (size_t)(buf_len - n), "\",\"locks_r\":\"");
+            int first = 1;
+            for (int i = 0; i < SMACK_MAX_SLICES && n < buf_len - 20; i++) {
+                if (!s->lane[k].locked[i]) continue;
+                n += snprintf(buf + n, (size_t)(buf_len - n), "%s%d:%d:%d",
+                              first ? "" : ",", i, s->lane[k].fx[i], s->lane[k].fxp[i]);
+                first = 0;
+            }
         }
         n += snprintf(buf + n, (size_t)(buf_len - n), "\"}");
         return n;
@@ -1039,12 +1138,19 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
         }
         return snprintf(buf, (size_t)buf_len, "%d", ps);
     }
-    if (!strcmp(key, "pattern")) {
-        /* fx codes per slice, for future step-LED UI: e.g. "0300102..." */
+    if (!strcmp(key, "pattern") || !strcmp(key, "pattern_r")) {
+        /* fx codes per slice for the step-LED UIs: e.g. "0300102..." */
+        const smack_lane_t *ln = &s->lane[key[7] ? 1 : 0];
         int n = s->n_slices < buf_len - 1 ? s->n_slices : buf_len - 1;
-        for (int i = 0; i < n; i++) buf[i] = (char)('0' + s->fx[i]);
+        for (int i = 0; i < n; i++) buf[i] = (char)('0' + ln->fx[i]);
         buf[n] = 0;
         return n;
     }
+    if (!strcmp(key, "channel_mode"))
+        return snprintf(buf, (size_t)buf_len, "%d", s->chan_mode);
+    if (!strcmp(key, "pan_l"))
+        return snprintf(buf, (size_t)buf_len, "%d", s->pan_l);
+    if (!strcmp(key, "pan_r"))
+        return snprintf(buf, (size_t)buf_len, "%d", s->pan_r);
     return -1;
 }

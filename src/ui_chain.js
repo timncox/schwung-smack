@@ -10,6 +10,9 @@
  *   Pad 70                A/B     — clean loop vs pattern             [white/grey]
  *   Pad 71                RE-ROLL — new random pattern                [blue]
  *   Pad 76 (above 68)     CLEAR   — drop the loop                     [dim orange]
+ *   Pad 74                Stereo <-> Dual Mono toggle
+ *   Pad 75                dual mono: tap = edit L or R lane; HOLD +
+ *                         knob 1/2 = Pan L / Pan R
  *   Capture button (CC52) same as pad 68
  *   Steps 1-16            pattern display (color = effect per slice);
  *                         press to mute a slice's effect, press again
@@ -45,6 +48,8 @@ const PAD_ARM     = 69;
 const PAD_AB      = 70;
 const PAD_REROLL  = 71;
 const PAD_CLEAR   = 76;
+const PAD_MODE    = 74;   /* Stereo <-> Dual Mono (same pads as oversmack) */
+const PAD_LANE    = 75;   /* dual mono: tap = lane L/R; hold + knob1/2 = pans */
 
 /* Step buttons show the first 16 slices */
 const STEP_FIRST = 16;
@@ -109,10 +114,18 @@ let knobValues = [50, 0, 4, 1, 100, 12, 1, 4303];
 let state = 0;          /* 0 idle, 1 armed, 2 rec, 3 looping */
 let ab = 1;
 let pattern = '';
+let patternR = '';
 let nSlices = 0;
 let playSlice = -1;
 let tickCount = 0;
 let needsRedraw = true;
+
+/* Dual mono */
+let chanMode = 0;       /* 0 stereo, 1 dual mono */
+let editLane = 0;       /* 0 = left lane, 1 = right lane */
+let panL = 0, panR = 100;
+let lanePadHeld = false;
+let laneHoldUsed = false;
 
 function gp(key) {
     const v = host_module_get_param(key);
@@ -127,7 +140,33 @@ function fetchAll() {
     state = parseInt(gp('run_state') || '0');
     ab = parseInt(gp('ab') || '1');
     pattern = gp('pattern') || '';
+    patternR = gp('pattern_r') || '';
     nSlices = parseInt(gp('n_slices') || '0');
+    chanMode = parseInt(gp('channel_mode') || '0');
+    panL = parseInt(gp('pan_l') || '0');
+    panR = parseInt(gp('pan_r') || '100');
+}
+
+/* pattern / lock target of the lane currently being edited */
+function editPattern() {
+    return (chanMode && editLane) ? patternR : pattern;
+}
+
+function lockKey(i) {
+    return (chanMode && editLane) ? `lock_slice_r_${i}` : `lock_slice_${i}`;
+}
+
+function laneSpeech() {
+    return editLane ? 'right lane' : 'left lane';
+}
+
+function adjustPan(which, delta) {
+    let v = which ? panR : panL;
+    v = Math.max(0, Math.min(100, v + delta * 5));
+    if (which) { panR = v; host_module_set_param('pan_r', `${v}`); }
+    else       { panL = v; host_module_set_param('pan_l', `${v}`); }
+    announceParameter(which ? 'Pan right lane' : 'Pan left lane', `${v}`);
+    needsRedraw = true;
 }
 
 function knobDisplay(i) {
@@ -169,14 +208,17 @@ function updateTransportLEDs() {
     setLED(PAD_AB, state === 3 ? (ab ? White : LightGrey) : Black);
     setLED(PAD_REROLL, Blue);
     setLED(PAD_CLEAR, state === 3 ? OrangeRed : Black);
+    setLED(PAD_MODE, chanMode ? White : 0x10);
+    setLED(PAD_LANE, chanMode ? (editLane ? OrangeRed : Cyan) : Black);
 }
 
 function updateStepLEDs() {
     const shown = Math.min(nSlices, STEP_COUNT);
+    const pat = editPattern();
     for (let i = 0; i < STEP_COUNT; i++) {
         let color = Black;
         if (state === 3 && i < shown) {
-            const code = pattern.charCodeAt(i) - 48;
+            const code = pat.charCodeAt(i) - 48;
             color = FX_COLORS[(code >= 0 && code < FX_COLORS.length) ? code : 0];
             /* B side shows the pattern; A side shows all-clean */
             if (!ab) color = FX_COLORS[0];
@@ -205,10 +247,12 @@ function drawUI() {
 
     /* pattern summary line */
     if (state === 3) {
+        const pat = editPattern();
         let fxCount = 0;
-        for (let i = 0; i < pattern.length; i++)
-            if (pattern[i] !== '0') fxCount++;
-        print(2, 55, `${nSlices} slices  ${fxCount} fx`, 1);
+        for (let i = 0; i < pat.length; i++)
+            if (pat[i] !== '0') fxCount++;
+        const lanePfx = chanMode ? (editLane ? 'R ' : 'L ') : '';
+        print(2, 55, `${lanePfx}${nSlices} slices  ${fxCount} fx`, 1);
     }
 
     drawFooter({ left: 'Cap Arm A/B Roll', right: 'Step:mute' });
@@ -242,17 +286,19 @@ function tick() {
 
     /* periodic state/pattern refresh (knob edits, quantized AB flips) */
     if (tickCount % 12 === 0) {
-        const oldState = state, oldAb = ab, oldPattern = pattern;
+        const oldState = state, oldAb = ab, oldPattern = pattern, oldPatternR = patternR;
         state = parseInt(gp('run_state') || '0');
         ab = parseInt(gp('ab') || '1');
         pattern = gp('pattern') || '';
+        patternR = chanMode ? (gp('pattern_r') || '') : '';
         nSlices = parseInt(gp('n_slices') || '0');
         /* speak async transitions (armed -> recording -> looping) as they
          * land; A/B is announced at press time instead, because the applied
          * value lags the pad while a quantized flip is pending */
         if (state !== oldState)
             announce(state === 3 ? `looping, ${nSlices} slices` : STATE_SPEECH[state]);
-        if (state !== oldState || ab !== oldAb || pattern !== oldPattern) {
+        if (state !== oldState || ab !== oldAb ||
+            pattern !== oldPattern || patternR !== oldPatternR) {
             updateTransportLEDs();
             updateStepLEDs();
             needsRedraw = true;
@@ -275,12 +321,33 @@ function onMidiMessageInternal(data) {
             refreshSoon();
             return;
         }
-        /* Knobs 1-8 */
+        /* Knobs 1-8; while the lane pad is held, knobs 1-2 are the pans */
         if (d1 >= MoveKnob1 && d1 < MoveKnob1 + 8) {
             const delta = decodeDelta(d2);
-            if (delta !== 0) adjustKnob(d1 - MoveKnob1, delta);
+            if (delta === 0) return;
+            const k = d1 - MoveKnob1;
+            if (lanePadHeld && chanMode && k < 2) {
+                laneHoldUsed = true;
+                adjustPan(k, delta);
+            } else {
+                adjustKnob(k, delta);
+            }
             return;
         }
+        return;
+    }
+
+    /* lane pad release: a plain tap (no pan knob turned) switches lanes */
+    if ((status === 0x80 || (status === 0x90 && d2 === 0)) && d1 === PAD_LANE) {
+        if (lanePadHeld && !laneHoldUsed && chanMode) {
+            editLane = editLane ? 0 : 1;
+            announce('Editing ' + laneSpeech());
+            updateTransportLEDs();
+            updateStepLEDs();
+            needsRedraw = true;
+        }
+        lanePadHeld = false;
+        laneHoldUsed = false;
         return;
     }
 
@@ -297,18 +364,38 @@ function onMidiMessageInternal(data) {
             refreshSoon();
             return;
         }
+        if (d1 === PAD_MODE) {
+            chanMode = chanMode ? 0 : 1;
+            host_module_set_param('channel_mode', `${chanMode}`);
+            if (!chanMode) editLane = 0;
+            announce(chanMode ? 'Dual mono' : 'Stereo');
+            updateTransportLEDs();
+            refreshSoon();
+            return;
+        }
+        if (d1 === PAD_LANE) {
+            if (chanMode) {
+                lanePadHeld = true;
+                laneHoldUsed = false;
+            } else {
+                announce('Stereo mode. Pad above re-roll switches to dual mono');
+            }
+            return;
+        }
 
-        /* Step press: mute a slice's effect / restore the seeded one */
+        /* Step press: mute a slice's effect / restore the seeded one
+         * (on the lane being edited, in dual mono) */
         if (d1 >= STEP_FIRST && d1 < STEP_FIRST + STEP_COUNT) {
             const i = d1 - STEP_FIRST;
             if (state === 3 && i < nSlices) {
-                const code = pattern.charCodeAt(i) - 48;
+                const code = editPattern().charCodeAt(i) - 48;
+                const where = chanMode ? `, ${laneSpeech()}` : '';
                 if (code > 0) {
-                    host_module_set_param(`lock_slice_${i}`, '0');
-                    announce(`Slice ${i + 1} muted`);
+                    host_module_set_param(lockKey(i), '0');
+                    announce(`Slice ${i + 1} muted${where}`);
                 } else {
-                    host_module_set_param(`lock_slice_${i}`, '-1');
-                    announce(`Slice ${i + 1} restored`);
+                    host_module_set_param(lockKey(i), '-1');
+                    announce(`Slice ${i + 1} restored${where}`);
                 }
                 refreshSoon();
             }

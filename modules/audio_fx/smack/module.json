@@ -2,7 +2,7 @@
   "id": "smack",
   "name": "Smack",
   "abbrev": "SMK",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Quantized live-loop capture with probabilistic per-slice glitch FX and slice reordering",
   "dsp": "smack.so",
   "ui_chain": "ui_chain.js",
@@ -195,6 +195,32 @@
                 "Free"
               ],
               "default": 0
+            },
+            {
+              "key": "channel_mode",
+              "name": "Channels",
+              "type": "enum",
+              "options": [
+                "Stereo",
+                "Dual Mono"
+              ],
+              "default": 0
+            },
+            {
+              "key": "pan_l",
+              "name": "Pan L",
+              "type": "int",
+              "min": 0,
+              "max": 100,
+              "default": 0
+            },
+            {
+              "key": "pan_r",
+              "name": "Pan R",
+              "type": "int",
+              "min": 0,
+              "max": 100,
+              "default": 100
             }
           ],
           "knobs": [

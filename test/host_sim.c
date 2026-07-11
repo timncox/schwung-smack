@@ -24,7 +24,9 @@ static smack_t *S;
 static double next_tick = 0.0;
 static uint64_t frames_done = 0;
 
-static void run_blocks(int nblocks, int16_t *last_out) {
+/* l_on/r_on: which input channels carry the test saw (dual-mono tests
+ * feed one side only) */
+static void run_blocks_lr(int nblocks, int16_t *last_out, int l_on, int r_on) {
     static double phase = 0.0;
     int16_t in[BLK * 2], out[BLK * 2];
     for (int b = 0; b < nblocks; b++) {
@@ -38,13 +40,17 @@ static void run_blocks(int nblocks, int16_t *last_out) {
             phase += 220.0 / 44100.0;
             if (phase >= 1.0) phase -= 1.0;
             int16_t v = (int16_t)((phase * 2.0 - 1.0) * 12000.0);
-            in[i * 2] = v;
-            in[i * 2 + 1] = v;
+            in[i * 2]     = l_on ? v : 0;
+            in[i * 2 + 1] = r_on ? v : 0;
         }
         smack_process(S, in, out, BLK);
         frames_done += BLK;
     }
     if (last_out) memcpy(last_out, out, sizeof(out));
+}
+
+static void run_blocks(int nblocks, int16_t *last_out) {
+    run_blocks_lr(nblocks, last_out, 1, 1);
 }
 
 static long energy(const int16_t *buf) {
@@ -199,6 +205,59 @@ int main(void) {
     assert(gp("run_state") == '3');
     smack_set_param(S, "clear", "trigger"); /* host trigger string fires */
     assert(gp("run_state") == '0');
+
+    /* ---- dual mono: L/R as independent lanes, panned into the field ---- */
+    smack_set_param(S, "channel_mode", "1");
+    smack_set_param(S, "fx_density", "100");
+    smack_set_param(S, "order_density", "50");
+    smack_set_param(S, "wet", "100");
+    smack_set_param(S, "ab", "1");
+    smack_set_param(S, "quantize", "0");
+    run_blocks_lr(1400, out, 1, 0);        /* left-only input */
+    smack_set_param(S, "capture", "1");
+    run_blocks_lr(200, out, 1, 0);
+    assert(gp("run_state") == '3');
+
+    char pl[64], pr[64];
+    smack_get_param(S, "pattern", pl, sizeof(pl));
+    smack_get_param(S, "pattern_r", pr, sizeof(pr));
+    assert(strlen(pl) == 16 && strlen(pr) == 16);
+    assert(strcmp(pl, pr) != 0);           /* lanes draw independently */
+
+    /* lane-R lock is independent of lane L */
+    smack_set_param(S, "lock_slice_r_0", "5");
+    smack_get_param(S, "pattern_r", pr, sizeof(pr));
+    assert(pr[0] == '0' + 5);
+    smack_get_param(S, "pattern", pl, sizeof(pl));
+
+    /* left-only input, pan_l default 0: energy stays on the left output */
+    long el = 0, er = 0;
+    run_blocks_lr(700, out, 1, 0);
+    for (int i = 0; i < BLK; i++) { el += labs((long)out[i * 2]); er += labs((long)out[i * 2 + 1]); }
+    assert(el > 0);
+    assert(er < el / 8);
+
+    /* swing lane L hard right: energy moves to the right output */
+    smack_set_param(S, "pan_l", "100");
+    run_blocks_lr(700, out, 1, 0);
+    el = er = 0;
+    for (int i = 0; i < BLK; i++) { el += labs((long)out[i * 2]); er += labs((long)out[i * 2 + 1]); }
+    assert(er > 0);
+    assert(el < er / 8);
+
+    /* dual config + lane-R lock round-trip through the state blob */
+    assert(smack_get_param(S, "state", snap, sizeof(snap)) > 0);
+    assert(strstr(snap, "\"chan\":1"));
+    assert(strstr(snap, "\"pan_l\":100"));
+    assert(strstr(snap, "\"locks_r\":\"0:5:0\""));
+    smack_set_param(S, "channel_mode", "0");
+    smack_set_param(S, "pan_l", "0");
+    smack_set_param(S, "lock_slice_r_0", "-1");
+    smack_set_param(S, "state", snap);
+    smack_get_param(S, "channel_mode", check, sizeof(check));
+    assert(atoi(check) == 1);
+    smack_get_param(S, "pattern_r", pr, sizeof(pr));
+    assert(pr[0] == '0' + 5);              /* lane-R pin restored */
 
     printf("host_sim: all assertions passed\n");
     smack_destroy(S);

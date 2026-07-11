@@ -26,6 +26,10 @@ modular. All hail Honeysmack!)
   filter sweeps, morphing vowel filter, tonal delay, granular freeze,
   tempo-synced delay (incl. ping-pong), distortion (soft/hard/fold/gnash),
   phaser sweeps, and gated reverb bursts.
+- **Dual mono**: treat the L and R inputs as two independent mono signals —
+  each gets its own effect pattern and slice order, then Pan L / Pan R
+  place them in the stereo field (two mono synths into Move's stereo
+  line-in). Lanes share the seed stream, so patterns stay reproducible.
 - **Presets**: full settings snapshot via schwung's module-preset system;
   transport follow (Move's stop pauses the loop, play restarts it).
 - **On-device help**: full manual in schwung's Help viewer

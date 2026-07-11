@@ -102,6 +102,29 @@
       ]
     },
     {
+      "title": "Dual Mono",
+      "lines": [
+        "Dual Mono treats L",
+        "and R inputs as two",
+        "mono signals, each",
+        "with its own effect",
+        "pattern, panned",
+        "into the stereo",
+        "field (Pan L/Pan R).",
+        "",
+        "Bottom pad row 7:",
+        "toggle the mode.",
+        "Pad 8: tap = edit L",
+        "or R lane; hold +",
+        "knob 1 or 2 = pans.",
+        "",
+        "A side plays the",
+        "raw stereo loop;",
+        "B side plays the",
+        "panned lanes."
+      ]
+    },
+    {
       "title": "Seed & Re-Roll",
       "lines": [
         "Seed browses",
