@@ -385,6 +385,17 @@ int main(void) {
         assert(atof(db) == 0.0);               /* confidence gate: no beat */
     }
 
+    /* a stopped clock must not swallow bpm_override (clock_seen is
+     * sticky by design; the override outranks a non-running clock) */
+    smack_set_param(S, "transport", "1");      /* Free: stop must not pause */
+    smack_on_midi(S, &stop, 1, 3);             /* 0xFC: clock stops */
+    smack_set_param(S, "bpm_override", "90");
+    smack_set_param(S, "capture", "1");
+    assert(gp("run_state") == '3');
+    smack_get_param(S, "loop_frames", buf, sizeof(buf));
+    /* 1 bar at 90 BPM = 44100 * 4 * 60/90 = 117600 frames */
+    assert(atoi(buf) > 115000 && atoi(buf) < 120000);
+
     printf("host_sim: all assertions passed\n");
     smack_destroy(S);
     return 0;

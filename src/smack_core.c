@@ -231,8 +231,16 @@ static inline int rnd_below(uint32_t *st, int n) { return (int)(xs32(st) % (uint
 /*  Clock helpers                                                      */
 /* ------------------------------------------------------------------ */
 
+/* A RUNNING clock always wins. A clock that once ran but is now stopped
+ * keeps its remembered tempo — UNLESS the user set a bpm_override
+ * (detection or knob), which would otherwise be silently ignored for the
+ * rest of the session because clock_seen is sticky. */
+static int clock_governs(const smack_t *s) {
+    return s->clock_seen && (s->clock_running || s->bpm_override <= 0.0f);
+}
+
 static double frames_per_tick_now(smack_t *s) {
-    if (s->clock_seen) return s->frames_per_tick;   /* real clock always wins */
+    if (clock_governs(s)) return s->frames_per_tick;
     float bpm = 120.0f;
     if (s->bpm_override > 0.0f) {
         bpm = s->bpm_override;                      /* detected tempo */
@@ -247,7 +255,7 @@ static double frames_per_halfstep(smack_t *s) { return frames_per_tick_now(s) * 
 
 /* Global frame of the most recent half-step boundary. */
 static uint64_t last_boundary_global(smack_t *s) {
-    if (s->clock_seen) return s->last_halfstep_global;
+    if (clock_governs(s)) return s->last_halfstep_global;
     double fph = frames_per_halfstep(s);
     return (uint64_t)(floor((double)s->global_frames / fph) * fph);
 }
@@ -1315,6 +1323,8 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
         n += snprintf(buf + n, (size_t)(buf_len - n), "\"}");
         return n;
     }
+    if (!strcmp(key, "loop_frames"))
+        return snprintf(buf, (size_t)buf_len, "%u", s->loop_len);
     if (!strcmp(key, "n_slices"))
         return snprintf(buf, (size_t)buf_len, "%d", s->n_slices);
     if (!strcmp(key, "play_slice")) { /* current output slice, -1 if idle */

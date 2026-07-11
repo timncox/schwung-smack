@@ -192,7 +192,7 @@
     {
       "title": "BPM Detect",
       "lines": [
-        "Shift + Capture",
+        "Shift + Re-Roll",
         "listens to the last",
         "8 seconds of input",
         "and detects its",

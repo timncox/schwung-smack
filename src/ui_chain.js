@@ -543,9 +543,10 @@ function onMidiMessageInternal(data) {
             if (was !== shiftHeld) { fetchKnob2(); updateStepLEDs(); needsRedraw = true; }
             return;
         }
-        /* Capture button mirrors the capture pad; Shift+Capture = detect BPM */
+        /* Capture button mirrors the capture pad. Shift+Capture belongs
+         * to the host's skipback — do nothing so they don't double-fire. */
         if (d1 === MoveCapture && d2 >= 64) {
-            if (shiftHeld) { startDetect(); return; }
+            if (shiftHeld) return;
             host_module_set_param('capture', '1');
             announce('Capture');
             refreshSoon();
@@ -593,7 +594,6 @@ function onMidiMessageInternal(data) {
     if (status === 0x90 && d2 > 0) {
         /* Transport pads */
         if (d1 === PAD_CAPTURE) {
-            if (shiftHeld) { startDetect(); return; }
             host_module_set_param('capture', '1');
             announce('Capture');
             refreshSoon();
@@ -601,7 +601,9 @@ function onMidiMessageInternal(data) {
         }
         if (d1 === PAD_ARM)     { host_module_set_param('arm', '1');     announce('Arm');      refreshSoon(); return; }
         if (d1 === PAD_REROLL) {
-            /* tap: re-roll (pins kept); hold: unlock everything + fresh roll */
+            /* Shift+Re-Roll = detect BPM (Shift+Capture is the host's
+             * skipback); tap: re-roll; hold: unlock everything + fresh */
+            if (shiftHeld) { startDetect(); return; }
             host_module_set_param('reroll', '1');
             announce('Re-roll');
             rerollHeldAt = Date.now();
