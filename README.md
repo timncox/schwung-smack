@@ -21,6 +21,10 @@ Two builds from one core:
 | `smack` | audio_fx | Signal Chain slots and Master FX (glitch the whole Move mix) |
 | `smack-in` | sound_generator | standalone, reads mic/line input directly |
 
+**Sync note:** set Move's **MIDI Clock to Out** so Smack locks to the
+transport (same requirement as the Arp). Without it, Smack free-runs at the
+project tempo.
+
 ## Build
 
 ```bash

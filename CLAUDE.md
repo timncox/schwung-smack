@@ -55,12 +55,19 @@ Schwung = charlesvestal/schwung, the Shadow-UI sidecar framework for the Move
   the grid — VERIFY ON DEVICE.
 - Varispeed = linear interp, no anti-aliasing (lo-fi is part of the charm).
 
+## Setup prerequisite (from schwung manual, manual.html#limitations)
+
+Modules only receive MIDI clock when **Move's MIDI Clock is set to Out**
+(same as the Arp). Without it Smack free-runs from get_bpm() project tempo —
+functional but not phase-locked to Move's transport. The manual confirms
+this clock→project-tempo fallback is the house convention (the built-in
+Quantized Sampler does the same). Also: Master FX has two LFOs that can
+target any loaded FX param — e.g. LFO on Smack's fx_density/order_density.
+
 ## Not yet verified on hardware
 
-1. Whether chain/master audio_fx instances actually receive MIDI clock via
-   on_midi (the granular module's "MIDI sync" suggests yes).
-2. Downbeat/bar-phase tracking behavior.
-3. Enum "trigger" params (Capture/Arm/Re-Roll/Clear as knob enums) UX — the
+1. Downbeat/bar-phase tracking (0xFA start = grid reset assumption).
+2. Enum "trigger" params (Capture/Arm/Re-Roll/Clear as knob enums) UX — the
    real answer is a ui_chain.js with a punch pad + step-LED pattern display.
 
 ## Next steps
