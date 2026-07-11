@@ -59,29 +59,29 @@ const STEP_COUNT = 16;
 
 /* Slice LED color by effect code (matches smack_fx_t order in the DSP) */
 const FX_COLORS = [
-    0x10,        /* NONE      — dim white: slice exists, plays clean */
-    Red,         /* RETRIG */
-    Blue,        /* REVERSE */
-    Purple,      /* PITCH */
-    Cyan,        /* SPEED */
-    YellowGreen, /* GATE */
-    OrangeRed,   /* BUZZ */
-    BrightGreen, /* CRUSH */
-    BrightRed,   /* REPEAT */
-    Blue,        /* REVAFTER  — reverse family */
-    LightGrey,   /* TAPESTOP */
-    Green,       /* TAPESTART */
-    Purple,      /* SCRATCH   — pitch family */
-    0x30,        /* ENV       — mid white */
-    Cyan,        /* PAN       — stereo/speed family */
-    YellowGreen, /* FILTER    — sweep family */
+    0x10,        /* CLEAN      — dim white */
+    Red,         /* RETRIG     — stutter family: reds */
+    Blue,        /* REVERSE    — reverse family: blues */
+    Purple,      /* PITCH      — pitch/speed family: purples */
+    Purple,      /* SPEED */
+    BrightRed,   /* GATE       — stutter family */
+    BrightRed,   /* BUZZ */
+    BrightGreen, /* CRUSH      — destruction family: bright green */
+    Red,         /* REPEAT     — stutter family */
+    Blue,        /* REVAFTER   — reverse family */
+    OrangeRed,   /* TAPESTOP   — tape/scratch family: oranges */
+    OrangeRed,   /* TAPESTART */
+    OrangeRed,   /* SCRATCH */
+    LightGrey,   /* ENV        — shape family: greys */
+    LightGrey,   /* PAN */
+    Green,       /* FILTER     — filter family: greens */
     Green,       /* VOWEL */
-    OrangeRed,   /* TONALDELAY — buzz/delay family */
-    White,       /* FREEZE */
+    Cyan,        /* TONALDELAY — space family: cyans */
+    White,       /* FREEZE     — texture: white */
     Cyan,        /* DELAY */
-    BrightRed,   /* DIST */
-    Purple,      /* PHASER */
-    LightGrey    /* VERB */
+    BrightGreen, /* DIST       — destruction family */
+    YellowGreen, /* PHASER     — modulation: yellow-green */
+    Cyan         /* VERB       — space family */
 ];
 
 const STATE_NAMES = ['IDLE', 'ARMED', 'REC', 'LOOP'];

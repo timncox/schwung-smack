@@ -58,39 +58,52 @@ const PAD_MONITOR = 73;   /* input monitoring on/off + feedback-guard override *
 const PAD_MODE    = 74;   /* Stereo <-> Dual Mono */
 const PAD_LANE    = 75;   /* dual mono: tap = lane L/R; hold + knob1/2 = pans */
 
-/* Upper three pad rows: effect palette. Pad 76 + code, codes 0..22;
- * top-right pad 99 = unlock (restore the seeded effect). */
+/* Upper three pad rows: effect palette, grouped by family (not engine
+ * order). Row 2: clean + stutter + tape. Row 3: reverse + pitch +
+ * texture/shape + crush. Row 4: filters + space + destruction.
+ * Top-right pad 99 = unlock (restore the seeded effect). */
 const PAD_PALETTE_FIRST = 76;
 const PAD_UNLOCK        = 99;
+/* pad offset (0-22, rows bottom-up from pad 76) -> fx code */
+const PALETTE_LAYOUT = [
+    0, 1, 8, 6, 5, 10, 11, 12,      /* clean, stutter reds, tape oranges */
+    2, 9, 3, 4, 18, 13, 14, 7,      /* blues, purples, texture, crush */
+    15, 16, 21, 17, 19, 22, 20      /* greens, cyans, dist */
+];
+const PALETTE_PAD_OF_CODE = (() => {
+    const m = {};
+    for (let i = 0; i < PALETTE_LAYOUT.length; i++) m[PALETTE_LAYOUT[i]] = PAD_PALETTE_FIRST + i;
+    return m;
+})();
 
 const STEP_FIRST = 16;
 const STEP_COUNT = 16;
 
 /* Color / name / speech per fx code (matches smack_fx_t order in the DSP) */
 const FX_COLORS = [
-    0x10,        /* CLEAN     — dim white */
-    Red,         /* RETRIG */
-    Blue,        /* REVERSE */
-    Purple,      /* PITCH */
-    Cyan,        /* SPEED */
-    YellowGreen, /* GATE */
-    OrangeRed,   /* BUZZ */
-    BrightGreen, /* CRUSH */
-    BrightRed,   /* REPEAT */
-    Blue,        /* REVAFTER  — reverse family */
-    LightGrey,   /* TAPESTOP */
-    Green,       /* TAPESTART */
-    Purple,      /* SCRATCH   — pitch family */
-    0x30,        /* ENV       — mid white */
-    Cyan,        /* PAN       — stereo/speed family */
-    YellowGreen, /* FILTER    — sweep family */
+    0x10,        /* CLEAN      — dim white */
+    Red,         /* RETRIG     — stutter family: reds */
+    Blue,        /* REVERSE    — reverse family: blues */
+    Purple,      /* PITCH      — pitch/speed family: purples */
+    Purple,      /* SPEED */
+    BrightRed,   /* GATE       — stutter family */
+    BrightRed,   /* BUZZ */
+    BrightGreen, /* CRUSH      — destruction family: bright green */
+    Red,         /* REPEAT     — stutter family */
+    Blue,        /* REVAFTER   — reverse family */
+    OrangeRed,   /* TAPESTOP   — tape/scratch family: oranges */
+    OrangeRed,   /* TAPESTART */
+    OrangeRed,   /* SCRATCH */
+    LightGrey,   /* ENV        — shape family: greys */
+    LightGrey,   /* PAN */
+    Green,       /* FILTER     — filter family: greens */
     Green,       /* VOWEL */
-    OrangeRed,   /* TONALDELAY — buzz/delay family */
-    White,       /* FREEZE */
+    Cyan,        /* TONALDELAY — space family: cyans */
+    White,       /* FREEZE     — texture: white */
     Cyan,        /* DELAY */
-    BrightRed,   /* DIST */
-    Purple,      /* PHASER */
-    LightGrey    /* VERB */
+    BrightGreen, /* DIST       — destruction family */
+    YellowGreen, /* PHASER     — modulation: yellow-green */
+    Cyan         /* VERB       — space family */
 ];
 
 const FX_NAMES = [
@@ -413,8 +426,8 @@ function paintTransport(force) {
 }
 
 function paintPalette(force) {
-    for (let c = 0; c < FX_COLORS.length; c++)
-        setLED(PAD_PALETTE_FIRST + c, FX_COLORS[c], force);
+    for (let i = 0; i < PALETTE_LAYOUT.length; i++)
+        setLED(PAD_PALETTE_FIRST + i, FX_COLORS[PALETTE_LAYOUT[i]], force);
     setLED(PAD_UNLOCK, 0x2D /* dim blue: unlock */, force);
 }
 
@@ -838,8 +851,8 @@ globalThis.onMidiMessageInternal = function(data) {
          * pin. With NO selection: momentary global punch — the whole loop
          * plays this one effect until release; pressure bends it. */
         if (d1 === PAD_UNLOCK) { unlockSlice(); return; }
-        if (d1 >= PAD_PALETTE_FIRST && d1 < PAD_PALETTE_FIRST + FX_COLORS.length) {
-            const code = d1 - PAD_PALETTE_FIRST;
+        if (d1 >= PAD_PALETTE_FIRST && d1 < PAD_PALETTE_FIRST + PALETTE_LAYOUT.length) {
+            const code = PALETTE_LAYOUT[d1 - PAD_PALETTE_FIRST];
             if (state === 3 && selectedSlice < 0) {
                 punchPad = d1;
                 punchLastPressure = -1;
