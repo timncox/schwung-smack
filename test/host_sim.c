@@ -125,6 +125,20 @@ int main(void) {
     }
     smack_set_param(S, "lock_slice_0", "-1"); /* unlock */
 
+    /* pinning survives a re-roll; unlock + seed re-dial restores the
+     * canonical pattern */
+    char patseed[64];
+    smack_set_param(S, "seed", "777");
+    smack_get_param(S, "pattern", patseed, sizeof(patseed));
+    smack_set_param(S, "lock_slice_0", "5");   /* pin gate-chop */
+    smack_set_param(S, "reroll", "trigger");
+    smack_get_param(S, "pattern", buf, sizeof(buf));
+    assert(buf[0] == '0' + 5);                 /* pin held through re-roll */
+    smack_set_param(S, "lock_slice_0", "-1");
+    smack_set_param(S, "seed", "777");
+    smack_get_param(S, "pattern", buf, sizeof(buf));
+    assert(strcmp(buf, patseed) == 0);         /* seeded pattern restored */
+
     /* transport follow: Stop pauses the loop, Start resumes from the top */
     uint8_t stop = 0xFC;
     smack_on_midi(S, &stop, 1, 3);
@@ -156,6 +170,18 @@ int main(void) {
     smack_set_param(S, "state", snap);
     smack_get_param(S, "fx_density", check, sizeof(check));
     assert(atoi(check) == 100);            /* restored */
+
+    /* pinned lock round-trips with its parameter (i:f:p triplet).
+     * Pin twice so the final pin is a change and gets the canonical fxp. */
+    smack_set_param(S, "lock_slice_1", "4");            /* pin speed first */
+    smack_set_param(S, "lock_slice_1", "3");            /* then varispeed */
+    assert(smack_get_param(S, "state", snap, sizeof(snap)) > 0);
+    assert(strstr(snap, "\"locks\":\"1:3:5\""));        /* canonical fxp 5 */
+    smack_set_param(S, "lock_slice_1", "-1");           /* unlock */
+    smack_set_param(S, "state", snap);                  /* restore */
+    smack_get_param(S, "pattern", buf, sizeof(buf));
+    assert(buf[1] == '0' + 3);                          /* pin restored */
+    smack_set_param(S, "lock_slice_1", "-1");
 
     /* clear -> arm -> records exactly one loop then loops again */
     smack_set_param(S, "clear", "1");

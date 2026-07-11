@@ -16,7 +16,7 @@ A/B switches between the clean loop and the pattern.
 Schwung = charlesvestal/schwung, the Shadow-UI sidecar framework for the Move
 (LD_PRELOAD shim + QuickJS shadow UI + native ARM DSP modules).
 
-## Two builds, one core
+## Three builds, one core
 
 - `src/smack_core.c` — all engine logic (ring buffer, MIDI-clock tracking,
   capture, slicing, pattern, FX render). Non-allocating render path.
@@ -30,6 +30,25 @@ Schwung = charlesvestal/schwung, the Shadow-UI sidecar framework for the Move
   for old-host ABI safety).
 - `src/smack_gen.c` → **smack-in** (`sound_generator`, `audio_in: true`):
   standalone mic/line looper reading the host mailbox input like linein does.
+- **oversmack** (`component_type: overtake`, v0.1.0): the SAME dsp.so as
+  smack-in (build.sh copies it) + `src/ui_overtake.js` as a full-surface UI.
+  Verified in schwung source (2026-07-11): loadOvertakeModule auto-loads the
+  module.json `dsp` into the single-tenant slot-0 overtake DSP BEFORE
+  evaling ui.js, and shims host_module_set_param/get_param to
+  `shadow_set_param(0, "overtake_dsp:"+key, v)` — same call names as the
+  chain UI, so engine code carries over. Clock reaches the DSP via the
+  plugin STRUCT's on_midi on this path (no dlsym gotcha — that's chain-host
+  audio_fx only). ui.js contract: set globalThis.init/tick/
+  onMidiMessageInternal (+ optional onUnload/onResume); the host captures
+  and restores them. `suspend_keeps_js`: Back hides the UI, DSP keeps
+  running; onResume must force-repaint LEDs (setLED(..., true)) because
+  they're cleared while suspended. `button_passthrough: [85]` = MovePlay
+  reaches Move firmware, so transport/clock work under the UI.
+  Editing model: steps select a slice; palette pads (76 + fx code, 0-22;
+  pad 99 = unlock) pin an effect via `lock_slice_<i>` — pinning a DIFFERENT
+  effect sets default_fxp(f), re-pinning the SAME effect keeps the rolled
+  fxp (lock-as-is), -1 unlocks. Locks serialize as `i:f:p` triplets in the
+  preset blob (parser accepts legacy `i:f`).
 
 ## Build / test / deploy
 
@@ -117,19 +136,34 @@ Len / Res / Wet / Pitch / Qnt / Seed.
 ## Next steps
 
 - On-device: verify chain UI (LED colors on steps, pad consumption,
-  playhead chase rate) — untested on hardware.
+  playhead chase rate) — untested on hardware. Same for oversmack (LED
+  queue pacing, palette pads, suspend/resume repaint, play passthrough,
+  and whether standalone DSP output sums into Move's mix at sane gain).
+- **Dual-mono mode (Tim, 2026-07-11)**: treat incoming L and R as two
+  independent mono lanes — each lane gets its own slice pattern/effects,
+  plus a pan knob per lane to place them in the stereo field (two mono
+  synths into Move's stereo line-in). Engine-level: dual fx/order/lock
+  lanes, per-lane render position (order differs), pan_l/pan_r params,
+  lane-select in the editing UIs, locks serialization gains a lane. Seed
+  determinism: lane B continues the same rng stream. Benefits all three
+  builds; oversmack UI has the room for a lane toggle pad.
 - Momentary A/B punch (hold pad = temporary flip, release = back) — needs
   press-duration tracking in ui_chain.js.
-- v2 FX: granular freeze/spray, tape-stop, time-preserving pitchshift.
-## Release process (two repos, one source)
+- v2 FX: time-preserving pitchshift.
+## Release process (three repos, one source)
 
 Source + `smack` distribution: this repo (timncox/schwung-smack).
-`smack-in` distribution: timncox/schwung-smack-in — a THIN repo holding only
-README + release.json + release tarballs (the installer resolves one
-release.json per repo, so each catalog id needs its own repo).
+`smack-in` / `oversmack` distributions: timncox/schwung-smack-in and
+timncox/schwung-oversmack — THIN repos holding only README + release.json
++ release tarballs. (store_utils.mjs does support a multi-module
+release.json format `{modules:{id:{version,download_url}}}`, but no
+catalog module uses it and older installers may predate it — sticking
+with one repo per catalog id.)
 
-To ship version X: bump both module.json versions + root release.json here,
-`make arm`, commit/push, `gh release create vX` here with BOTH tarballs,
-then on schwung-smack-in: update its release.json via API and
-`gh release create vX` with smack-in-module.tar.gz.
-Catalog PR: charlesvestal/schwung#156 (both entries).
+To ship version X: bump the module.json versions + root release.json here,
+`make arm`, commit/push, `gh release create vX` here with ALL tarballs,
+then on each thin repo: update its release.json via API and
+`gh release create` with that module's tarball. oversmack versions
+independently (started 0.1.0).
+Catalog PR: charlesvestal/schwung#156 (smack + smack-in entries;
+oversmack needs a third entry once hardware-tested).

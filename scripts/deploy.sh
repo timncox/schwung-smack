@@ -12,7 +12,8 @@ DEST=/data/UserData/schwung/modules
 
 [ -f build/modules/audio_fx/smack/smack.so ] || { echo "run scripts/build.sh first"; exit 1; }
 
-ssh "$HOST" "mkdir -p $DEST/audio_fx/smack $DEST/sound_generators/smack-in"
-scp build/modules/audio_fx/smack/{smack.so,module.json} "$HOST:$DEST/audio_fx/smack/"
-scp build/modules/sound_generators/smack-in/{dsp.so,module.json} "$HOST:$DEST/sound_generators/smack-in/"
+ssh "$HOST" "mkdir -p $DEST/audio_fx $DEST/sound_generators $DEST/overtake"
+scp -r build/modules/audio_fx/smack "$HOST:$DEST/audio_fx/"
+scp -r build/modules/sound_generators/smack-in "$HOST:$DEST/sound_generators/"
+scp -r build/modules/overtake/oversmack "$HOST:$DEST/overtake/"
 echo "Deployed to $HOST:$DEST — rescan modules or restart Move."

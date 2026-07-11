@@ -1,0 +1,152 @@
+{
+  "title": "Oversmack",
+  "children": [
+    {
+      "title": "Overview",
+      "lines": [
+        "Smack with the whole",
+        "Move surface as a",
+        "step-FX editor.",
+        "",
+        "Reads the mic or",
+        "line input directly",
+        "and keeps running",
+        "while suspended.",
+        "",
+        "Open it from the",
+        "overtake menu",
+        "(Shift+Vol+Jog).",
+        "Back hides the UI;",
+        "audio keeps going.",
+        "Shift+Vol+Jog exits."
+      ]
+    },
+    {
+      "title": "Quick Start",
+      "lines": [
+        "1. Set Loop Len.",
+        "2. Play something",
+        " into mic/line in.",
+        "3. Hit Capture to",
+        " grab the last",
+        " loop length.",
+        "4. Press a step,",
+        " then tap a pad in",
+        " the upper rows to",
+        " set its effect.",
+        "5. Re-Roll for a",
+        " new random",
+        " pattern; edits",
+        " stay locked."
+      ]
+    },
+    {
+      "title": "The Grid",
+      "lines": [
+        "Steps 1-16: the",
+        "slice pattern, one",
+        "color per effect,",
+        "white is playhead.",
+        "Press to select a",
+        "slice for editing",
+        "(shown green).",
+        "",
+        "Upper 3 pad rows:",
+        "effect palette.",
+        "Row 2 left = Clean,",
+        "then the 22 FX in",
+        "engine order.",
+        "Top-right pad =",
+        "Unlock (back to",
+        "the seeded roll).",
+        "",
+        "Bottom row:",
+        "Capture, Arm, A/B,",
+        "Re-Roll, Clear.",
+        "",
+        "Play button still",
+        "controls Move."
+      ]
+    },
+    {
+      "title": "Knobs",
+      "lines": [
+        "1: FX Density",
+        "2: Order Density",
+        "3: Loop Length",
+        "4: Slice Res",
+        "5: Wet",
+        "6: Pitch Range",
+        "7: AB Quantize",
+        "8: Seed"
+      ]
+    },
+    {
+      "title": "Editing & Locks",
+      "lines": [
+        "Tapping a palette",
+        "pad pins that",
+        "effect to the",
+        "selected slice.",
+        "Pinned slices keep",
+        "their effect when",
+        "you Re-Roll.",
+        "",
+        "Tap the same",
+        "effect again to",
+        "lock the current",
+        "rolled flavor.",
+        "Unlock returns the",
+        "slice to the",
+        "seeded pattern."
+      ]
+    },
+    {
+      "title": "Seed & Re-Roll",
+      "lines": [
+        "Seed browses",
+        "patterns by number:",
+        "the same seed always",
+        "gives the same",
+        "pattern.",
+        "",
+        "Re-Roll varies the",
+        "current seed for a",
+        "fresh pattern; dial",
+        "the Seed knob to",
+        "return to the",
+        "canonical one."
+      ]
+    },
+    {
+      "title": "Sync & Transport",
+      "lines": [
+        "Set Move's MIDI",
+        "Clock to Out so",
+        "the loop locks to",
+        "the transport.",
+        "",
+        "Without it, the",
+        "loop free-runs at",
+        "the project tempo.",
+        "",
+        "The Play button is",
+        "passed through to",
+        "Move, so transport",
+        "and clock work",
+        "under this UI."
+      ]
+    },
+    {
+      "title": "Screen Reader",
+      "lines": [
+        "With the screen",
+        "reader on (Global",
+        "Settings), steps,",
+        "pads, knob changes",
+        "and loop state are",
+        "all announced."
+      ]
+    }
+  ]
+}

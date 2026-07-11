@@ -269,6 +269,23 @@ static void roll_pattern(smack_t *s) {
     }
 }
 
+/* Canonical parameter for a user-pinned effect (lock_slice with an fx code).
+ * Deterministic middle-of-range choices; the seeded roll stays the source
+ * of variety. Ranges mirror the roll_pattern switch above. */
+static int8_t default_fxp(int f) {
+    switch (f) {
+    case SMACK_FX_RETRIG:
+    case SMACK_FX_REPEAT:
+    case SMACK_FX_REVAFTER:
+    case SMACK_FX_SCRATCH:  return 2;
+    case SMACK_FX_PITCH:    return 5;
+    case SMACK_FX_SPEED:    return 1;
+    case SMACK_FX_BUZZ:     return 1;
+    case SMACK_FX_CRUSH:    return 4;
+    default:                return 0;
+    }
+}
+
 /* ------------------------------------------------------------------ */
 /*  Capture                                                            */
 /* ------------------------------------------------------------------ */
@@ -929,9 +946,16 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
                 long i = strtol(lk, &end, 10);
                 if (end == lk || *end != ':') break;
                 long f = strtol(end + 1, &end, 10);
+                int has_p = 0;
+                long p = 0;
+                if (*end == ':') { p = strtol(end + 1, &end, 10); has_p = 1; }
                 if (i >= 0 && i < SMACK_MAX_SLICES) {
                     s->fx_locked[i] = 1;
                     s->fx[i] = (uint8_t)clampi((int)f, 0, SMACK_FX_COUNT - 1);
+                    /* i:f:p triplet (v0.5+); bare i:f pairs from older
+                     * presets fall back to the canonical parameter */
+                    s->fxp[i] = has_p ? (int8_t)clampi((int)p, -128, 127)
+                                      : default_fxp(s->fx[i]);
                 }
                 if (*end == ',') lk = end + 1; else break;
             }
@@ -944,7 +968,12 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
             s->fx_locked[i] = 0;
             if (s->state == SMACK_LOOPING) roll_pattern(s);
         } else {
-            s->fx[i] = (uint8_t)clampi(f, 0, SMACK_FX_COUNT - 1);
+            /* pin: 0 = clean/mute, 1..N-1 = a specific effect. Pinning a
+             * different effect gets that effect's canonical parameter;
+             * re-pinning the current one keeps the rolled flavor. */
+            f = clampi(f, 0, SMACK_FX_COUNT - 1);
+            if (s->fx[i] != (uint8_t)f) s->fxp[i] = default_fxp(f);
+            s->fx[i] = (uint8_t)f;
             s->fx_locked[i] = 1;
         }
     }
@@ -991,10 +1020,10 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
             s->roll_nonce, s->follow_transport ? 0 : 1);
         if (n < 0 || n >= buf_len - 3) return -1;
         int first = 1;
-        for (int i = 0; i < SMACK_MAX_SLICES && n < buf_len - 12; i++) {
+        for (int i = 0; i < SMACK_MAX_SLICES && n < buf_len - 16; i++) {
             if (!s->fx_locked[i]) continue;
-            n += snprintf(buf + n, (size_t)(buf_len - n), "%s%d:%d",
-                          first ? "" : ",", i, s->fx[i]);
+            n += snprintf(buf + n, (size_t)(buf_len - n), "%s%d:%d:%d",
+                          first ? "" : ",", i, s->fx[i], s->fxp[i]);
             first = 0;
         }
         n += snprintf(buf + n, (size_t)(buf_len - n), "\"}");

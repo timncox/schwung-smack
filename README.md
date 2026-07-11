@@ -34,20 +34,31 @@ modular. All hail Honeysmack!)
   announces pads, knob changes, and loop state; the Master FX knob pages
   are announced by the host.
 
-Two builds from one core:
+Three builds from one core:
 
 | module | type | where it runs |
 |---|---|---|
 | `smack` | audio_fx | Signal Chain slots and Master FX (glitch the whole Move mix) |
 | `smack-in` | sound_generator | standalone, reads mic/line input directly |
+| `oversmack` | overtake | full-surface: mic/line looper with the whole pad grid as a step-FX editor |
+
+**Oversmack** takes over the entire Move surface (launch from the overtake
+menu, Shift+Vol+Jog-Click): steps show the pattern and select a slice, the
+upper three pad rows are an effect palette (tap to pin any of the 22
+effects — or Clean, or Unlock — to the selected slice; pins survive
+Re-Roll), the bottom pad row is transport, and the Play button passes
+through to Move so clock keeps running. Back hides the UI while the audio
+keeps processing.
 
 ## Install
 
 - **Module Store**: install `smack` / `smack-in` from the schwung catalog
   (if listed).
 - **From GitHub**: schwung-manager → Install Custom Module →
-  `timncox/schwung-smack` (chain/master FX) or `timncox/schwung-smack-in`
-  (standalone line-in looper — a thin distribution repo; source lives here).
+  `timncox/schwung-smack` (chain/master FX), `timncox/schwung-smack-in`
+  (standalone line-in looper), or `timncox/schwung-oversmack` (full-surface
+  editor). The -in and over- repos are thin distribution repos; all source
+  lives here.
 
 **Sync note:** set Move's **MIDI Clock to Out** so Smack locks to the
 transport (same requirement as the Arp). Without it, Smack free-runs at the
