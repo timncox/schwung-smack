@@ -6,8 +6,9 @@
       "lines": [
         "Standalone loop",
         "glitcher that reads",
-        "the mic or line",
-        "input directly.",
+        "Move's audio input",
+        "directly (mic, line",
+        "or USB-C audio).",
         "",
         "Use it in a sound",
         "generator slot; no",
@@ -30,7 +31,7 @@
       "lines": [
         "1. Set Loop Len.",
         "2. Play something",
-        " into mic/line in.",
+        " into Move's input.",
         "3. Hit Capture to",
         " grab the last",
         " loop length.",

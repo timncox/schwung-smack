@@ -43,8 +43,8 @@ Three builds from one core:
 | module | type | where it runs |
 |---|---|---|
 | `smack` | audio_fx | Signal Chain slots and Master FX (glitch the whole Move mix) |
-| `smack-in` | sound_generator | standalone, reads mic/line input directly |
-| `oversmack` | overtake | full-surface: mic/line looper with the whole pad grid as a step-FX editor |
+| `smack-in` | sound_generator | standalone, reads Move's selected input (mic/line/USB-C) directly |
+| `oversmack` | overtake | full-surface looper (mic/line/USB-C) with the whole pad grid as a step-FX editor |
 
 **Oversmack** takes over the entire Move surface (launch from the overtake
 menu, Shift+Vol+Jog-Click): steps show the pattern and select a slice, the

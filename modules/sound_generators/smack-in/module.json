@@ -3,7 +3,7 @@
   "name": "Smack In",
   "abbrev": "SMKI",
   "version": "0.5.0",
-  "description": "Standalone mic/line-in version of Smack: quantized loop capture with per-slice glitch FX",
+  "description": "Standalone input-looper version (mic/line/USB-C) of Smack: quantized loop capture with per-slice glitch FX",
   "dsp": "dsp.so",
   "ui_chain": "ui_chain.js",
   "api_version": 2,
