@@ -28,6 +28,11 @@ modular. All hail Honeysmack!)
   phaser sweeps, and gated reverb bursts.
 - **Presets**: full settings snapshot via schwung's module-preset system;
   transport follow (Move's stop pauses the loop, play restarts it).
+- **On-device help**: full manual in schwung's Help viewer
+  (Shift+Vol+Menu → Help → Modules).
+- **Accessible**: with schwung's screen reader enabled, the chain editor
+  announces pads, knob changes, and loop state; the Master FX knob pages
+  are announced by the host.
 
 Two builds from one core:
 

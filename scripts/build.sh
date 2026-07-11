@@ -23,7 +23,9 @@ fi
 mkdir -p build/modules/audio_fx/smack build/modules/sound_generators/smack-in
 
 cp modules/audio_fx/smack/module.json src/ui_chain.js build/modules/audio_fx/smack/
+cp src/help.json build/modules/audio_fx/smack/help.json
 cp modules/sound_generators/smack-in/module.json src/ui_chain.js build/modules/sound_generators/smack-in/
+cp src/help_smack_in.json build/modules/sound_generators/smack-in/help.json
 
 # Compile AND tar inside the container: macOS bsdtar embeds AppleDouble
 # (._*) xattr entries that Linux tar extracts as real files — the schwung

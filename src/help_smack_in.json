@@ -1,0 +1,212 @@
+{
+  "title": "Smack-In",
+  "children": [
+    {
+      "title": "Overview",
+      "lines": [
+        "Standalone loop",
+        "glitcher that reads",
+        "the mic or line",
+        "input directly.",
+        "",
+        "Use it in a sound",
+        "generator slot; no",
+        "upstream input",
+        "module is needed.",
+        "",
+        "Grabs a quantized",
+        "loop, slices it,",
+        "and rolls seeded",
+        "random FX plus a",
+        "new slice order.",
+        "",
+        "The pattern repeats",
+        "each pass until you",
+        "re-roll it."
+      ]
+    },
+    {
+      "title": "Quick Start",
+      "lines": [
+        "1. Set Loop Len.",
+        "2. Play something",
+        " into mic/line in.",
+        "3. Hit Capture to",
+        " grab the last",
+        " loop length.",
+        "4. A/B to punch",
+        " between clean",
+        " and pattern.",
+        "5. Re-Roll for a",
+        " new pattern.",
+        "",
+        "Or: Arm, then play.",
+        "Recording starts on",
+        "the next step and",
+        "stops after the",
+        "loop length."
+      ]
+    },
+    {
+      "title": "Knobs",
+      "children": [
+        {
+          "title": "Chain UI Knobs",
+          "lines": [
+            "In the chain editor",
+            "knobs 1-8 are:",
+            "",
+            "1: FX Density",
+            "2: Order Density",
+            "3: Loop Length",
+            "4: Slice Res",
+            "5: Wet",
+            "6: Pitch Range",
+            "7: AB Quantize",
+            "8: Seed"
+          ]
+        },
+        {
+          "title": "Knob Pages",
+          "lines": [
+            "On the param pages:",
+            "",
+            "Main: Loop Len,",
+            " Slice Res, FX",
+            " Density, Order.",
+            "",
+            "Perform: Capture,",
+            " A/B, Re-Roll,",
+            " Clear (Arm is in",
+            " the list).",
+            "",
+            "Setup: Wet, Pitch",
+            " Range, AB Quant,",
+            " Seed, Transport."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Pads & Steps",
+      "lines": [
+        "Bottom-left pads:",
+        "",
+        "Capture: retro-grab",
+        " (green)",
+        "Arm: record next",
+        " step (red)",
+        "A/B: clean loop or",
+        " pattern (white)",
+        "Re-Roll: new",
+        " pattern (blue)",
+        "Clear: drop loop",
+        " (orange, above",
+        " Capture)",
+        "",
+        "Hardware Capture",
+        "button: retro-grab.",
+        "",
+        "Steps 1-16 show the",
+        "slice pattern, one",
+        "color per effect,",
+        "white is playhead.",
+        "Press a step to",
+        "mute its effect;",
+        "press again to",
+        "restore it."
+      ]
+    },
+    {
+      "title": "Effects",
+      "lines": [
+        "22 slice effects:",
+        "",
+        "retrigger, reverse,",
+        "pitch (varispeed),",
+        "half/double speed,",
+        "gate chop, buzz,",
+        "bitcrush, repeat",
+        "after split, reverse",
+        "after split,",
+        "tape stop and start,",
+        "vinyl scratch,",
+        "envelope shapes,",
+        "pan tricks, filter",
+        "sweeps, vowel",
+        "filter, tonal delay,",
+        "granular freeze,",
+        "synced delay and",
+        "ping-pong,",
+        "distortion, phaser,",
+        "gated reverb.",
+        "",
+        "FX Density sets how",
+        "many slices get an",
+        "effect; Order sets",
+        "slice reshuffling."
+      ]
+    },
+    {
+      "title": "Seed & Re-Roll",
+      "lines": [
+        "Seed browses",
+        "patterns by number:",
+        "the same seed always",
+        "gives the same",
+        "pattern.",
+        "",
+        "Re-Roll varies the",
+        "current seed for a",
+        "fresh pattern; dial",
+        "the Seed knob to",
+        "return to the",
+        "canonical one."
+      ]
+    },
+    {
+      "title": "Sync & Transport",
+      "lines": [
+        "Set Move's MIDI",
+        "Clock to Out so",
+        "Smack locks to the",
+        "transport (same as",
+        "the Arp).",
+        "",
+        "Without it, Smack",
+        "free-runs at the",
+        "project tempo.",
+        "",
+        "Transport (Setup):",
+        "Follow: Move stop",
+        "pauses the loop,",
+        "play restarts it.",
+        "Free: keep looping."
+      ]
+    },
+    {
+      "title": "Presets",
+      "lines": [
+        "Module presets save",
+        "all knobs, the seed",
+        "and re-roll state,",
+        "plus slice mutes.",
+        "",
+        "Audio is not saved:",
+        "capture a new loop",
+        "after loading."
+      ]
+    },
+    {
+      "title": "Screen Reader",
+      "lines": [
+        "With the screen",
+        "reader on (Global",
+        "Settings), the chain",
+        "editor announces",
+        "pads, knob changes",
+        "and loop state."
+      ]
+    }
+  ]
+}

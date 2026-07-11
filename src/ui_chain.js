@@ -16,6 +16,9 @@
  *                         to restore the seeded one
  *   Knobs 1-8             FX Density, Order, Loop Len, Slice Res,
  *                         Wet, Pitch Range, AB Quantize, Seed
+ *
+ * Screen reader: pad actions, knob changes and loop-state transitions are
+ * announced via shared/screen_reader.mjs when the reader is enabled.
  */
 
 import {
@@ -30,6 +33,10 @@ import {
     drawMenuHeader as drawHeader,
     drawMenuFooter as drawFooter
 } from '/data/UserData/schwung/shared/menu_layout.mjs';
+
+import {
+    announce, announceParameter, announceView
+} from '/data/UserData/schwung/shared/screen_reader.mjs';
 
 
 /* Transport pads (bottom-left corner of the 8x4 grid) */
@@ -71,17 +78,31 @@ const FX_COLORS = [
 ];
 
 const STATE_NAMES = ['IDLE', 'ARMED', 'REC', 'LOOP'];
+const STATE_SPEECH = ['idle', 'armed', 'recording', 'looping'];
 
-/* Knobs 1-8 (CC 71-78) left to right */
+/* Knobs 1-8 (CC 71-78) left to right. `name`/`opts` are the terse screen
+ * strings; `speech`/`speechOpts`/`unit` are what the screen reader says
+ * (abbreviations like "½st" read as gibberish through TTS). */
 const KNOBS = [
-    { key: 'fx_density',    name: 'FX',   min: 0, max: 100, step: 5 },
-    { key: 'order_density', name: 'Ord',  min: 0, max: 100, step: 5 },
-    { key: 'loop_len',      name: 'Len',  opts: ['1st', '2st', '1bt', '2bt', '1br', '2br', '4br', '8br', '16b'] },
-    { key: 'slice_res',     name: 'Res',  opts: ['½st', '1st', '2st', '4st'] },
-    { key: 'wet',           name: 'Wet',  min: 0, max: 100, step: 5 },
-    { key: 'pitch_range',   name: 'Pit',  min: 1, max: 12,  step: 1 },
-    { key: 'quantize',      name: 'Qnt',  opts: ['Inst', 'Slic', 'Loop'] },
-    { key: 'seed',          name: 'Seed', min: 1, max: 9999, step: 1 }
+    { key: 'fx_density',    name: 'FX',   min: 0, max: 100, step: 5,
+      speech: 'FX Density', unit: ' percent' },
+    { key: 'order_density', name: 'Ord',  min: 0, max: 100, step: 5,
+      speech: 'Order Density', unit: ' percent' },
+    { key: 'loop_len',      name: 'Len',  opts: ['1st', '2st', '1bt', '2bt', '1br', '2br', '4br', '8br', '16b'],
+      speech: 'Loop Length',
+      speechOpts: ['1 step', '2 steps', '1 beat', '2 beats', '1 bar', '2 bars', '4 bars', '8 bars', '16 bars'] },
+    { key: 'slice_res',     name: 'Res',  opts: ['½st', '1st', '2st', '4st'],
+      speech: 'Slice Resolution',
+      speechOpts: ['half step', '1 step', '2 steps', '4 steps'] },
+    { key: 'wet',           name: 'Wet',  min: 0, max: 100, step: 5,
+      speech: 'Wet', unit: ' percent' },
+    { key: 'pitch_range',   name: 'Pit',  min: 1, max: 12,  step: 1,
+      speech: 'Pitch Range', unit: ' semitones' },
+    { key: 'quantize',      name: 'Qnt',  opts: ['Inst', 'Slic', 'Loop'],
+      speech: 'A B Quantize',
+      speechOpts: ['instant', 'slice', 'loop'] },
+    { key: 'seed',          name: 'Seed', min: 1, max: 9999, step: 1,
+      speech: 'Seed' }
 ];
 
 let knobValues = [50, 0, 4, 1, 100, 12, 1, 4303];
@@ -118,6 +139,15 @@ function knobDisplay(i) {
     return `${Math.round(knobValues[i])}`;
 }
 
+function knobSpeech(i) {
+    const k = KNOBS[i];
+    if (k.speechOpts) {
+        const idx = Math.max(0, Math.min(k.speechOpts.length - 1, Math.round(knobValues[i])));
+        return k.speechOpts[idx];
+    }
+    return `${Math.round(knobValues[i])}${k.unit || ''}`;
+}
+
 function adjustKnob(i, delta) {
     const k = KNOBS[i];
     const max = k.opts ? k.opts.length - 1 : k.max;
@@ -127,6 +157,7 @@ function adjustKnob(i, delta) {
     if (v === knobValues[i]) return;
     knobValues[i] = v;
     host_module_set_param(k.key, `${Math.round(v)}`);
+    announceParameter(k.speech, knobSpeech(i));
     needsRedraw = true;
 }
 
@@ -192,6 +223,9 @@ function init() {
     updateTransportLEDs();
     updateStepLEDs();
     needsRedraw = true;
+    let spoken = 'Smack, ' + STATE_SPEECH[state];
+    if (state === 3) spoken += ab ? ', side B' : ', side A';
+    announceView(spoken);
 }
 
 function tick() {
@@ -213,6 +247,11 @@ function tick() {
         ab = parseInt(gp('ab') || '1');
         pattern = gp('pattern') || '';
         nSlices = parseInt(gp('n_slices') || '0');
+        /* speak async transitions (armed -> recording -> looping) as they
+         * land; A/B is announced at press time instead, because the applied
+         * value lags the pad while a quantized flip is pending */
+        if (state !== oldState)
+            announce(state === 3 ? `looping, ${nSlices} slices` : STATE_SPEECH[state]);
         if (state !== oldState || ab !== oldAb || pattern !== oldPattern) {
             updateTransportLEDs();
             updateStepLEDs();
@@ -232,6 +271,7 @@ function onMidiMessageInternal(data) {
         /* Capture button mirrors the capture pad */
         if (d1 === MoveCapture && d2 >= 64) {
             host_module_set_param('capture', '1');
+            announce('Capture');
             refreshSoon();
             return;
         }
@@ -246,13 +286,14 @@ function onMidiMessageInternal(data) {
 
     if (status === 0x90 && d2 > 0) {
         /* Transport pads */
-        if (d1 === PAD_CAPTURE) { host_module_set_param('capture', '1'); refreshSoon(); return; }
-        if (d1 === PAD_ARM)     { host_module_set_param('arm', '1');     refreshSoon(); return; }
-        if (d1 === PAD_REROLL)  { host_module_set_param('reroll', '1');  refreshSoon(); return; }
-        if (d1 === PAD_CLEAR)   { host_module_set_param('clear', '1');   refreshSoon(); return; }
+        if (d1 === PAD_CAPTURE) { host_module_set_param('capture', '1'); announce('Capture');  refreshSoon(); return; }
+        if (d1 === PAD_ARM)     { host_module_set_param('arm', '1');     announce('Arm');      refreshSoon(); return; }
+        if (d1 === PAD_REROLL)  { host_module_set_param('reroll', '1');  announce('Re-roll');  refreshSoon(); return; }
+        if (d1 === PAD_CLEAR)   { host_module_set_param('clear', '1');   announce('Clear');    refreshSoon(); return; }
         if (d1 === PAD_AB) {
             ab = ab ? 0 : 1;
             host_module_set_param('ab', `${ab}`);
+            announce(ab ? 'B, pattern' : 'A, clean loop');
             refreshSoon();
             return;
         }
@@ -262,8 +303,13 @@ function onMidiMessageInternal(data) {
             const i = d1 - STEP_FIRST;
             if (state === 3 && i < nSlices) {
                 const code = pattern.charCodeAt(i) - 48;
-                if (code > 0) host_module_set_param(`lock_slice_${i}`, '0');
-                else          host_module_set_param(`lock_slice_${i}`, '-1');
+                if (code > 0) {
+                    host_module_set_param(`lock_slice_${i}`, '0');
+                    announce(`Slice ${i + 1} muted`);
+                } else {
+                    host_module_set_param(`lock_slice_${i}`, '-1');
+                    announce(`Slice ${i + 1} restored`);
+                }
                 refreshSoon();
             }
             return;

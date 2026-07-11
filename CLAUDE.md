@@ -1,6 +1,6 @@
 ---
 status: active
-last_touched: 2026-07-10
+last_touched: 2026-07-11
 ---
 
 # Smack
@@ -82,6 +82,26 @@ target any loaded FX param — e.g. LFO on Smack's fx_density/order_density.
 1. End-to-end smoke test (clock arrival, capture alignment, audio quality).
 2. Enum "trigger" params (Capture/Arm/Re-Roll/Clear as knob enums) UX — the
    real answer is a ui_chain.js with a punch pad + step-LED pattern display.
+
+## Help + accessibility (added v0.4.1)
+
+- `src/help.json` (smack) / `src/help_smack_in.json` (smack-in) — on-device
+  Help viewer content (Shift+Vol+Menu → Help → Modules). Host auto-discovers
+  `help.json` in each module dir; build.sh copies them in. Format: tree of
+  {title, children|lines}, lines pre-wrapped ≤20 chars (128x64 display).
+- ui_chain.js imports `shared/screen_reader.mjs` (same pattern as the store/
+  song-mode/file-browser UIs) and announces: view on init, pad actions,
+  slice mute/restore, knob changes (speech-friendly names + option labels,
+  not the screen abbreviations), and async state transitions from the tick
+  refresh. A/B announces at press time only — get_param("ab") returns the
+  APPLIED value, which lags the pad while a quantized flip is pending.
+- Master FX knob pages announce automatically via shadow_ui.js
+  (announceParameter on knob change) using module.json names/options —
+  which is why those are full words ("1/2 Step", "Instant"), and why the
+  trigger enums must stay literally ["idle","trigger"] (host idiom).
+- `host_send_screenreader` writes to shared memory unconditionally; the TTS
+  side decides whether to speak. Announcing unconditionally is the house
+  pattern (shadow_ui.js does the same).
 
 ## Chain UI (src/ui_chain.js, shipped in both tarballs)
 
