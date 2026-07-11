@@ -20,7 +20,7 @@ modular. All hail Honeysmack!)
   chase; press a step to mute that slice's effect.
 - **A/B**: punch between the clean loop (A) and the pattern (B), quantized
   to slice or loop boundaries.
-- **22 effects**: retrigger, reverse, pitch (±12 st varispeed), half/double
+- **22 effects**: retrigger, reverse, pitch (±24 st varispeed), half/double
   speed, gate, buzz, bitcrush, repeat-after-split, reverse-after-split,
   tape stop, tape start, vinyl scratch, envelope shapes, pan tricks, LP/HP
   filter sweeps, morphing vowel filter, tonal delay, granular freeze,

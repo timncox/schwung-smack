@@ -170,7 +170,7 @@ struct smack {
     int   slice_res_idx;         /* index into slice_hs_table */
     float fx_density;            /* 0..1 */
     float order_density;         /* 0..1 */
-    int   pitch_range;           /* 1..12 semitones */
+    int   pitch_range;           /* 1..24 semitones, applied up or down */
     float wet;                   /* loop vs live input while LOOPING */
     int   ab;                    /* 0 = A clean, 1 = B pattern */
     int   ab_pending;            /* -1 none, else target value */
@@ -1134,7 +1134,7 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         s->order_density = (float)atof(val) / 100.0f;
         if (s->state == SMACK_LOOPING) roll_pattern(s);
     } else if (!strcmp(key, "pitch_range")) {
-        s->pitch_range = clampi(atoi(val), 1, 12);
+        s->pitch_range = clampi(atoi(val), 1, 24);
     } else if (!strcmp(key, "wet")) {
         s->wet = (float)atof(val) / 100.0f;
     } else if (!strcmp(key, "ab")) {
@@ -1203,7 +1203,7 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         s->slice_res_idx = clampi(json_int(val, "slice_res", s->slice_res_idx), 0, SLICE_RES_COUNT - 1);
         s->fx_density    = (float)clampi(json_int(val, "fx_density", (int)(s->fx_density * 100.0f)), 0, 100) / 100.0f;
         s->order_density = (float)clampi(json_int(val, "order_density", (int)(s->order_density * 100.0f)), 0, 100) / 100.0f;
-        s->pitch_range   = clampi(json_int(val, "pitch_range", s->pitch_range), 1, 12);
+        s->pitch_range   = clampi(json_int(val, "pitch_range", s->pitch_range), 1, 24);
         s->wet           = (float)clampi(json_int(val, "wet", (int)(s->wet * 100.0f)), 0, 100) / 100.0f;
         s->ab            = json_int(val, "ab", s->ab) ? 1 : 0;
         s->quantize_mode = clampi(json_int(val, "quantize", s->quantize_mode), 0, 2);

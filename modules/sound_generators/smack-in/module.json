@@ -2,7 +2,7 @@
   "id": "smack-in",
   "name": "Smack In",
   "abbrev": "SMKI",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Standalone input-looper version (mic/line/USB-C) of Smack: quantized loop capture with per-slice glitch FX",
   "dsp": "dsp.so",
   "ui_chain": "ui_chain.js",
@@ -177,7 +177,7 @@
               "name": "Pitch Range",
               "type": "int",
               "min": 1,
-              "max": 12,
+              "max": 24,
               "default": 12,
               "unit": "st"
             },
