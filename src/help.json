@@ -58,8 +58,11 @@
             "4: Slice Res",
             "5: Wet",
             "6: Pitch Range",
-            "7: AB Quantize",
-            "8: Seed"
+            "7: Fill Amount",
+            "8: Seed",
+            "",
+            "Quantize is on the",
+            "Setup knob page."
           ]
         },
         {
@@ -77,8 +80,11 @@
             " Clear (Arm is in",
             " the list).",
             "",
+            "Fill: Fill on/off,",
+            " Fill 1x, Fill Amt.",
+            "",
             "Setup: Wet, Pitch",
-            " Range, AB Quant,",
+            " Range, Quantize,",
             " Seed, Transport."
           ]
         }
@@ -100,6 +106,10 @@
         "Clear: drop loop",
         " (orange, above",
         " Capture)",
+        "Fill: tap latches,",
+        " hold = momentary",
+        " (yellow, above",
+        " Arm)",
         "",
         "Hardware Capture",
         "button: retro-grab.",
@@ -111,7 +121,11 @@
         "Press a step to",
         "mute its effect;",
         "press again to",
-        "restore it."
+        "restore it.",
+        "",
+        "While Fill is on",
+        "the steps show the",
+        "fill pattern."
       ]
     },
     {
@@ -142,6 +156,44 @@
         "many slices get an",
         "effect; Order sets",
         "slice reshuffling."
+      ]
+    },
+    {
+      "title": "Fill",
+      "lines": [
+        "Fill is a temporary",
+        "pattern variation,",
+        "like Elektron fills.",
+        "",
+        "A second seeded",
+        "pattern, biased",
+        "toward stutters,",
+        "sounds only while",
+        "Fill is on; the",
+        "main pattern is the",
+        "\"not fill\" side.",
+        "",
+        "Fill pad (yellow):",
+        "tap latches Fill,",
+        "tap again to stop;",
+        "hold plays it only",
+        "while held.",
+        "",
+        "Fill knob page:",
+        "Fill: on/off latch.",
+        "Fill 1x: fill to",
+        "the end of this",
+        "pass, then off.",
+        "Fill Amt: how busy",
+        "the fill gets.",
+        "",
+        "Fill works over the",
+        "A side too, and",
+        "follows Quantize.",
+        "Re-Roll and Seed",
+        "change the fill",
+        "pattern with the",
+        "main one."
       ]
     },
     {

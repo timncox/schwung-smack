@@ -101,6 +101,9 @@ target any loaded FX param — e.g. LFO on Smack's fx_density/order_density.
 1. End-to-end smoke test (clock arrival, capture alignment, audio quality).
 2. Enum "trigger" params (Capture/Arm/Re-Roll/Clear as knob enums) UX — the
    real answer is a ui_chain.js with a punch pad + step-LED pattern display.
+3. Fill pad momentary hold (v0.5.0): needs pad **release** events reaching
+   onMidiMessageInternal (0x80, or 0x90 vel 0). If the host filters
+   note-offs, tap-to-latch still works but hold-release won't auto-off.
 
 ## Help + accessibility (added v0.4.1)
 
@@ -128,10 +131,34 @@ Loads when Smack's component editor is opened inside a slot's Signal Chain.
 **The Master FX editor never loads custom module UIs** (verified:
 shadow_ui_master_fx.mjs only uses hierarchy knob pages) — on master, knob
 pages are the interface. Pad map: 68 Capture / 69 Arm / 70 A-B / 71 Re-Roll
-/ 76 Clear; hardware Capture button (CC 52) = retro grab; step buttons 1-16
-show slice FX colors + playhead chase, press = mute slice fx, again =
-restore seeded fx (lock_slice_<i>, -1 unlocks). Knobs 1-8 = FX / Order /
-Len / Res / Wet / Pitch / Qnt / Seed.
+/ 76 Clear / 77 Fill (tap = latch toggle, hold ≥350 ms = momentary);
+hardware Capture button (CC 52) = retro grab; step buttons 1-16
+show slice FX colors + playhead chase (fill pattern while Fill is active),
+press = mute slice fx, again = restore seeded fx (lock_slice_<i>, -1
+unlocks). Knobs 1-8 = FX / Order / Len / Res / Wet / Pitch / Fill Amt /
+Seed (Quantize lives on the Setup knob page).
+
+## Fill (added v0.5.0)
+
+Elektron-style temporary variation: a second seeded pattern layer (own
+order + fx rolls) that sounds only while fill is active — over either A/B
+side; the normal layers are its "not fill" counterpart. Design points:
+
+- Rolled in roll_pattern from an **independent RNG stream**
+  (`seed ^ 0xF111F111 ^ nonce*2246822519`) so main-layer locks (which skip
+  draws) never perturb the fill and vice versa. Same seed/nonce = same fill.
+- 50% of fill fx picks come from a stutter-bias subset (retrig, reverse,
+  speed, gate, buzz, repeat, revafter, tapestop) so fills read as fills.
+  Order-shuffle density = fill_amt * 0.5, fx density = fill_amt.
+- Params: `fill` (0/1 state, quantize-gated via fill_pending like
+  ab_pending), `fill_once` (trigger: on now, auto-off at loop wrap — the
+  wrap handler only clears it when fill is APPLIED, so a loop-quantized
+  pending fill survives its first wrap and plays the full next pass),
+  `fill_amt` (0-100, preset-saved). `fill` itself is deliberately NOT in
+  the state blob (Elektron doesn't persist fill either); `fill_pattern`
+  mirrors `pattern` for the LEDs. Clear drops fill with the loop.
+- roll_fxp() is the factored per-effect parameter roller — **draw counts
+  per effect must never change** or every saved seed re-sounds.
 
 ## Next steps
 

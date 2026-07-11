@@ -14,9 +14,11 @@
  *                         the seeded roll). Tap to assign to the selected
  *                         slice; re-tap the same effect to lock it as-is.
  *   Bottom row (68-75)    68 Capture / 69 Arm / 70 A-B / 71 Re-Roll /
- *                         72 Clear; hardware Capture button = retro grab
+ *                         72 Clear / 73 Fill (tap latches, hold is
+ *                         momentary); hardware Capture button = retro grab
  *   Knobs 1-8             FX Density, Order, Loop Len, Slice Res,
- *                         Wet, Pitch Range, AB Quantize, Seed
+ *                         Wet, Pitch Range, Fill Amt, Seed
+ *                         (AB Quantize moved to the hierarchy Setup page)
  *   Play button           passed through to Move (transport + clock
  *                         keep working under this UI)
  *
@@ -49,6 +51,7 @@ const PAD_ARM     = 69;
 const PAD_AB      = 70;
 const PAD_REROLL  = 71;
 const PAD_CLEAR   = 72;
+const PAD_FILL    = 73;
 
 /* Upper three pad rows: effect palette. Pad 76 + code, codes 0..22;
  * top-right pad 99 = unlock (restore the seeded effect). */
@@ -118,16 +121,19 @@ const KNOBS = [
       speech: 'Wet', unit: ' percent' },
     { key: 'pitch_range',   name: 'Pit',  min: 1, max: 12,  step: 1,
       speech: 'Pitch Range', unit: ' semitones' },
-    { key: 'quantize',      name: 'Qnt',  opts: ['Inst', 'Slic', 'Loop'],
-      speech: 'A B Quantize',
-      speechOpts: ['instant', 'slice', 'loop'] },
+    { key: 'fill_amt',      name: 'Fill', min: 0, max: 100, step: 5,
+      speech: 'Fill Amount', unit: ' percent' },
     { key: 'seed',          name: 'Seed', min: 1, max: 9999, step: 1,
       speech: 'Seed' }
 ];
 
-let knobValues = [50, 0, 4, 1, 100, 12, 1, 4303];
+let knobValues = [50, 0, 4, 1, 100, 12, 75, 4303];
 let state = 0;          /* 0 idle, 1 armed, 2 rec, 3 looping */
 let ab = 1;
+let fill = 0;
+let fillPattern = '';
+let fillPressAt = 0;    /* ms timestamp of the fill-pad press */
+let fillPressLit = false; /* the press turned fill on (vs toggled it off) */
 let pattern = '';
 let nSlices = 0;
 let playSlice = -1;
@@ -135,6 +141,10 @@ let selectedSlice = -1;
 let tickCount = 0;
 let needsRedraw = true;
 let dspReady = false;
+
+/* below this hold time a fill-pad press is a tap (latch); above it the
+ * press is momentary and release turns fill back off */
+const FILL_TAP_MS = 350;
 
 function gp(key) {
     const v = host_module_get_param(key);
@@ -150,7 +160,9 @@ function fetchAll() {
     }
     state = parseInt(rs);
     ab = parseInt(gp('ab') || '1');
+    fill = parseInt(gp('fill') || '0');
     pattern = gp('pattern') || '';
+    fillPattern = gp('fill_pattern') || '';
     nSlices = parseInt(gp('n_slices') || '0');
     return true;
 }
@@ -200,7 +212,8 @@ function paintTransport(force) {
     setLED(PAD_AB, state === 3 ? (ab ? White : LightGrey) : Black, force);
     setLED(PAD_REROLL, Blue, force);
     setLED(PAD_CLEAR, state === 3 ? OrangeRed : Black, force);
-    for (let p = 73; p <= 75; p++) setLED(p, Black, force);
+    setLED(PAD_FILL, state === 3 ? (fill ? White : YellowGreen) : Black, force);
+    for (let p = 74; p <= 75; p++) setLED(p, Black, force);
 }
 
 function paintPalette(force) {
@@ -214,9 +227,16 @@ function paintSteps(force) {
     for (let i = 0; i < STEP_COUNT; i++) {
         let color = Black;
         if (state === 3 && i < shown) {
-            color = FX_COLORS[sliceFx(i)];
-            /* B side shows the pattern; A side shows all-clean */
-            if (!ab) color = FX_COLORS[0];
+            if (fill) {
+                /* the fill layer sounds over either side, so it shows
+                 * itself whenever it is active */
+                const code = fillPattern.charCodeAt(i) - 48;
+                color = FX_COLORS[(code >= 0 && code < FX_COLORS.length) ? code : 0];
+            } else {
+                color = FX_COLORS[sliceFx(i)];
+                /* B side shows the pattern; A side shows all-clean */
+                if (!ab) color = FX_COLORS[0];
+            }
             if (i === selectedSlice) color = BrightGreen;  /* editing target */
             if (i === playSlice) color = White;            /* playhead wins */
         }
@@ -235,7 +255,7 @@ function paintAll(force) {
 function drawUI() {
     clear_screen();
     let title = 'OVERSMACK  ' + STATE_NAMES[state];
-    if (state === 3) title += ab ? ' · B' : ' · A';
+    if (state === 3) title += fill ? ' · FILL' : (ab ? ' · B' : ' · A');
     drawHeader(title);
 
     /* selected-slice line */
@@ -293,6 +313,7 @@ globalThis.init = function() {
     if (dspReady) {
         let spoken = 'Oversmack, ' + STATE_SPEECH[state];
         if (state === 3) spoken += ab ? ', side B' : ', side A';
+        if (fill) spoken += ', fill on';
         announceView(spoken);
     }
 };
@@ -331,17 +352,21 @@ globalThis.tick = function() {
 
     /* periodic state/pattern refresh (knob edits, quantized AB flips) */
     if (tickCount % 12 === 0) {
-        const oldState = state, oldAb = ab, oldPattern = pattern;
+        const oldState = state, oldAb = ab, oldFill = fill, oldPattern = pattern;
         state = parseInt(gp('run_state') || '0');
         ab = parseInt(gp('ab') || '1');
+        fill = parseInt(gp('fill') || '0');
         pattern = gp('pattern') || '';
+        fillPattern = gp('fill_pattern') || '';
         nSlices = parseInt(gp('n_slices') || '0');
         if (state !== 3) selectedSlice = -1;
-        /* speak async transitions (armed -> recording -> looping); A/B is
-         * announced at press time (applied value lags a quantized flip) */
+        /* speak async transitions (armed -> recording -> looping); A/B and
+         * Fill are announced at press time (applied value lags a quantized
+         * flip) */
         if (state !== oldState)
             announce(state === 3 ? `looping, ${nSlices} slices` : STATE_SPEECH[state]);
-        if (state !== oldState || ab !== oldAb || pattern !== oldPattern) {
+        if (state !== oldState || ab !== oldAb || fill !== oldFill ||
+            pattern !== oldPattern) {
             paintTransport(false);
             paintSteps(false);
             needsRedraw = true;
@@ -373,12 +398,41 @@ globalThis.onMidiMessageInternal = function(data) {
         return;
     }
 
+    /* Fill pad release: a quick tap latched at press time; a hold is
+     * momentary and turns fill back off here */
+    if ((status === 0x80 || (status === 0x90 && d2 === 0)) && d1 === PAD_FILL) {
+        if (fillPressLit && Date.now() - fillPressAt >= FILL_TAP_MS) {
+            fill = 0;
+            host_module_set_param('fill', '0');
+            announce('Fill off');
+            paintTransport(false);
+            paintSteps(false);
+            refreshSoon();
+        } else if (fillPressLit) {
+            announce('Fill latched');
+        }
+        fillPressLit = false;
+        return;
+    }
+
     if (status === 0x90 && d2 > 0) {
         /* Transport pads */
         if (d1 === PAD_CAPTURE) { host_module_set_param('capture', '1'); announce('Capture'); refreshSoon(); return; }
         if (d1 === PAD_ARM)     { host_module_set_param('arm', '1');     announce('Arm');     refreshSoon(); return; }
         if (d1 === PAD_REROLL)  { host_module_set_param('reroll', '1');  announce('Re-roll'); refreshSoon(); return; }
         if (d1 === PAD_CLEAR)   { host_module_set_param('clear', '1');   announce('Clear');   refreshSoon(); return; }
+        if (d1 === PAD_FILL) {
+            if (state !== 3) { announce('No loop yet'); return; }
+            fillPressAt = Date.now();
+            fillPressLit = !fill;
+            fill = fill ? 0 : 1;
+            host_module_set_param('fill', `${fill}`);
+            announce(fill ? 'Fill' : 'Fill off');
+            paintTransport(false);
+            paintSteps(false);
+            refreshSoon();
+            return;
+        }
         if (d1 === PAD_AB) {
             ab = ab ? 0 : 1;
             host_module_set_param('ab', `${ab}`);

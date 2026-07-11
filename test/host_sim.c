@@ -183,6 +183,83 @@ int main(void) {
     assert(buf[1] == '0' + 3);                          /* pin restored */
     smack_set_param(S, "lock_slice_1", "-1");
 
+    /* ---- Fill: temporary pattern variation (Elektron-style) ---- */
+    smack_set_param(S, "quantize", "0");       /* instant, for determinism */
+    smack_set_param(S, "fill_amt", "100");
+    smack_set_param(S, "seed", "777");
+    char mainpat[64], fillpat[64], fillpat2[64];
+    smack_get_param(S, "pattern", mainpat, sizeof(mainpat));
+    smack_get_param(S, "fill_pattern", fillpat, sizeof(fillpat));
+    assert(strlen(fillpat) == 16);
+    int fill_has_fx = 0;
+    for (int i = 0; fillpat[i]; i++) if (fillpat[i] != '0') fill_has_fx = 1;
+    assert(fill_has_fx);                       /* amt 100 => fx everywhere */
+    assert(strcmp(fillpat, mainpat) != 0);     /* fill is its own pattern */
+
+    assert(gp("fill") == '0');
+    smack_set_param(S, "fill", "1");           /* latch on, applies now */
+    assert(gp("fill") == '1');
+    run_blocks(700, out);
+    assert(energy(out) > 0);                   /* fill layer audible */
+
+    /* fill sounds over the A side too: clean loop is its "not fill" layer */
+    smack_set_param(S, "ab", "0");
+    run_blocks(200, out);
+    assert(energy(out) > 0);
+    smack_set_param(S, "ab", "1");
+    smack_set_param(S, "fill", "0");
+    assert(gp("fill") == '0');
+
+    /* main-layer locks must never perturb the fill layer (own RNG stream) */
+    smack_get_param(S, "fill_pattern", fillpat, sizeof(fillpat));
+    smack_set_param(S, "lock_slice_2", "7");
+    smack_set_param(S, "fx_density", "80");    /* re-rolls with a lock held */
+    smack_get_param(S, "fill_pattern", fillpat2, sizeof(fillpat2));
+    assert(strcmp(fillpat, fillpat2) == 0);
+    smack_set_param(S, "lock_slice_2", "-1");
+    smack_set_param(S, "fx_density", "100");
+
+    /* same seed always reproduces the same fill */
+    smack_set_param(S, "reroll", "trigger");
+    smack_set_param(S, "seed", "777");
+    smack_get_param(S, "fill_pattern", fillpat2, sizeof(fillpat2));
+    assert(strcmp(fillpat, fillpat2) == 0);
+
+    /* fill_once: on for the rest of this pass, auto-off at the loop wrap */
+    smack_set_param(S, "fill_once", "trigger");
+    assert(gp("fill") == '1');
+    run_blocks(1400, out);                     /* > 1 bar: wraps at least once */
+    assert(gp("fill") == '0');
+    assert(energy(out) > 0);
+
+    /* quantized fill: pending until the next slice boundary */
+    smack_set_param(S, "quantize", "1");
+    smack_set_param(S, "fill", "1");
+    run_blocks(60, out);                       /* > 1 slice at 120 BPM */
+    assert(gp("fill") == '1');
+    smack_set_param(S, "fill", "0");
+    run_blocks(60, out);
+    assert(gp("fill") == '0');
+    smack_set_param(S, "quantize", "0");
+
+    /* fill_amt round-trips in presets; fill state itself is never saved */
+    smack_set_param(S, "fill_amt", "40");
+    assert(smack_get_param(S, "state", snap, sizeof(snap)) > 0);
+    assert(strstr(snap, "\"fill_amt\":40"));
+    assert(!strstr(snap, "\"fill\":"));
+    smack_set_param(S, "fill_amt", "90");
+    smack_set_param(S, "state", snap);
+    smack_get_param(S, "fill_amt", check, sizeof(check));
+    assert(atoi(check) == 40);
+
+    /* clearing the loop drops fill with it */
+    smack_set_param(S, "fill", "1");
+    smack_set_param(S, "clear", "1");
+    assert(gp("run_state") == '0');
+    assert(gp("fill") == '0');
+    smack_set_param(S, "capture", "1");        /* re-grab for the arm test */
+    assert(gp("run_state") == '3');
+
     /* clear -> arm -> records exactly one loop then loops again */
     smack_set_param(S, "clear", "1");
     assert(gp("run_state") == '0');

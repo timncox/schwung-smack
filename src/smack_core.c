@@ -137,6 +137,14 @@ struct smack {
     int   transport_paused;      /* loop exists but transport is stopped */
     uint32_t roll_nonce;         /* advanced by reroll; 0 = canonical seed pattern */
 
+    /* Fill (Elektron-style temporary variation): a second seeded pattern
+     * layer that sounds only while fill is active; the normal A/B layers
+     * are its "not fill" counterpart. */
+    float fill_amt;              /* 0..1, fill-layer wildness */
+    int   fill_active;
+    int   fill_pending;          /* -1 none, else target (quantize-gated) */
+    int   fill_until_wrap;       /* Fill 1x: auto-off at the next loop wrap */
+
     /* FILTER effect runtime */
     smack_bq_t fltL, fltR;
     int flt_slice;               /* output slice the filter is tracking, -1 none */
@@ -167,6 +175,9 @@ struct smack {
     uint8_t  fx[SMACK_MAX_SLICES];
     int8_t   fxp[SMACK_MAX_SLICES];
     uint8_t  fx_locked[SMACK_MAX_SLICES]; /* user-pinned: reroll keeps fx[i] */
+    uint16_t fill_order[SMACK_MAX_SLICES];
+    uint8_t  fill_fx[SMACK_MAX_SLICES];
+    int8_t   fill_fxp[SMACK_MAX_SLICES];
     uint32_t rng;
 };
 
@@ -210,6 +221,38 @@ static uint64_t last_boundary_global(smack_t *s) {
 /*  Pattern                                                            */
 /* ------------------------------------------------------------------ */
 
+/* Roll an effect's parameter. Draw counts per effect must never change:
+ * patterns are addressable by seed, so altering the sequence of RNG draws
+ * would silently change what every saved seed sounds like. */
+static int8_t roll_fxp(smack_t *s, uint32_t *rng, int f) {
+    switch (f) {
+    case SMACK_FX_RETRIG: return (int8_t)(1 + rnd_below(rng, 3));
+    case SMACK_FX_PITCH: {
+        int semi = 1 + rnd_below(rng, s->pitch_range);
+        if (xs32(rng) & 1) semi = -semi;
+        return (int8_t)semi;
+    }
+    case SMACK_FX_SPEED:    return (int8_t)(xs32(rng) & 1);
+    case SMACK_FX_BUZZ:     return (int8_t)(xs32(rng) & 3);
+    case SMACK_FX_CRUSH:    return (int8_t)(2 + (xs32(rng) & 6));
+    case SMACK_FX_REPEAT:
+    case SMACK_FX_REVAFTER: return (int8_t)(1 + rnd_below(rng, 3));
+    case SMACK_FX_TAPESTOP: return (int8_t)(xs32(rng) & 1);
+    case SMACK_FX_SCRATCH:  return (int8_t)(1 + rnd_below(rng, 3));
+    case SMACK_FX_ENV:      return (int8_t)rnd_below(rng, 4);
+    case SMACK_FX_PAN:      return (int8_t)rnd_below(rng, 3);
+    case SMACK_FX_FILTER:
+    case SMACK_FX_VOWEL:
+    case SMACK_FX_TONALDELAY:
+    case SMACK_FX_FREEZE:
+    case SMACK_FX_DELAY:
+    case SMACK_FX_DIST:
+    case SMACK_FX_PHASER:
+    case SMACK_FX_VERB:     return (int8_t)rnd_below(rng, 4);
+    default:                return 0;
+    }
+}
+
 static void roll_pattern(smack_t *s) {
     int loop_hs  = loop_len_hs_table[s->loop_len_idx];
     int slice_hs = slice_hs_table[s->slice_res_idx];
@@ -235,36 +278,44 @@ static void roll_pattern(smack_t *s) {
         if (rnd01(&s->rng) < s->fx_density) {
             int f = 1 + rnd_below(&s->rng, SMACK_FX_COUNT - 1);
             s->fx[i] = (uint8_t)f;
-            switch (f) {
-            case SMACK_FX_RETRIG: s->fxp[i] = (int8_t)(1 + rnd_below(&s->rng, 3)); break;
-            case SMACK_FX_PITCH: {
-                int semi = 1 + rnd_below(&s->rng, s->pitch_range);
-                if (xs32(&s->rng) & 1) semi = -semi;
-                s->fxp[i] = (int8_t)semi;
-                break;
-            }
-            case SMACK_FX_SPEED: s->fxp[i] = (int8_t)(xs32(&s->rng) & 1); break;
-            case SMACK_FX_BUZZ:  s->fxp[i] = (int8_t)(xs32(&s->rng) & 3); break;
-            case SMACK_FX_CRUSH: s->fxp[i] = (int8_t)(2 + (xs32(&s->rng) & 6)); break;
-            case SMACK_FX_REPEAT:
-            case SMACK_FX_REVAFTER: s->fxp[i] = (int8_t)(1 + rnd_below(&s->rng, 3)); break;
-            case SMACK_FX_TAPESTOP: s->fxp[i] = (int8_t)(xs32(&s->rng) & 1); break;
-            case SMACK_FX_SCRATCH:  s->fxp[i] = (int8_t)(1 + rnd_below(&s->rng, 3)); break;
-            case SMACK_FX_ENV:      s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_PAN:      s->fxp[i] = (int8_t)rnd_below(&s->rng, 3); break;
-            case SMACK_FX_FILTER:   s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_VOWEL:    s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_TONALDELAY: s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_FREEZE:   s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_DELAY:    s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_DIST:     s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_PHASER:   s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_VERB:     s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            default:             s->fxp[i] = 0; break;
-            }
+            s->fxp[i] = roll_fxp(s, &s->rng, f);
         } else {
             s->fx[i] = SMACK_FX_NONE;
             s->fxp[i] = 0;
+        }
+    }
+
+    /* Fill layer: an independent, usually denser roll biased toward
+     * stutter effects so it reads as a drum fill, not just another
+     * pattern. Its own RNG stream keeps the two layers from perturbing
+     * each other (main-layer locks skip draws above), and the same
+     * seed/nonce always yields the same fill. */
+    static const uint8_t fill_bias[8] = {
+        SMACK_FX_RETRIG, SMACK_FX_REVERSE, SMACK_FX_SPEED, SMACK_FX_GATE,
+        SMACK_FX_BUZZ, SMACK_FX_REPEAT, SMACK_FX_REVAFTER, SMACK_FX_TAPESTOP
+    };
+    uint32_t frng = (s->seed ^ 0xF111F111u) ^ (s->roll_nonce * 2246822519u);
+    if (!frng) frng = 0xBADCAFE1u;
+    float ford = s->fill_amt * 0.5f;
+    for (int i = 0; i < n; i++) s->fill_order[i] = (uint16_t)i;
+    for (int i = 0; i < n; i++) {
+        if (rnd01(&frng) < ford) {
+            int j = rnd_below(&frng, n);
+            uint16_t t = s->fill_order[i];
+            s->fill_order[i] = s->fill_order[j];
+            s->fill_order[j] = t;
+        }
+    }
+    for (int i = 0; i < n; i++) {
+        if (rnd01(&frng) < s->fill_amt) {
+            int f = (rnd01(&frng) < 0.5f)
+                      ? fill_bias[rnd_below(&frng, 8)]
+                      : 1 + rnd_below(&frng, SMACK_FX_COUNT - 1);
+            s->fill_fx[i] = (uint8_t)f;
+            s->fill_fxp[i] = roll_fxp(s, &frng, f);
+        } else {
+            s->fill_fx[i] = SMACK_FX_NONE;
+            s->fill_fxp[i] = 0;
         }
     }
 }
@@ -360,6 +411,8 @@ smack_t *smack_create(const host_api_v1_t *host) {
     s->wet = 1.0f;
     s->ab = 1;
     s->ab_pending = -1;
+    s->fill_amt = 0.75f;         /* fills come in hot by default */
+    s->fill_pending = -1;
     s->quantize_mode = 1;        /* next slice */
     s->seed = 4303u;  /* within the knob's 1..9999 range */
     s->follow_transport = 1;
@@ -472,12 +525,21 @@ static void render_loop_frame(smack_t *s, float *l, float *r) {
     double src2 = -1.0;   /* FREEZE: second grain tap (slice-relative) */
     float  mix2 = 0.0f;   /* FREEZE: crossfade toward primary tap */
 
-    if (!s->ab) {
+    if (!s->ab && !s->fill_active) {
         src = s->play_pos;                      /* A: clean, original order */
     } else {
-        int sslice = s->order[oslice];
-        f  = s->fx[oslice];
-        fp = s->fxp[oslice];
+        /* Fill overrides either side: its layer sounds only while fill is
+         * active, and the normal layers are the "not fill" counterpart. */
+        int sslice;
+        if (s->fill_active) {
+            sslice = s->fill_order[oslice];
+            f  = s->fill_fx[oslice];
+            fp = s->fill_fxp[oslice];
+        } else {
+            sslice = s->order[oslice];
+            f  = s->fx[oslice];
+            fp = s->fxp[oslice];
+        }
         double rp = p;
         switch (f) {
         case SMACK_FX_RETRIG: {
@@ -835,15 +897,18 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
             out[n * 2]     = clip16(inl);
             out[n * 2 + 1] = clip16(inr);
         } else {
-            /* quantized A/B switch */
-            if (s->ab_pending >= 0) {
+            /* quantized A/B + Fill switches share the same gate */
+            if (s->ab_pending >= 0 || s->fill_pending >= 0) {
                 int apply = 0;
                 if (s->quantize_mode == 0) apply = 1;
                 else if (s->quantize_mode == 1) {
                     double p = fmod(s->play_pos, s->slice_frames);
                     if (p < 1.0) apply = 1;
                 } else if (s->play_pos < 1.0) apply = 1;
-                if (apply) { s->ab = s->ab_pending; s->ab_pending = -1; }
+                if (apply) {
+                    if (s->ab_pending >= 0) { s->ab = s->ab_pending; s->ab_pending = -1; }
+                    if (s->fill_pending >= 0) { s->fill_active = s->fill_pending; s->fill_pending = -1; }
+                }
             }
 
             float ll, rr;
@@ -852,7 +917,16 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
             out[n * 2 + 1] = clip16(rr * s->wet + inr * (1.0f - s->wet));
 
             s->play_pos += 1.0;
-            if (s->play_pos >= (double)s->loop_len) s->play_pos = 0.0;
+            if (s->play_pos >= (double)s->loop_len) {
+                s->play_pos = 0.0;
+                /* Fill 1x rides out the pass it started in (the
+                 * fill_active guard lets a loop-quantized pending fill
+                 * survive this wrap and play the next full pass) */
+                if (s->fill_until_wrap && s->fill_active) {
+                    s->fill_active = 0;
+                    s->fill_until_wrap = 0;
+                }
+            }
         }
     }
     s->global_frames += (uint64_t)frames;
@@ -887,6 +961,22 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         else s->ab = v;
     } else if (!strcmp(key, "quantize")) {
         s->quantize_mode = clampi(atoi(val), 0, 2);
+    } else if (!strcmp(key, "fill")) {
+        /* latch/momentary state; the UI decides which gesture it was */
+        int v = atoi(val) ? 1 : 0;
+        s->fill_until_wrap = 0;
+        if (s->state == SMACK_LOOPING && s->quantize_mode != 0) s->fill_pending = v;
+        else { s->fill_active = v; s->fill_pending = -1; }
+    } else if (!strcmp(key, "fill_once")) {
+        /* Elektron tap: fill through the rest of this pass, off at wrap */
+        if (trig_active(val) && s->state == SMACK_LOOPING) {
+            s->fill_until_wrap = 1;
+            if (s->quantize_mode != 0) s->fill_pending = 1;
+            else s->fill_active = 1;
+        }
+    } else if (!strcmp(key, "fill_amt")) {
+        s->fill_amt = (float)atof(val) / 100.0f;
+        if (s->state == SMACK_LOOPING) roll_pattern(s);
     } else if (!strcmp(key, "seed")) {
         /* Seed is the pattern's ID: dialing it browses patterns directly,
          * and returning to a number restores that exact pattern. */
@@ -918,6 +1008,9 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         if (trig_active(val)) {
             s->state = SMACK_IDLE;
             s->ab_pending = -1;
+            s->fill_active = 0;
+            s->fill_pending = -1;
+            s->fill_until_wrap = 0;
             s->transport_paused = 0;
             memset(s->fx_locked, 0, sizeof(s->fx_locked));
         }
@@ -930,6 +1023,7 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         s->slice_res_idx = clampi(json_int(val, "slice_res", s->slice_res_idx), 0, SLICE_RES_COUNT - 1);
         s->fx_density    = (float)clampi(json_int(val, "fx_density", (int)(s->fx_density * 100.0f)), 0, 100) / 100.0f;
         s->order_density = (float)clampi(json_int(val, "order_density", (int)(s->order_density * 100.0f)), 0, 100) / 100.0f;
+        s->fill_amt      = (float)clampi(json_int(val, "fill_amt", (int)(s->fill_amt * 100.0f)), 0, 100) / 100.0f;
         s->pitch_range   = clampi(json_int(val, "pitch_range", s->pitch_range), 1, 12);
         s->wet           = (float)clampi(json_int(val, "wet", (int)(s->wet * 100.0f)), 0, 100) / 100.0f;
         s->ab            = json_int(val, "ab", s->ab) ? 1 : 0;
@@ -999,23 +1093,31 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
         return snprintf(buf, (size_t)buf_len, "%d", s->ab);
     if (!strcmp(key, "quantize"))
         return snprintf(buf, (size_t)buf_len, "%d", s->quantize_mode);
+    if (!strcmp(key, "fill")) /* applied value; lags while a flip is pending */
+        return snprintf(buf, (size_t)buf_len, "%d", s->fill_active);
+    if (!strcmp(key, "fill_amt"))
+        return snprintf(buf, (size_t)buf_len, "%.0f", s->fill_amt * 100.0f);
     if (!strcmp(key, "seed"))
         return snprintf(buf, (size_t)buf_len, "%u", s->seed);
     /* trigger params always read back as 0 so autosave never re-fires them */
     if (!strcmp(key, "capture") || !strcmp(key, "arm") ||
-        !strcmp(key, "reroll") || !strcmp(key, "clear"))
+        !strcmp(key, "reroll") || !strcmp(key, "clear") ||
+        !strcmp(key, "fill_once"))
         return snprintf(buf, (size_t)buf_len, "0");
     if (!strcmp(key, "transport"))
         return snprintf(buf, (size_t)buf_len, "%d", s->follow_transport ? 0 : 1);
     if (!strcmp(key, "state")) {
         /* full settings snapshot — powers slot autosave AND module presets
          * (save/recall from the shadow UI). Audio is never serialized. */
+        /* fill_amt is a setting and persists; fill itself is performance
+         * state and is deliberately never saved (matching Elektron) */
         int n = snprintf(buf, (size_t)buf_len,
             "{\"loop_len\":%d,\"slice_res\":%d,\"fx_density\":%d,"
-            "\"order_density\":%d,\"pitch_range\":%d,\"wet\":%d,\"ab\":%d,"
+            "\"order_density\":%d,\"fill_amt\":%d,\"pitch_range\":%d,\"wet\":%d,\"ab\":%d,"
             "\"quantize\":%d,\"seed\":%u,\"nonce\":%u,\"transport\":%d,\"locks\":\"",
             s->loop_len_idx, s->slice_res_idx, (int)(s->fx_density * 100.0f),
-            (int)(s->order_density * 100.0f), s->pitch_range,
+            (int)(s->order_density * 100.0f), (int)(s->fill_amt * 100.0f),
+            s->pitch_range,
             (int)(s->wet * 100.0f), s->ab, s->quantize_mode, s->seed,
             s->roll_nonce, s->follow_transport ? 0 : 1);
         if (n < 0 || n >= buf_len - 3) return -1;
@@ -1043,6 +1145,13 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
         /* fx codes per slice, for future step-LED UI: e.g. "0300102..." */
         int n = s->n_slices < buf_len - 1 ? s->n_slices : buf_len - 1;
         for (int i = 0; i < n; i++) buf[i] = (char)('0' + s->fx[i]);
+        buf[n] = 0;
+        return n;
+    }
+    if (!strcmp(key, "fill_pattern")) {
+        /* fill-layer fx codes, same encoding as "pattern" */
+        int n = s->n_slices < buf_len - 1 ? s->n_slices : buf_len - 1;
+        for (int i = 0; i < n; i++) buf[i] = (char)('0' + s->fill_fx[i]);
         buf[n] = 0;
         return n;
     }

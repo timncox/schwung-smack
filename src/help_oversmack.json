@@ -62,7 +62,9 @@
         "",
         "Bottom row:",
         "Capture, Arm, A/B,",
-        "Re-Roll, Clear.",
+        "Re-Roll, Clear,",
+        "Fill (tap=latch,",
+        "hold=momentary).",
         "",
         "Play button still",
         "controls Move."
@@ -77,8 +79,12 @@
         "4: Slice Res",
         "5: Wet",
         "6: Pitch Range",
-        "7: AB Quantize",
-        "8: Seed"
+        "7: Fill Amount",
+        "8: Seed",
+        "",
+        "Quantize is on the",
+        "hierarchy Setup",
+        "page."
       ]
     },
     {
@@ -99,6 +105,44 @@
         "Unlock returns the",
         "slice to the",
         "seeded pattern."
+      ]
+    },
+    {
+      "title": "Fill",
+      "lines": [
+        "Fill is a temporary",
+        "pattern variation,",
+        "like Elektron fills.",
+        "",
+        "A second seeded",
+        "pattern, biased",
+        "toward stutters,",
+        "sounds only while",
+        "Fill is on; the",
+        "main pattern is the",
+        "\"not fill\" side.",
+        "",
+        "Fill pad (yellow):",
+        "tap latches Fill,",
+        "tap again to stop;",
+        "hold plays it only",
+        "while held.",
+        "",
+        "Fill knob page:",
+        "Fill: on/off latch.",
+        "Fill 1x: fill to",
+        "the end of this",
+        "pass, then off.",
+        "Fill Amt: how busy",
+        "the fill gets.",
+        "",
+        "Fill works over the",
+        "A side too, and",
+        "follows Quantize.",
+        "Re-Roll and Seed",
+        "change the fill",
+        "pattern with the",
+        "main one."
       ]
     },
     {

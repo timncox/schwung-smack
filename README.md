@@ -20,6 +20,11 @@ modular. All hail Honeysmack!)
   chase; press a step to mute that slice's effect.
 - **A/B**: punch between the clean loop (A) and the pattern (B), quantized
   to slice or loop boundaries.
+- **Fill**: Elektron-style temporary variation — a second seeded pattern,
+  biased toward stutter effects, that sounds only while Fill is held
+  (momentary), latched (tap), or fired for one loop pass (Fill 1x). The
+  main pattern is its "not fill" counterpart; Fill Amt sets how busy the
+  fill gets, and fills work over the clean A side too.
 - **22 effects**: retrigger, reverse, pitch (±12 st varispeed), half/double
   speed, gate, buzz, bitcrush, repeat-after-split, reverse-after-split,
   tape stop, tape start, vinyl scratch, envelope shapes, pan tricks, LP/HP

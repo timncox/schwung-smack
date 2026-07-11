@@ -2,7 +2,7 @@
   "id": "smack",
   "name": "Smack",
   "abbrev": "SMK",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Quantized live-loop capture with probabilistic per-slice glitch FX and slice reordering",
   "dsp": "smack.so",
   "ui_chain": "ui_chain.js",
@@ -70,6 +70,10 @@
             {
               "level": "perform",
               "name": "Perform"
+            },
+            {
+              "level": "fill",
+              "name": "Fill"
             },
             {
               "level": "setup",
@@ -144,6 +148,47 @@
             "clear"
           ]
         },
+        "fill": {
+          "name": "Fill",
+          "params": [
+            {
+              "key": "fill",
+              "name": "Fill",
+              "type": "enum",
+              "options": [
+                "Off",
+                "On"
+              ],
+              "default": 0
+            },
+            {
+              "key": "fill_once",
+              "name": "Fill 1x",
+              "type": "enum",
+              "default": 0,
+              "options": [
+                "idle",
+                "trigger"
+              ]
+            },
+            {
+              "key": "fill_amt",
+              "name": "Fill Amt",
+              "type": "float",
+              "min": 0,
+              "max": 100,
+              "default": 75,
+              "step": 5,
+              "unit": "%",
+              "display_format": "%.0f"
+            }
+          ],
+          "knobs": [
+            "fill",
+            "fill_once",
+            "fill_amt"
+          ]
+        },
         "setup": {
           "name": "Setup",
           "params": [
@@ -169,7 +214,7 @@
             },
             {
               "key": "quantize",
-              "name": "AB Quantize",
+              "name": "Quantize",
               "type": "enum",
               "options": [
                 "Instant",

@@ -2,7 +2,7 @@
   "id": "smack-in",
   "name": "Smack In",
   "abbrev": "SMKI",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Standalone mic/line-in version of Smack: quantized loop capture with per-slice glitch FX",
   "dsp": "dsp.so",
   "ui_chain": "ui_chain.js",
@@ -74,6 +74,10 @@
             {
               "level": "perform",
               "name": "Perform"
+            },
+            {
+              "level": "fill",
+              "name": "Fill"
             },
             {
               "level": "setup",
@@ -148,6 +152,47 @@
             "clear"
           ]
         },
+        "fill": {
+          "name": "Fill",
+          "params": [
+            {
+              "key": "fill",
+              "name": "Fill",
+              "type": "enum",
+              "options": [
+                "Off",
+                "On"
+              ],
+              "default": 0
+            },
+            {
+              "key": "fill_once",
+              "name": "Fill 1x",
+              "type": "enum",
+              "default": 0,
+              "options": [
+                "idle",
+                "trigger"
+              ]
+            },
+            {
+              "key": "fill_amt",
+              "name": "Fill Amt",
+              "type": "float",
+              "min": 0,
+              "max": 100,
+              "default": 75,
+              "step": 5,
+              "unit": "%",
+              "display_format": "%.0f"
+            }
+          ],
+          "knobs": [
+            "fill",
+            "fill_once",
+            "fill_amt"
+          ]
+        },
         "setup": {
           "name": "Setup",
           "params": [
@@ -173,7 +218,7 @@
             },
             {
               "key": "quantize",
-              "name": "AB Quantize",
+              "name": "Quantize",
               "type": "enum",
               "options": [
                 "Instant",
