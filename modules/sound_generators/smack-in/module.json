@@ -2,7 +2,7 @@
   "id": "smack-in",
   "name": "Smack In",
   "abbrev": "SMKI",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Standalone mic/line-in version of Smack: quantized loop capture with per-slice glitch FX",
   "dsp": "dsp.so",
   "ui_chain": "ui_chain.js",
@@ -93,22 +93,18 @@
             {
               "key": "capture",
               "name": "Capture Now",
-              "type": "enum",
-              "options": [
-                "-",
-                "Grab"
-              ],
-              "default": 0
+              "type": "int",
+              "default": 0,
+              "min": 0,
+              "max": 1
             },
             {
               "key": "arm",
               "name": "Arm Record",
-              "type": "enum",
-              "options": [
-                "-",
-                "Arm"
-              ],
-              "default": 0
+              "type": "int",
+              "default": 0,
+              "min": 0,
+              "max": 1
             },
             {
               "key": "ab",
@@ -123,22 +119,18 @@
             {
               "key": "reroll",
               "name": "Re-Roll",
-              "type": "enum",
-              "options": [
-                "-",
-                "Roll"
-              ],
-              "default": 0
+              "type": "int",
+              "default": 0,
+              "min": 0,
+              "max": 1
             },
             {
               "key": "clear",
               "name": "Clear Loop",
-              "type": "enum",
-              "options": [
-                "-",
-                "Clear"
-              ],
-              "default": 0
+              "type": "int",
+              "default": 0,
+              "min": 0,
+              "max": 1
             }
           ],
           "knobs": [
