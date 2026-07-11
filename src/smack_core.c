@@ -458,7 +458,10 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
     } else if (!strcmp(key, "quantize")) {
         s->quantize_mode = clampi(atoi(val), 0, 2);
     } else if (!strcmp(key, "seed")) {
+        /* Seed is the pattern's ID: dialing it browses patterns directly,
+         * and returning to a number restores that exact pattern. */
         s->seed = (uint32_t)strtoul(val, NULL, 10);
+        if (s->state == SMACK_LOOPING) roll_pattern(s);
     } else if (!strcmp(key, "reroll")) {
         /* trigger params fire only on non-zero: UIs and autosave restores
          * send "0" on init, which must be a no-op */
