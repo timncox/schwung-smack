@@ -259,6 +259,24 @@ int main(void) {
     smack_get_param(S, "pattern_r", pr, sizeof(pr));
     assert(pr[0] == '0' + 5);              /* lane-R pin restored */
 
+    /* monitor mute (feedback guard): passthrough silenced, ring still
+     * records, loop playback stays audible */
+    smack_get_param(S, "hw_input", check, sizeof(check));
+    assert(atoi(check) == 0);              /* core default; gen wrapper sets 1 */
+    smack_set_param(S, "hw_input", "1");
+    smack_get_param(S, "hw_input", check, sizeof(check));
+    assert(atoi(check) == 1);
+    smack_set_param(S, "clear", "1");
+    smack_set_param(S, "monitor", "0");
+    run_blocks(120, out);
+    assert(gp("run_state") == '0');
+    assert(energy(out) == 0);              /* idle passthrough muted */
+    smack_set_param(S, "capture", "1");    /* ring kept recording under mute */
+    run_blocks(200, out);
+    assert(gp("run_state") == '3');
+    assert(energy(out) > 0);               /* loop playback audible while muted */
+    smack_set_param(S, "monitor", "1");
+
     printf("host_sim: all assertions passed\n");
     smack_destroy(S);
     return 0;

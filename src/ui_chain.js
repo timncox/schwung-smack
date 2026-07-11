@@ -50,6 +50,7 @@ const PAD_REROLL  = 71;
 const PAD_CLEAR   = 76;
 const PAD_MODE    = 74;   /* Stereo <-> Dual Mono (same pads as oversmack) */
 const PAD_LANE    = 75;   /* dual mono: tap = lane L/R; hold + knob1/2 = pans */
+const PAD_MONITOR = 73;   /* smack-in only: input monitoring + feedback guard */
 
 /* Step buttons show the first 16 slices */
 const STEP_FIRST = 16;
@@ -127,6 +128,45 @@ let panL = 0, panR = 100;
 let lanePadHeld = false;
 let laneHoldUsed = false;
 
+/* Feedback guard — smack-in only (hw_input=1: the DSP reads the mic/line
+ * input directly). The host's slot guard covers smack-in as a plain slot
+ * synth but is blind to it INSIDE a chain patch, so while this editor is
+ * open we mirror it: speakers on + no line-in cable -> mute the DSP's
+ * input monitoring (ring keeps recording, loop stays audible). The smack
+ * audio_fx build processes upstream chain audio; the guard never fires. */
+let hwInput = false;
+let monitorOn = true;
+let guardMuted = false;
+let guardOverride = false;
+
+function feedbackRisk() {
+    if (typeof host_speaker_active !== 'function') return false;
+    if (typeof host_line_in_connected !== 'function') return false;
+    return host_speaker_active() && !host_line_in_connected();
+}
+
+function setMonitor(on) {
+    monitorOn = on;
+    host_module_set_param('monitor', on ? '1' : '0');
+    updateTransportLEDs();
+    needsRedraw = true;
+}
+
+function reconcileFeedbackGuard() {
+    if (!hwInput) return;
+    const risk = feedbackRisk();
+    if (risk && monitorOn && !guardOverride) {
+        guardMuted = true;
+        setMonitor(false);
+        announce('Feedback risk. Input muted. Monitor pad to override, or plug in headphones.');
+    } else if (!risk && guardMuted) {
+        guardMuted = false;
+        guardOverride = false;
+        setMonitor(true);
+        announce('Monitoring restored');
+    }
+}
+
 function gp(key) {
     const v = host_module_get_param(key);
     return (v === null || v === undefined) ? null : String(v);
@@ -145,6 +185,8 @@ function fetchAll() {
     chanMode = parseInt(gp('channel_mode') || '0');
     panL = parseInt(gp('pan_l') || '0');
     panR = parseInt(gp('pan_r') || '100');
+    hwInput = gp('hw_input') === '1';
+    monitorOn = (gp('monitor') || '1') !== '0';
 }
 
 /* pattern / lock target of the lane currently being edited */
@@ -210,6 +252,7 @@ function updateTransportLEDs() {
     setLED(PAD_CLEAR, state === 3 ? OrangeRed : Black);
     setLED(PAD_MODE, chanMode ? White : 0x10);
     setLED(PAD_LANE, chanMode ? (editLane ? OrangeRed : Cyan) : Black);
+    setLED(PAD_MONITOR, hwInput ? (monitorOn ? Green : BrightRed) : Black);
 }
 
 function updateStepLEDs() {
@@ -270,10 +313,14 @@ function init() {
     let spoken = 'Smack, ' + STATE_SPEECH[state];
     if (state === 3) spoken += ab ? ', side B' : ', side A';
     announceView(spoken);
+    reconcileFeedbackGuard();
 }
 
 function tick() {
     tickCount++;
+
+    /* jack state can change mid-session — re-check the guard ~2x/second */
+    if (hwInput && tickCount % 15 === 0) reconcileFeedbackGuard();
 
     /* playhead chase: cheap single get_param per tick */
     if (state === 3) {
@@ -362,6 +409,25 @@ function onMidiMessageInternal(data) {
             host_module_set_param('ab', `${ab}`);
             announce(ab ? 'B, pattern' : 'A, clean loop');
             refreshSoon();
+            return;
+        }
+        if (d1 === PAD_MONITOR) {
+            if (!hwInput) return;   /* audio_fx build: pad is inert */
+            if (monitorOn) {
+                guardMuted = false;
+                guardOverride = false;
+                setMonitor(false);
+                announce('Input muted');
+            } else {
+                guardMuted = false;
+                if (feedbackRisk()) {
+                    guardOverride = true;
+                    announce('Monitoring on. Feedback risk!');
+                } else {
+                    announce('Monitoring on');
+                }
+                setMonitor(true);
+            }
             return;
         }
         if (d1 === PAD_MODE) {

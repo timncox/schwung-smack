@@ -17,7 +17,12 @@ static const host_api_v1_t *g_host;
 
 static void *gen_create(const char *module_dir, const char *json_defaults) {
     (void)module_dir; (void)json_defaults;
-    return smack_create(g_host);
+    smack_t *s = smack_create(g_host);
+    /* this build reads the hardware input directly — tells the shared
+     * chain UI that the mic-feedback guard applies (the audio_fx build
+     * processes upstream chain audio and must never auto-mute) */
+    if (s) smack_set_param(s, "hw_input", "1");
+    return s;
 }
 
 static void gen_destroy(void *inst) { smack_destroy((smack_t *)inst); }

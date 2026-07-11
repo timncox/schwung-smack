@@ -142,6 +142,30 @@
       ]
     },
     {
+      "title": "Feedback Guard",
+      "lines": [
+        "Speakers on with no",
+        "line-in cable means",
+        "the internal mic",
+        "can feed back.",
+        "",
+        "When that risk is",
+        "present the input",
+        "monitoring is muted",
+        "automatically: the",
+        "Monitor pad turns",
+        "red, capture still",
+        "works, and the loop",
+        "stays audible.",
+        "",
+        "Tap the Monitor pad",
+        "to override, or",
+        "plug in headphones",
+        "or a line-in cable",
+        "to restore it."
+      ]
+    },
+    {
       "title": "Sync & Transport",
       "lines": [
         "Set Move's MIDI",

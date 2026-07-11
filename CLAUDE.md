@@ -149,7 +149,22 @@ target any loaded FX param — e.g. LFO on Smack's fx_density/order_density.
   lane refactor (roll_pattern/render/params all restructured) and bump to
   0.6.0 (0.5.0 is taken by dual mono).
 
-## Chain UI (src/ui_chain.js, shipped in both tarballs)
+## Feedback guard (v0.5.1)
+
+- The HOST's guard (shadow_ui.js reconcileFeedbackHolds + feedback_gate.mjs)
+  only walks chain SLOTS and keys off `consumesLineInput(metadata)`
+  (capabilities.audio_in + component_type != audio_fx/midi_fx). It covers
+  smack-in as a plain slot synth, but is BLIND to (a) overtake modules and
+  (b) smack-in nested inside a chain patch (chain/module.json declares no
+  audio_in — upstream schwung gap).
+- Ours: core `monitor` param (0 = live input muted at the output; ring
+  keeps recording, loop playback stays audible; never preset-saved) +
+  `hw_input` flag set by the gen wrapper so the SHARED chain UI only arms
+  the guard for smack-in (the audio_fx build takes upstream chain audio
+  and must never auto-mute). Both UIs poll host_speaker_active() &&
+  !host_line_in_connected() ~2x/s: risk -> auto-mute + announce; safe ->
+  auto-restore; Monitor pad (73 in both UIs, green/red) toggles manually
+  and overrides during risk. oversmack module.json now declares audio_in.
 
 Loads when Smack's component editor is opened inside a slot's Signal Chain.
 **The Master FX editor never loads custom module UIs** (verified:

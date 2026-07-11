@@ -170,6 +170,12 @@ struct smack {
     uint32_t seed;
     int   follow_transport;      /* 1 = Move stop pauses the loop (default) */
     int   transport_paused;      /* loop exists but transport is stopped */
+    int   monitor;               /* 0 = mute live input at the output (feedback
+                                    guard; ring keeps recording, loop playback
+                                    stays audible). Never preset-saved. */
+    int   hw_input;              /* 1 = this instance reads the hardware input
+                                    (gen/oversmack builds); chain UI keys the
+                                    feedback guard off this */
     uint32_t roll_nonce;         /* advanced by reroll; 0 = canonical seed pattern */
 
     /* Dual-mono: L/R inputs as independent mono lanes, each panned back
@@ -408,6 +414,7 @@ smack_t *smack_create(const host_api_v1_t *host) {
     s->quantize_mode = 1;        /* next slice */
     s->seed = 4303u;  /* within the knob's 1..9999 range */
     s->follow_transport = 1;
+    s->monitor = 1;
     s->chan_mode = 0;            /* stereo */
     s->pan_l = 0;                /* dual-mono defaults keep input sides */
     s->pan_r = 100;
@@ -887,8 +894,8 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
             if (s->state == SMACK_RECORDING && s->rec_remaining > 0) {
                 if (--s->rec_remaining == 0) finish_record(s);
             }
-            out[n * 2]     = clip16(inl);
-            out[n * 2 + 1] = clip16(inr);
+            out[n * 2]     = s->monitor ? clip16(inl) : 0;
+            out[n * 2 + 1] = s->monitor ? clip16(inr) : 0;
         } else {
             /* quantized A/B switch */
             if (s->ab_pending >= 0) {
@@ -915,8 +922,9 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
                 ll = l0 * s->pan_gain[0][0] + l1 * s->pan_gain[1][0];
                 rr = r0 * s->pan_gain[0][1] + r1 * s->pan_gain[1][1];
             }
-            out[n * 2]     = clip16(ll * s->wet + inl * (1.0f - s->wet));
-            out[n * 2 + 1] = clip16(rr * s->wet + inr * (1.0f - s->wet));
+            float dry = s->monitor ? (1.0f - s->wet) : 0.0f;
+            out[n * 2]     = clip16(ll * s->wet + inl * dry);
+            out[n * 2 + 1] = clip16(rr * s->wet + inr * dry);
 
             s->play_pos += 1.0;
             if (s->play_pos >= (double)s->loop_len) s->play_pos = 0.0;
@@ -1040,6 +1048,10 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
     } else if (!strcmp(key, "pan_r")) {
         s->pan_r = clampi(atoi(val), 0, 100);
         update_pan_gains(s);
+    } else if (!strcmp(key, "monitor")) {
+        s->monitor = atoi(val) ? 1 : 0;
+    } else if (!strcmp(key, "hw_input")) {
+        s->hw_input = atoi(val) ? 1 : 0; /* set once by the gen wrapper */
     } else if (!strcmp(key, "transport")) {
         s->follow_transport = atoi(val) ? 0 : 1; /* 0 Follow, 1 Free */
         if (!s->follow_transport) s->transport_paused = 0;
@@ -1148,6 +1160,10 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
     }
     if (!strcmp(key, "channel_mode"))
         return snprintf(buf, (size_t)buf_len, "%d", s->chan_mode);
+    if (!strcmp(key, "monitor"))
+        return snprintf(buf, (size_t)buf_len, "%d", s->monitor);
+    if (!strcmp(key, "hw_input"))
+        return snprintf(buf, (size_t)buf_len, "%d", s->hw_input);
     if (!strcmp(key, "pan_l"))
         return snprintf(buf, (size_t)buf_len, "%d", s->pan_l);
     if (!strcmp(key, "pan_r"))

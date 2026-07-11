@@ -14,9 +14,11 @@
  *                         the seeded roll). Tap to assign to the selected
  *                         slice; re-tap the same effect to lock it as-is.
  *   Bottom row (68-75)    68 Capture / 69 Arm / 70 A-B / 71 Re-Roll /
- *                         72 Clear / 74 Stereo-DualMono toggle / 75 lane
- *                         select (dual mono: tap = edit L or R lane; HOLD
- *                         + knob 1/2 = Pan L / Pan R); hardware Capture
+ *                         72 Clear / 73 Monitor (input monitoring on/off,
+ *                         doubles as the feedback-guard override) /
+ *                         74 Stereo-DualMono toggle / 75 lane select
+ *                         (dual mono: tap = edit L or R lane; HOLD +
+ *                         knob 1/2 = Pan L / Pan R); hardware Capture
  *                         button = retro grab
  *   Knobs 1-8             FX Density, Order, Loop Len, Slice Res,
  *                         Wet, Pitch Range, AB Quantize, Seed
@@ -52,6 +54,7 @@ const PAD_ARM     = 69;
 const PAD_AB      = 70;
 const PAD_REROLL  = 71;
 const PAD_CLEAR   = 72;
+const PAD_MONITOR = 73;   /* input monitoring on/off + feedback-guard override */
 const PAD_MODE    = 74;   /* Stereo <-> Dual Mono */
 const PAD_LANE    = 75;   /* dual mono: tap = lane L/R; hold + knob1/2 = pans */
 
@@ -149,6 +152,41 @@ let panL = 0, panR = 100;
 let lanePadHeld = false;
 let laneHoldUsed = false; /* a pan knob moved during the hold */
 
+/* Feedback guard: the host's slot guard never sees overtake modules, so we
+ * mirror it here — speakers on + no line-in cable = the internal mic would
+ * feed the speakers. Mute the DSP's input monitoring (ring keeps recording,
+ * loop playback stays audible) until it's safe or the user overrides. */
+let monitorOn = true;
+let guardMuted = false;   /* we muted because of risk */
+let guardOverride = false; /* user forced monitoring on during risk */
+
+function feedbackRisk() {
+    if (typeof host_speaker_active !== 'function') return false;
+    if (typeof host_line_in_connected !== 'function') return false;
+    return host_speaker_active() && !host_line_in_connected();
+}
+
+function setMonitor(on) {
+    monitorOn = on;
+    host_module_set_param('monitor', on ? '1' : '0');
+    paintTransport(false);
+    needsRedraw = true;
+}
+
+function reconcileFeedbackGuard() {
+    const risk = feedbackRisk();
+    if (risk && monitorOn && !guardOverride) {
+        guardMuted = true;
+        setMonitor(false);
+        announce('Feedback risk. Input muted. Monitor pad to override, or plug in headphones.');
+    } else if (!risk && guardMuted) {
+        guardMuted = false;
+        guardOverride = false;
+        setMonitor(true);
+        announce('Monitoring restored');
+    }
+}
+
 function gp(key) {
     const v = host_module_get_param(key);
     return (v === null || v === undefined) ? null : String(v);
@@ -169,6 +207,7 @@ function fetchAll() {
     chanMode = parseInt(gp('channel_mode') || '0');
     panL = parseInt(gp('pan_l') || '0');
     panR = parseInt(gp('pan_r') || '100');
+    monitorOn = (gp('monitor') || '1') !== '0';
     return true;
 }
 
@@ -231,7 +270,7 @@ function paintTransport(force) {
     setLED(PAD_AB, state === 3 ? (ab ? White : LightGrey) : Black, force);
     setLED(PAD_REROLL, Blue, force);
     setLED(PAD_CLEAR, state === 3 ? OrangeRed : Black, force);
-    setLED(73, Black, force);
+    setLED(PAD_MONITOR, monitorOn ? Green : BrightRed, force);
     setLED(PAD_MODE, chanMode ? White : 0x10, force);
     setLED(PAD_LANE, chanMode ? (editLane ? OrangeRed : Cyan) : Black, force);
 }
@@ -338,6 +377,7 @@ globalThis.init = function() {
         let spoken = 'Oversmack, ' + STATE_SPEECH[state];
         if (state === 3) spoken += ab ? ', side B' : ', side A';
         announceView(spoken);
+        reconcileFeedbackGuard();
     }
 };
 
@@ -347,6 +387,7 @@ globalThis.onResume = function() {
     paintAll(true);
     needsRedraw = true;
     announceView('Oversmack');
+    reconcileFeedbackGuard();
 };
 
 globalThis.tick = function() {
@@ -358,11 +399,16 @@ globalThis.tick = function() {
             paintAll(true);
             needsRedraw = true;
             announceView('Oversmack, ' + STATE_SPEECH[state]);
+            reconcileFeedbackGuard();
         } else if (needsRedraw) {
             drawUI();
         }
         return;
     }
+
+    /* jack state can change mid-session (headphones unplugged) — re-check
+     * the feedback guard about twice a second */
+    if (tickCount % 15 === 0) reconcileFeedbackGuard();
 
     /* playhead chase: cheap single get_param per tick */
     if (state === 3) {
@@ -454,6 +500,24 @@ globalThis.onMidiMessageInternal = function(data) {
             paintTransport(false);
             paintSteps(false);
             refreshSoon();
+            return;
+        }
+        if (d1 === PAD_MONITOR) {
+            if (monitorOn) {
+                guardMuted = false;
+                guardOverride = false;
+                setMonitor(false);
+                announce('Input muted');
+            } else {
+                guardMuted = false;
+                if (feedbackRisk()) {
+                    guardOverride = true;
+                    announce('Monitoring on. Feedback risk!');
+                } else {
+                    announce('Monitoring on');
+                }
+                setMonitor(true);
+            }
             return;
         }
         if (d1 === PAD_MODE) {
