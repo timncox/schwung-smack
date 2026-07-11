@@ -141,10 +141,10 @@ int main(void) {
     smack_get_param(S, "seed", buf, sizeof(buf));
     assert(atoi(buf) == 4242);
     smack_get_param(S, "pattern", p1, sizeof(p1));
-    smack_set_param(S, "reroll", "0");     /* change 1->0 fires */
+    smack_set_param(S, "reroll", "trigger"); /* host trigger-enum string */
     smack_get_param(S, "seed", buf, sizeof(buf));
-    assert(atoi(buf) >= 1 && atoi(buf) <= 9999); /* stays dialable */
-    smack_set_param(S, "seed", "4242");
+    assert(atoi(buf) == 4242);             /* reroll never mutates the seed */
+    smack_set_param(S, "seed", "4242");    /* re-dial resets the nonce */
     smack_get_param(S, "pattern", p2, sizeof(p2));
     assert(strcmp(p1, p2) == 0);           /* seed 4242 reproduces exactly */
 
@@ -162,13 +162,16 @@ int main(void) {
     assert(gp("run_state") == '0');
     smack_set_param(S, "arm", "1");
     assert(gp("run_state") == '1');            /* ARMED */
-    smack_set_param(S, "arm", "1");        /* same value: no refire, harmless */
+    smack_set_param(S, "arm", "1");        /* repeat fire: harmless while ARMED */
+    smack_set_param(S, "arm", "0");        /* zero is always a no-op */
     run_blocks(60, NULL);                  /* > 6 ticks: spans a step boundary */
     assert(gp("run_state") == '2' || gp("run_state") == '3');
     run_blocks(1400, out);                 /* > 1 bar: recording must finish */
     assert(gp("run_state") == '3');
     assert(energy(out) > 0);
-    smack_set_param(S, "clear", "0");      /* toggle 1->0 fires clear again */
+    smack_set_param(S, "clear", "0");      /* zero must NOT clear */
+    assert(gp("run_state") == '3');
+    smack_set_param(S, "clear", "trigger"); /* host trigger string fires */
     assert(gp("run_state") == '0');
 
     printf("host_sim: all assertions passed\n");

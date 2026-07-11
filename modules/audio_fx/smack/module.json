@@ -2,7 +2,7 @@
   "id": "smack",
   "name": "Smack",
   "abbrev": "SMK",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Quantized live-loop capture with probabilistic per-slice glitch FX and slice reordering",
   "dsp": "smack.so",
   "ui_chain": "ui_chain.js",
@@ -89,18 +89,22 @@
             {
               "key": "capture",
               "name": "Capture Now",
-              "type": "int",
+              "type": "enum",
               "default": 0,
-              "min": 0,
-              "max": 1
+              "options": [
+                "idle",
+                "trigger"
+              ]
             },
             {
               "key": "arm",
               "name": "Arm Record",
-              "type": "int",
+              "type": "enum",
               "default": 0,
-              "min": 0,
-              "max": 1
+              "options": [
+                "idle",
+                "trigger"
+              ]
             },
             {
               "key": "ab",
@@ -115,18 +119,22 @@
             {
               "key": "reroll",
               "name": "Re-Roll",
-              "type": "int",
+              "type": "enum",
               "default": 0,
-              "min": 0,
-              "max": 1
+              "options": [
+                "idle",
+                "trigger"
+              ]
             },
             {
               "key": "clear",
               "name": "Clear Loop",
-              "type": "int",
+              "type": "enum",
               "default": 0,
-              "min": 0,
-              "max": 1
+              "options": [
+                "idle",
+                "trigger"
+              ]
             }
           ],
           "knobs": [

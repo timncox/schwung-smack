@@ -130,7 +130,7 @@ struct smack {
     uint32_t seed;
     int   follow_transport;      /* 1 = Move stop pauses the loop (default) */
     int   transport_paused;      /* loop exists but transport is stopped */
-    uint8_t last_trig[4];        /* change detection: capture, arm, reroll, clear */
+    uint32_t roll_nonce;         /* advanced by reroll; 0 = canonical seed pattern */
 
     /* FILTER effect runtime */
     smack_bq_t fltL, fltR;
@@ -206,7 +206,8 @@ static void roll_pattern(smack_t *s) {
     s->n_slices = n;
     s->slice_frames = (s->loop_len > 0) ? (double)s->loop_len / (double)n : 0.0;
 
-    s->rng = s->seed ? s->seed : 0xC0FFEE01u;
+    s->rng = s->seed ^ (s->roll_nonce * 2654435761u);
+    if (!s->rng) s->rng = 0xC0FFEE01u;
 
     for (int i = 0; i < n; i++) s->order[i] = (uint16_t)i;
     for (int i = 0; i < n; i++) {
@@ -329,19 +330,15 @@ smack_t *smack_create(const host_api_v1_t *host) {
     s->flt_slice = -1;
     s->vow_slice = -1;
     s->dly_slice = -1;
-    memset(s->last_trig, 0xFF, sizeof(s->last_trig));
     return s;
 }
 
-/* Trigger params ride enum knobs whose engine caches its own position, so a
- * knob parked on "Grab" never re-sends the same value. Fire on the FIRST
- * non-zero value, then on EVERY change — wiggling the knob back and forth
- * fires each detent, and autosave restores (a single value at load) don't. */
-static int trig_fired(smack_t *s, int idx, const char *val) {
-    int v = atoi(val) ? 1 : 0;
-    int fired = (s->last_trig[idx] == 0xFF) ? v : (v != s->last_trig[idx]);
-    s->last_trig[idx] = (uint8_t)v;
-    return fired;
+/* Trigger params fire on any ACTIVE value: chain-UI pads send "1" (every
+ * press fires), and the hierarchy trigger-enum knobs send the literal string
+ * "trigger" (shadow_ui fires one per detent gesture). "0"/"idle" are always
+ * no-ops — that is all autosave restores and UI init ever send. */
+static int trig_active(const char *val) {
+    return atoi(val) != 0 || strcmp(val, "trigger") == 0;
 }
 
 static int json_int(const char *js, const char *key, int def) {
@@ -756,28 +753,31 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         /* Seed is the pattern's ID: dialing it browses patterns directly,
          * and returning to a number restores that exact pattern. */
         s->seed = (uint32_t)strtoul(val, NULL, 10);
+        s->roll_nonce = 0;
         if (s->state == SMACK_LOOPING) roll_pattern(s);
     } else if (!strcmp(key, "reroll")) {
-        if (trig_fired(s, 2, val)) {
-            /* keep the seed in the knob's displayable 1..9999 range so
-             * re-rolled patterns stay dialable/reproducible by number */
-            s->seed = (s->seed * 1664525u + 1013904223u) % 9999u + 1u;
+        if (trig_active(val)) {
+            /* advance the hidden nonce, never the seed: the shadow UI's knob
+             * cache reads a param once per touch, so core-side seed mutation
+             * makes the next Seed-knob edit jump from a stale baseline */
+            s->roll_nonce = s->roll_nonce * 1664525u + 1013904223u;
+            if (!s->roll_nonce) s->roll_nonce = 1;
             if (s->state == SMACK_LOOPING) roll_pattern(s);
         }
     } else if (!strcmp(key, "capture")) {
-        if (trig_fired(s, 0, val)) {
+        if (trig_active(val)) {
             capture_retro(s);
             s->transport_paused = 0; /* manual grab plays even when stopped */
         }
     } else if (!strcmp(key, "arm")) {
-        if (trig_fired(s, 1, val) &&
+        if (trig_active(val) &&
             (s->state == SMACK_IDLE || s->state == SMACK_LOOPING)) {
             s->state = SMACK_ARMED;
             s->transport_paused = 0;
             s->arm_start_flag = !s->clock_running; /* free-run: start next block */
         }
     } else if (!strcmp(key, "clear")) {
-        if (trig_fired(s, 3, val)) {
+        if (trig_active(val)) {
             s->state = SMACK_IDLE;
             s->ab_pending = -1;
             s->transport_paused = 0;
@@ -797,6 +797,7 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         s->ab            = json_int(val, "ab", s->ab) ? 1 : 0;
         s->quantize_mode = clampi(json_int(val, "quantize", s->quantize_mode), 0, 2);
         s->seed          = (uint32_t)json_int(val, "seed", (int)s->seed);
+        s->roll_nonce    = (uint32_t)json_int(val, "nonce", 0);
         s->follow_transport = json_int(val, "transport", s->follow_transport ? 0 : 1) ? 0 : 1;
         memset(s->fx_locked, 0, sizeof(s->fx_locked));
         const char *lk = strstr(val, "\"locks\":\"");
@@ -862,11 +863,11 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
         int n = snprintf(buf, (size_t)buf_len,
             "{\"loop_len\":%d,\"slice_res\":%d,\"fx_density\":%d,"
             "\"order_density\":%d,\"pitch_range\":%d,\"wet\":%d,\"ab\":%d,"
-            "\"quantize\":%d,\"seed\":%u,\"transport\":%d,\"locks\":\"",
+            "\"quantize\":%d,\"seed\":%u,\"nonce\":%u,\"transport\":%d,\"locks\":\"",
             s->loop_len_idx, s->slice_res_idx, (int)(s->fx_density * 100.0f),
             (int)(s->order_density * 100.0f), s->pitch_range,
             (int)(s->wet * 100.0f), s->ab, s->quantize_mode, s->seed,
-            s->follow_transport ? 0 : 1);
+            s->roll_nonce, s->follow_transport ? 0 : 1);
         if (n < 0 || n >= buf_len - 3) return -1;
         int first = 1;
         for (int i = 0; i < SMACK_MAX_SLICES && n < buf_len - 12; i++) {
