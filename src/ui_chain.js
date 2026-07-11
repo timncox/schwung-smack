@@ -63,7 +63,11 @@ const FX_COLORS = [
     YellowGreen, /* FILTER    — sweep family */
     Green,       /* VOWEL */
     OrangeRed,   /* TONALDELAY — buzz/delay family */
-    White        /* FREEZE */
+    White,       /* FREEZE */
+    Cyan,        /* DELAY */
+    BrightRed,   /* DIST */
+    Purple,      /* PHASER */
+    LightGrey    /* VERB */
 ];
 
 const STATE_NAMES = ['IDLE', 'ARMED', 'REC', 'LOOP'];

@@ -90,6 +90,11 @@ static const float vowel_gain[3] = { 1.0f, 0.7f, 0.45f };
 
 #define SMACK_DLY_LEN 8192  /* tonal-delay line, frames */
 
+/* VERB: comb lengths tuned short for slice-length bursts, plus one allpass */
+static const int verb_comb_len[4] = { 673, 713, 766, 813 };
+#define VERB_AP_LEN 225
+#define VERB_TOTAL (673 + 713 + 766 + 813 + VERB_AP_LEN)
+
 struct smack {
     const host_api_v1_t *host;
 
@@ -142,10 +147,18 @@ struct smack {
     int vow_slice;
     int vow_counter;
 
-    /* TONALDELAY runtime: swept feedback delay line */
+    /* TONALDELAY + DELAY runtime: shared feedback delay line */
     float   *dly;                /* SMACK_DLY_LEN * 2 floats, interleaved */
     uint32_t dly_w;
     int      dly_slice;
+
+    /* PHASER runtime: 4 first-order allpass stages per channel */
+    float ph_x[2][4], ph_y[2][4];
+    int   ph_slice;
+
+    /* VERB runtime: mono Schroeder (4 combs + 1 allpass), gated feed */
+    float   *verb;               /* one block, offsets below */
+    uint32_t vb_ci[4], vb_ai;
 
     /* Pattern */
     int      n_slices;
@@ -243,6 +256,10 @@ static void roll_pattern(smack_t *s) {
             case SMACK_FX_VOWEL:    s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
             case SMACK_FX_TONALDELAY: s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
             case SMACK_FX_FREEZE:   s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_DELAY:    s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_DIST:     s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_PHASER:   s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_VERB:     s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
             default:             s->fxp[i] = 0; break;
             }
         } else {
@@ -314,6 +331,8 @@ smack_t *smack_create(const host_api_v1_t *host) {
     if (!s->ring) { free(s); return NULL; }
     s->dly = calloc((size_t)SMACK_DLY_LEN * 2, sizeof(float));
     if (!s->dly) { free(s->ring); free(s); return NULL; }
+    s->verb = calloc((size_t)VERB_TOTAL, sizeof(float));
+    if (!s->verb) { free(s->dly); free(s->ring); free(s); return NULL; }
     s->host = host;
     s->frames_per_tick = 918.75; /* 120 BPM */
     s->loop_len_idx = 4;         /* 1 bar */
@@ -330,6 +349,7 @@ smack_t *smack_create(const host_api_v1_t *host) {
     s->flt_slice = -1;
     s->vow_slice = -1;
     s->dly_slice = -1;
+    s->ph_slice = -1;
     return s;
 }
 
@@ -350,6 +370,7 @@ static int json_int(const char *js, const char *key, int def) {
 
 void smack_destroy(smack_t *s) {
     if (!s) return;
+    free(s->verb);
     free(s->dly);
     free(s->ring);
     free(s);
@@ -632,20 +653,31 @@ static void render_loop_frame(smack_t *s, float *l, float *r) {
         s->vow_slice = -1;
     }
 
-    if (f == SMACK_FX_TONALDELAY) {
+    if (f == SMACK_FX_TONALDELAY || f == SMACK_FX_DELAY) {
         if (s->dly_slice != oslice) { /* fresh line per slice entry */
             memset(s->dly, 0, (size_t)SMACK_DLY_LEN * 2 * sizeof(float));
             s->dly_w = 0;
             s->dly_slice = oslice;
         }
-        double t = p / sf;
-        const double dmax = 3000.0, dmin = 700.0;
         double d;
-        switch (fp & 3) {
-        case 0:  d = dmax - (dmax - dmin) * t; break;   /* repeats pitch up */
-        case 1:  d = dmin + (dmax - dmin) * t; break;   /* repeats pitch down */
-        case 2:  d = dmin + (dmax - dmin) * 0.5 * (1.0 + sin(6.2831853 * 2.0 * t)); break;
-        default: d = dmax - (dmax - dmin) * (floor(t * 4.0) * 0.25); break; /* stepped */
+        if (f == SMACK_FX_TONALDELAY) {
+            double t = p / sf;
+            const double dmax = 3000.0, dmin = 700.0;
+            switch (fp & 3) {
+            case 0:  d = dmax - (dmax - dmin) * t; break;   /* repeats pitch up */
+            case 1:  d = dmin + (dmax - dmin) * t; break;   /* repeats pitch down */
+            case 2:  d = dmin + (dmax - dmin) * 0.5 * (1.0 + sin(6.2831853 * 2.0 * t)); break;
+            default: d = dmax - (dmax - dmin) * (floor(t * 4.0) * 0.25); break; /* stepped */
+            }
+        } else { /* DELAY: fixed tempo-synced echo time */
+            double step = frames_per_halfstep(s) * 2.0;
+            switch (fp & 3) {
+            case 1:  d = step * 2.0; break;                 /* 8th */
+            case 2:  d = step * 1.5; break;                 /* dotted 16th */
+            default: d = step; break;                       /* 16th; 3 = pingpong */
+            }
+            if (d > (double)(SMACK_DLY_LEN - 2)) d = (double)(SMACK_DLY_LEN - 2);
+            if (d < 64.0) d = 64.0;
         }
         double rpos = (double)s->dly_w - d;
         while (rpos < 0.0) rpos += (double)SMACK_DLY_LEN;
@@ -654,13 +686,102 @@ static void render_loop_frame(smack_t *s, float *l, float *r) {
         float fr2 = (float)(rpos - floor(rpos));
         float dl = s->dly[i0 * 2]     + fr2 * (s->dly[i1 * 2]     - s->dly[i0 * 2]);
         float dr = s->dly[i0 * 2 + 1] + fr2 * (s->dly[i1 * 2 + 1] - s->dly[i0 * 2 + 1]);
-        s->dly[s->dly_w * 2]     = *l * 0.55f + dl * 0.5f;
-        s->dly[s->dly_w * 2 + 1] = *r * 0.55f + dr * 0.5f;
+        if (f == SMACK_FX_DELAY && (fp & 3) == 3) {
+            s->dly[s->dly_w * 2]     = *l * 0.5f + dr * 0.45f; /* ping-pong */
+            s->dly[s->dly_w * 2 + 1] = *r * 0.5f + dl * 0.45f;
+        } else {
+            s->dly[s->dly_w * 2]     = *l * 0.55f + dl * 0.5f;
+            s->dly[s->dly_w * 2 + 1] = *r * 0.55f + dr * 0.5f;
+        }
         s->dly_w = (s->dly_w + 1) % SMACK_DLY_LEN;
-        *l = *l * 0.6f + dl * 0.85f;
-        *r = *r * 0.6f + dr * 0.85f;
+        float wetg = (f == SMACK_FX_DELAY) ? 0.75f : 0.85f;
+        *l = *l * 0.6f + dl * wetg;
+        *r = *r * 0.6f + dr * wetg;
     } else {
         s->dly_slice = -1;
+    }
+
+    if (f == SMACK_FX_DIST) {
+        float drive = 2.5f + (float)(fp & 3);
+        for (int ch = 0; ch < 2; ch++) {
+            float x = (ch ? *r : *l) / 32768.0f * drive;
+            switch (fp & 3) {
+            case 0: /* soft cubic clip */
+                if (x > 1.0f) x = 1.0f; else if (x < -1.0f) x = -1.0f;
+                x = 1.5f * x - 0.5f * x * x * x;
+                break;
+            case 1: /* hard clip */
+                if (x > 0.7f) x = 0.7f; else if (x < -0.7f) x = -0.7f;
+                x *= 1.4f;
+                break;
+            case 2: /* foldback */
+                while (x > 1.0f || x < -1.0f) {
+                    if (x > 1.0f) x = 2.0f - x;
+                    if (x < -1.0f) x = -2.0f - x;
+                }
+                break;
+            default: /* gnash: coarse quantize + clip */
+                x = floorf(x * 6.0f) / 6.0f;
+                if (x > 0.9f) x = 0.9f; else if (x < -0.9f) x = -0.9f;
+                break;
+            }
+            if (ch) *r = x * 24000.0f; else *l = x * 24000.0f;
+        }
+    }
+
+    if (f == SMACK_FX_PHASER) {
+        if (s->ph_slice != oslice) {
+            memset(s->ph_x, 0, sizeof(s->ph_x));
+            memset(s->ph_y, 0, sizeof(s->ph_y));
+            s->ph_slice = oslice;
+        }
+        double t = p / sf;
+        float gph;
+        switch (fp & 3) {
+        case 0:  gph = 0.15f + 0.7f * (float)t; break;      /* sweep up */
+        case 1:  gph = 0.85f - 0.7f * (float)t; break;      /* sweep down */
+        case 2:  gph = 0.5f + 0.35f * sinf((float)(6.2831853 * 2.0 * t)); break;
+        default: gph = 0.5f + 0.35f * sinf((float)(6.2831853 * 6.0 * t)); break;
+        }
+        for (int ch = 0; ch < 2; ch++) {
+            float x = (ch ? *r : *l);
+            float v = x;
+            for (int st = 0; st < 4; st++) {
+                float yn = -gph * v + s->ph_x[ch][st] + gph * s->ph_y[ch][st];
+                s->ph_x[ch][st] = v;
+                s->ph_y[ch][st] = yn;
+                v = yn;
+            }
+            if (ch) *r = 0.5f * (x + v); else *l = 0.5f * (x + v);
+        }
+    } else {
+        s->ph_slice = -1;
+    }
+
+    if (f == SMACK_FX_VERB) {
+        /* mono Schroeder burst: fed only while this slice plays; the network
+         * keeps ringing between passes and decays on its own */
+        static const int verb_off[4] = { 0, 673, 1386, 2152 };
+        float feed = (*l + *r) * 0.5f * 0.55f;
+        float fb = 0.68f + 0.05f * (float)(fp & 3);
+        float acc = 0.0f;
+        for (int c = 0; c < 4; c++) {
+            float *b = s->verb + verb_off[c];
+            uint32_t i = s->vb_ci[c];
+            float y = b[i];
+            b[i] = feed + y * fb;
+            s->vb_ci[c] = (i + 1u < (uint32_t)verb_comb_len[c]) ? i + 1u : 0u;
+            acc += y;
+        }
+        acc *= 0.25f;
+        float *ap = s->verb + (673 + 713 + 766 + 813);
+        uint32_t j = s->vb_ai;
+        float apy = ap[j];
+        float apout = apy - 0.5f * acc;
+        ap[j] = acc + 0.5f * apy;
+        s->vb_ai = (j + 1u < VERB_AP_LEN) ? j + 1u : 0u;
+        *l = *l * 0.65f + apout * 0.9f;
+        *r = *r * 0.65f + apout * 0.9f;
     }
 
     *l *= g * gl;

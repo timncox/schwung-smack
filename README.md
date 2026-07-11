@@ -17,10 +17,12 @@ hardware use.
   chase; press a step to mute that slice's effect.
 - **A/B**: punch between the clean loop (A) and the pattern (B), quantized
   to slice or loop boundaries.
-- **18 effects**: retrigger, reverse, pitch (±12 st varispeed), half/double
+- **22 effects**: retrigger, reverse, pitch (±12 st varispeed), half/double
   speed, gate, buzz, bitcrush, repeat-after-split, reverse-after-split,
   tape stop, tape start, vinyl scratch, envelope shapes, pan tricks, LP/HP
-  filter sweeps, morphing vowel filter, tonal delay, granular freeze.
+  filter sweeps, morphing vowel filter, tonal delay, granular freeze,
+  tempo-synced delay (incl. ping-pong), distortion (soft/hard/fold/gnash),
+  phaser sweeps, and gated reverb bursts.
 - **Presets**: full settings snapshot via schwung's module-preset system;
   transport follow (Move's stop pauses the loop, play restarts it).
 

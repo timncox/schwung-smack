@@ -45,6 +45,10 @@ typedef enum {
     SMACK_FX_VOWEL,      /* morphing 3-formant vowel filter (fxp pair) */
     SMACK_FX_TONALDELAY, /* feedback delay with swept time = pitched repeats */
     SMACK_FX_FREEZE,     /* granular freeze on the slice head (fxp spray) */
+    SMACK_FX_DELAY,      /* tempo-synced echo (fxp: 16th, 8th, dotted, pingpong) */
+    SMACK_FX_DIST,       /* waveshaper dirt (fxp: soft, hard, fold, gnash) */
+    SMACK_FX_PHASER,     /* 4-stage allpass sweep (fxp: up, down, wobble, fast) */
+    SMACK_FX_VERB,       /* gated Schroeder reverb burst (fxp: size/decay) */
     SMACK_FX_COUNT
 } smack_fx_t;
 
