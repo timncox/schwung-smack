@@ -65,7 +65,13 @@
         "Re-Roll, Clear.",
         "",
         "Play button still",
-        "controls Move."
+        "controls Move.",
+        "",
+        "Loops over 16",
+        "slices:",
+        "turn the jog wheel",
+        "to page through the",
+        "steps."
       ]
     },
     {
@@ -169,6 +175,30 @@
         "plug in headphones",
         "or a line-in cable",
         "to restore it."
+      ]
+    },
+    {
+      "title": "BPM Detect",
+      "lines": [
+        "Shift + Capture",
+        "listens to the last",
+        "8 seconds of input",
+        "and detects its",
+        "tempo (60-180 BPM).",
+        "",
+        "The result becomes",
+        "the free-run tempo,",
+        "so Capture grabs",
+        "true bars of the",
+        "source. Shown as",
+        "@BPM in the title.",
+        "",
+        "MIDI clock always",
+        "wins when running.",
+        "Needs material with",
+        "clear hits; pads",
+        "and drones report",
+        "no tempo."
       ]
     },
     {

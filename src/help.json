@@ -116,7 +116,13 @@
         "HOLD Re-Roll to",
         "clear every pinned",
         "slice and roll a",
-        "fresh pattern."
+        "fresh pattern.",
+        "",
+        "Loops over 16",
+        "slices:",
+        "5th bottom pad steps",
+        "through 16-slice",
+        "pages."
       ]
     },
     {
@@ -190,6 +196,30 @@
         "the Seed knob to",
         "return to the",
         "canonical one."
+      ]
+    },
+    {
+      "title": "BPM Detect",
+      "lines": [
+        "Shift + Capture",
+        "listens to the last",
+        "8 seconds of input",
+        "and detects its",
+        "tempo (60-180 BPM).",
+        "",
+        "The result becomes",
+        "the free-run tempo,",
+        "so Capture grabs",
+        "true bars of the",
+        "source. Shown as",
+        "@BPM in the title.",
+        "",
+        "MIDI clock always",
+        "wins when running.",
+        "Needs material with",
+        "clear hits; pads",
+        "and drones report",
+        "no tempo."
       ]
     },
     {

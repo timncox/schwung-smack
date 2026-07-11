@@ -95,6 +95,14 @@ static const int verb_comb_len[4] = { 673, 713, 766, 813 };
 #define VERB_AP_LEN 225
 #define VERB_TOTAL (673 + 713 + 766 + 813 + VERB_AP_LEN)
 
+/* BPM detection window: 8 s of ring audio, 512-frame envelope hop */
+#define DET_SECONDS 8
+#define DET_HOP 512
+#define DET_BINS ((DET_SECONDS * SMACK_SR) / DET_HOP)      /* 689 */
+#define DET_FRAMES_PER_BLOCK 16384   /* ring frames scanned per audio block */
+#define DET_BPM_MIN 60.0
+#define DET_BPM_MAX 180.0
+
 /* One playback lane: a slice pattern plus every per-effect runtime that
  * must not be shared between simultaneously rendering voices. Stereo mode
  * uses lane[0] alone; dual-mono mode renders lane[0] from the left input
@@ -176,6 +184,20 @@ struct smack {
     int   hw_input;              /* 1 = this instance reads the hardware input
                                     (gen/oversmack builds); chain UI keys the
                                     feedback guard off this */
+
+    /* BPM detection: onset-strength envelope over the last DET_SECONDS of
+     * ring audio, autocorrelated across 60-180 BPM. Runs incrementally on
+     * the audio thread (DET_FRAMES_PER_BLOCK ring frames per block) so the
+     * render path never stalls. */
+    int      det_active;         /* scanning in progress */
+    uint32_t det_pos;            /* frames consumed so far */
+    uint32_t det_total;          /* frames to consume */
+    uint32_t det_start;          /* ring index of window start */
+    float    det_env[DET_BINS];  /* energy envelope, DET_HOP frames per bin */
+    float    det_acc;            /* accumulator for the current bin */
+    uint32_t det_acc_n;
+    float    det_bpm;            /* last result; 0 = none */
+    float    bpm_override;       /* free-run tempo override; 0 = project tempo */
     uint32_t roll_nonce;         /* advanced by reroll; 0 = canonical seed pattern */
 
     /* Dual-mono: L/R inputs as independent mono lanes, each panned back
@@ -210,9 +232,11 @@ static inline int rnd_below(uint32_t *st, int n) { return (int)(xs32(st) % (uint
 /* ------------------------------------------------------------------ */
 
 static double frames_per_tick_now(smack_t *s) {
-    if (s->clock_seen) return s->frames_per_tick;
+    if (s->clock_seen) return s->frames_per_tick;   /* real clock always wins */
     float bpm = 120.0f;
-    if (s->host && s->host->get_bpm) {
+    if (s->bpm_override > 0.0f) {
+        bpm = s->bpm_override;                      /* detected tempo */
+    } else if (s->host && s->host->get_bpm) {
         float b = s->host->get_bpm();
         if (b >= 20.0f && b <= 999.0f) bpm = b;
     }
@@ -872,8 +896,126 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, float *l, float *r
     }
 }
 
+/* ------------------------------------------------------------------ */
+/*  BPM detection                                                      */
+/* ------------------------------------------------------------------ */
+
+static void det_begin(smack_t *s) {
+    uint64_t avail = s->written_total;
+    if (avail > (uint64_t)(DET_SECONDS * SMACK_SR)) avail = DET_SECONDS * SMACK_SR;
+    if (avail < (uint64_t)(2 * SMACK_SR)) { /* need >= 2 s of material */
+        s->det_bpm = 0.0f;
+        s->det_active = 0;
+        return;
+    }
+    s->det_total = (uint32_t)avail - ((uint32_t)avail % DET_HOP);
+    s->det_start = (s->ring_w + SMACK_RING_FRAMES - s->det_total) % SMACK_RING_FRAMES;
+    s->det_pos = 0;
+    s->det_acc = 0.0f;
+    s->det_acc_n = 0;
+    memset(s->det_env, 0, sizeof(s->det_env));
+    s->det_active = 1;
+}
+
+/* Envelope built — onset strength + autocorrelation + octave bias. */
+static void det_finish(smack_t *s) {
+    int bins = (int)(s->det_total / DET_HOP);
+    if (bins > DET_BINS) bins = DET_BINS;
+    const double bin_hz = (double)SMACK_SR / (double)DET_HOP;
+
+    /* half-wave rectified envelope difference = onset strength */
+    float onset[DET_BINS];
+    float total = 0.0f;
+    onset[0] = 0.0f;
+    for (int k = 1; k < bins; k++) {
+        float d = s->det_env[k] - s->det_env[k - 1];
+        onset[k] = d > 0.0f ? d : 0.0f;
+        total += onset[k];
+    }
+    if (total <= 0.0f) { s->det_bpm = 0.0f; return; }
+    float mean = total / (float)(bins - 1);
+    for (int k = 0; k < bins; k++) {            /* remove DC so silence */
+        onset[k] -= mean;                       /* between hits counts */
+    }
+
+    int lag_min = (int)(60.0 / DET_BPM_MAX * bin_hz);        /* 180 BPM */
+    int lag_max = (int)(60.0 / DET_BPM_MIN * bin_hz) + 1;    /* 60 BPM  */
+    if (lag_max >= bins / 2) lag_max = bins / 2 - 1;
+    if (lag_min < 2 || lag_max <= lag_min) { s->det_bpm = 0.0f; return; }
+
+    float best_r = 0.0f, mean_abs = 0.0f;
+    int best_lag = 0;
+    float r_at[DET_BINS / 2];
+    for (int lag = lag_min; lag <= lag_max; lag++) {
+        float r = 0.0f;
+        for (int k = lag; k < bins; k++) r += onset[k] * onset[k - lag];
+        r_at[lag] = r;
+        mean_abs += r < 0.0f ? -r : r;
+        if (r > best_r) { best_r = r; best_lag = lag; }
+    }
+    mean_abs /= (float)(lag_max - lag_min + 1);
+    /* confidence gate: aperiodic material (pads, drones, silence) makes a
+     * flat autocorrelation — report "none" instead of a random number */
+    if (best_lag == 0 || best_r <= 0.0f || best_r < 2.0f * mean_abs) {
+        s->det_bpm = 0.0f;
+        return;
+    }
+
+    /* parabolic refinement around the peak */
+    double lag_f = (double)best_lag;
+    if (best_lag > lag_min && best_lag < lag_max) {
+        double a = r_at[best_lag - 1], b = r_at[best_lag], c = r_at[best_lag + 1];
+        double den = a - 2.0 * b + c;
+        if (den < -1e-9) lag_f += 0.5 * (a - c) / den;
+    }
+    double bpm = 60.0 * bin_hz / lag_f;
+
+    /* octave disambiguation: prefer the candidate nearest the project
+     * tempo (log distance) — busy material loves half/double answers */
+    double ref = 120.0;
+    if (s->host && s->host->get_bpm) {
+        float b = s->host->get_bpm();
+        if (b >= 20.0f && b <= 999.0f) ref = (double)b;
+    }
+    double cand[3] = { bpm, bpm * 2.0, bpm * 0.5 };
+    double best_c = bpm, best_d = 1e9;
+    for (int i = 0; i < 3; i++) {
+        if (cand[i] < 50.0 || cand[i] > 200.0) continue;
+        double d = fabs(log(cand[i] / ref));
+        if (d < best_d) { best_d = d; best_c = cand[i]; }
+    }
+    s->det_bpm = (float)best_c;
+    s->bpm_override = (float)best_c;   /* auto-apply for free-run capture */
+}
+
+/* Consume up to DET_FRAMES_PER_BLOCK ring frames into the envelope. */
+static void det_step(smack_t *s) {
+    if (!s->det_active) return;
+    uint32_t budget = DET_FRAMES_PER_BLOCK;
+    while (budget > 0 && s->det_pos < s->det_total) {
+        uint32_t idx = (s->det_start + s->det_pos) % SMACK_RING_FRAMES;
+        float l = (float)s->ring[idx * 2];
+        float r = (float)s->ring[idx * 2 + 1];
+        s->det_acc += (l < 0 ? -l : l) + (r < 0 ? -r : r);
+        if (++s->det_acc_n == DET_HOP) {
+            uint32_t bin = s->det_pos / DET_HOP;
+            if (bin < DET_BINS) s->det_env[bin] = s->det_acc;
+            s->det_acc = 0.0f;
+            s->det_acc_n = 0;
+        }
+        s->det_pos++;
+        budget--;
+    }
+    if (s->det_pos >= s->det_total) {
+        s->det_active = 0;
+        det_finish(s);
+    }
+}
+
 void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
     if (!s) return;
+
+    det_step(s);   /* incremental BPM analysis; no-op unless scanning */
 
     if (s->state == SMACK_ARMED && s->arm_start_flag) {
         s->arm_start_flag = 0;
@@ -1077,6 +1219,11 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         parse_locks(&s->lane[0], strstr(val, "\"locks\":\""), 9);
         parse_locks(&s->lane[1], strstr(val, "\"locks_r\":\""), 11);
         if (s->state == SMACK_LOOPING) roll_pattern(s);
+    } else if (!strcmp(key, "detect_bpm")) {
+        if (trig_active(val) && !s->det_active) det_begin(s);
+    } else if (!strcmp(key, "bpm_override")) {
+        float b = (float)atof(val);
+        s->bpm_override = (b >= 50.0f && b <= 200.0f) ? b : 0.0f;
     } else if (!strcmp(key, "unlock_all")) {
         /* escape hatch: drop every pin on both lanes and roll fresh */
         if (trig_active(val)) {
@@ -1179,6 +1326,15 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
         return snprintf(buf, (size_t)buf_len, "%d", s->monitor);
     if (!strcmp(key, "hw_input"))
         return snprintf(buf, (size_t)buf_len, "%d", s->hw_input);
+    if (!strcmp(key, "detected_bpm")) { /* -1 scanning, 0 none, else BPM */
+        if (s->det_active) return snprintf(buf, (size_t)buf_len, "-1");
+        return snprintf(buf, (size_t)buf_len, "%.1f", (double)s->det_bpm);
+    }
+    if (!strcmp(key, "bpm_override"))
+        return snprintf(buf, (size_t)buf_len, "%.1f", (double)s->bpm_override);
+    /* trigger params always read back as 0 (see below) */
+    if (!strcmp(key, "detect_bpm") || !strcmp(key, "unlock_all"))
+        return snprintf(buf, (size_t)buf_len, "0");
     if (!strcmp(key, "pan_l"))
         return snprintf(buf, (size_t)buf_len, "%d", s->pan_l);
     if (!strcmp(key, "pan_r"))

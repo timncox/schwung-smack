@@ -25,7 +25,7 @@
  */
 
 import {
-    MoveKnob1, MoveCapture,
+    MoveKnob1, MoveCapture, MoveShift,
     Black, White, LightGrey, Red, BrightRed, Blue, Green, BrightGreen,
     Cyan, Purple, YellowGreen, OrangeRed
 } from '/data/UserData/schwung/shared/constants.mjs';
@@ -51,6 +51,7 @@ const PAD_CLEAR   = 76;
 const PAD_MODE    = 74;   /* Stereo <-> Dual Mono (same pads as oversmack) */
 const PAD_LANE    = 75;   /* dual mono: tap = lane L/R; hold + knob1/2 = pans */
 const PAD_MONITOR = 73;   /* smack-in only: input monitoring + feedback guard */
+const PAD_PAGE    = 72;   /* next 16-step window (loops > 16 slices) */
 
 /* Step buttons show the first 16 slices */
 const STEP_FIRST = 16;
@@ -118,6 +119,7 @@ let pattern = '';
 let patternR = '';
 let nSlices = 0;
 let playSlice = -1;
+let stepPage = 0;       /* 16-step window into loops with > 16 slices */
 let tickCount = 0;
 let needsRedraw = true;
 
@@ -130,6 +132,10 @@ let laneHoldUsed = false;
 
 /* Hold Re-Roll >= this long: unlock every pinned slice and roll fresh */
 const REROLL_HOLD_MS = 600;
+/* BPM detection: Shift+Capture analyses the last 8 s of input */
+let shiftHeld = false;
+let detecting = false;
+let bpmOverride = 0;
 let rerollHeldAt = 0;
 let rerollHoldFired = false;
 let lockedMask = '';
@@ -145,6 +151,13 @@ let hwInput = false;
 let monitorOn = true;
 let guardMuted = false;
 let guardOverride = false;
+
+function startDetect() {
+    host_module_set_param('detect_bpm', '1');
+    detecting = true;
+    announce('Detecting tempo');
+    needsRedraw = true;
+}
 
 function feedbackRisk() {
     if (typeof host_speaker_active !== 'function') return false;
@@ -196,6 +209,7 @@ function fetchAll() {
     panR = parseInt(gp('pan_r') || '100');
     hwInput = gp('hw_input') === '1';
     monitorOn = (gp('monitor') || '1') !== '0';
+    bpmOverride = parseFloat(gp('bpm_override')) || 0;
 }
 
 /* pattern / lock target of the lane currently being edited */
@@ -209,6 +223,10 @@ function lockKey(i) {
 
 function laneSpeech() {
     return editLane ? 'right lane' : 'left lane';
+}
+
+function stepPages() {
+    return Math.max(1, Math.ceil(nSlices / STEP_COUNT));
 }
 
 function adjustPan(which, delta) {
@@ -265,16 +283,17 @@ function updateTransportLEDs() {
 }
 
 function updateStepLEDs() {
-    const shown = Math.min(nSlices, STEP_COUNT);
+    const base = stepPage * STEP_COUNT;
     const pat = editPattern();
     for (let i = 0; i < STEP_COUNT; i++) {
+        const s = base + i;
         let color = Black;
-        if (state === 3 && i < shown) {
-            const code = pat.charCodeAt(i) - 48;
+        if (state === 3 && s < nSlices) {
+            const code = pat.charCodeAt(s) - 48;
             color = FX_COLORS[(code >= 0 && code < FX_COLORS.length) ? code : 0];
             /* B side shows the pattern; A side shows all-clean */
             if (!ab) color = FX_COLORS[0];
-            if (i === playSlice) color = White;   /* playhead chase */
+            if (s === playSlice) color = White;   /* playhead chase */
         }
         setLED(STEP_FIRST + i, color);
     }
@@ -286,6 +305,8 @@ function drawUI() {
     clear_screen();
     let title = 'SMACK  ' + STATE_NAMES[state];
     if (state === 3) title += ab ? ' · B' : ' · A';
+    if (detecting) title += ' @...';
+    else if (bpmOverride > 0) title += ` @${Math.round(bpmOverride)}`;
     drawHeader(title);
 
     /* two rows of four knob params */
@@ -307,8 +328,10 @@ function drawUI() {
         for (let i = 0; i < msk.length; i++)
             if (msk[i] === '1') pinCount++;
         const lanePfx = chanMode ? (editLane ? 'R ' : 'L ') : '';
-        const pins = pinCount ? `  ${pinCount}pin` : '';
-        print(2, 55, `${lanePfx}${nSlices} slices  ${fxCount} fx${pins}`, 1);
+        const pins = pinCount ? ` ${pinCount}pin` : '';
+        const pages = stepPages();
+        const pg = pages > 1 ? ` p${stepPage + 1}/${pages}` : '';
+        print(2, 55, `${lanePfx}${nSlices}sl ${fxCount}fx${pins}${pg}`, 1);
     }
 
     drawFooter({ left: 'Cap Arm A/B Roll', right: 'Step:mute' });
@@ -334,6 +357,21 @@ function tick() {
 
     /* jack state can change mid-session — re-check the guard ~2x/second */
     if (hwInput && tickCount % 15 === 0) reconcileFeedbackGuard();
+
+    /* poll the async BPM detection result */
+    if (detecting && tickCount % 6 === 0) {
+        const v = parseFloat(gp('detected_bpm') || '-1');
+        if (v >= 0) {
+            detecting = false;
+            if (v > 0) {
+                bpmOverride = v;
+                announce(`Detected ${Math.round(v)} BPM`);
+            } else {
+                announce('No clear tempo found');
+            }
+            needsRedraw = true;
+        }
+    }
 
     /* Re-Roll held long enough: clear every pin and roll fresh */
     if (rerollHeldAt && !rerollHoldFired &&
@@ -368,6 +406,8 @@ function tick() {
          * value lags the pad while a quantized flip is pending */
         if (state !== oldState)
             announce(state === 3 ? `looping, ${nSlices} slices` : STATE_SPEECH[state]);
+        if (state !== 3) stepPage = 0;
+        if (stepPage >= stepPages()) stepPage = stepPages() - 1;
         if (state !== oldState || ab !== oldAb ||
             pattern !== oldPattern || patternR !== oldPatternR) {
             updateTransportLEDs();
@@ -385,8 +425,13 @@ function onMidiMessageInternal(data) {
     const d2 = data[2];
 
     if (status === 0xB0) {
-        /* Capture button mirrors the capture pad */
+        if (d1 === MoveShift) {
+            shiftHeld = d2 >= 64;
+            return;
+        }
+        /* Capture button mirrors the capture pad; Shift+Capture = detect BPM */
         if (d1 === MoveCapture && d2 >= 64) {
+            if (shiftHeld) { startDetect(); return; }
             host_module_set_param('capture', '1');
             announce('Capture');
             refreshSoon();
@@ -431,7 +476,13 @@ function onMidiMessageInternal(data) {
 
     if (status === 0x90 && d2 > 0) {
         /* Transport pads */
-        if (d1 === PAD_CAPTURE) { host_module_set_param('capture', '1'); announce('Capture');  refreshSoon(); return; }
+        if (d1 === PAD_CAPTURE) {
+            if (shiftHeld) { startDetect(); return; }
+            host_module_set_param('capture', '1');
+            announce('Capture');
+            refreshSoon();
+            return;
+        }
         if (d1 === PAD_ARM)     { host_module_set_param('arm', '1');     announce('Arm');      refreshSoon(); return; }
         if (d1 === PAD_REROLL) {
             /* tap: re-roll (pins kept); hold: unlock everything + fresh roll */
@@ -448,6 +499,17 @@ function onMidiMessageInternal(data) {
             host_module_set_param('ab', `${ab}`);
             announce(ab ? 'B, pattern' : 'A, clean loop');
             refreshSoon();
+            return;
+        }
+        if (d1 === PAD_PAGE) {
+            const pages = stepPages();
+            if (state === 3 && pages > 1) {
+                stepPage = (stepPage + 1) % pages;
+                const base = stepPage * STEP_COUNT;
+                announce(`Steps ${base + 1} to ${Math.min(base + STEP_COUNT, nSlices)}`);
+                updateStepLEDs();
+                needsRedraw = true;
+            }
             return;
         }
         if (d1 === PAD_MONITOR) {
@@ -491,7 +553,7 @@ function onMidiMessageInternal(data) {
         /* Step press: mute a slice's effect / restore the seeded one
          * (on the lane being edited, in dual mono) */
         if (d1 >= STEP_FIRST && d1 < STEP_FIRST + STEP_COUNT) {
-            const i = d1 - STEP_FIRST;
+            const i = stepPage * STEP_COUNT + (d1 - STEP_FIRST);
             if (state === 3 && i < nSlices) {
                 const code = editPattern().charCodeAt(i) - 48;
                 const where = chanMode ? `, ${laneSpeech()}` : '';

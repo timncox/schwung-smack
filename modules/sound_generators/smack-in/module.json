@@ -2,7 +2,7 @@
   "id": "smack-in",
   "name": "Smack In",
   "abbrev": "SMKI",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Standalone input-looper version (mic/line/USB-C) of Smack: quantized loop capture with per-slice glitch FX",
   "dsp": "dsp.so",
   "ui_chain": "ui_chain.js",
@@ -133,6 +133,16 @@
             {
               "key": "clear",
               "name": "Clear Loop",
+              "type": "enum",
+              "default": 0,
+              "options": [
+                "idle",
+                "trigger"
+              ]
+            },
+            {
+              "key": "detect_bpm",
+              "name": "Detect BPM",
               "type": "enum",
               "default": 0,
               "options": [

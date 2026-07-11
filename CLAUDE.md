@@ -175,6 +175,24 @@ show slice FX colors + playhead chase, press = mute slice fx, again =
 restore seeded fx (lock_slice_<i>, -1 unlocks). Knobs 1-8 = FX / Order /
 Len / Res / Wet / Pitch / Qnt / Seed.
 
+## BPM detection + step paging (v0.6.0)
+
+- Shift+Capture (pad or hardware button; MoveShift = CC 49) triggers
+  `detect_bpm`: onset-strength envelope (|L|+|R|, 512-frame hop) over the
+  last 8 s of ring, autocorrelated across 60-180 BPM, spread incrementally
+  on the audio thread (16384 ring frames/block, ~21 blocks). Parabolic
+  peak refinement; octave candidates {x, 2x, x/2} biased to host
+  get_bpm() by log distance; confidence gate (peak < 2x mean |r| = "no
+  clear tempo" — pads/drones report 0, sim-tested). Result auto-applies
+  as `bpm_override` (free-run only — real MIDI clock ALWAYS wins in
+  frames_per_tick_now). `detected_bpm` reads -1 scanning / 0 none / BPM.
+  Title shows @BPM. Ableton Link needs no code: Move's tempo follows
+  Link, so get_bpm() and clock-out both track it.
+- Step paging for loops > 16 slices: oversmack = jog wheel (MoveMainKnob
+  CC 14, decodeDelta); chain UI = pad 72 cycles pages. Step press maps
+  through `stepPage*16`; footer/summary show p N/M; page clamps on
+  pattern refresh, resets when the loop ends.
+
 ## Next steps
 
 - On-device: verify chain UI (LED colors on steps, pad consumption,

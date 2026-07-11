@@ -53,6 +53,31 @@ static void run_blocks(int nblocks, int16_t *last_out) {
     run_blocks_lr(nblocks, last_out, 1, 1);
 }
 
+/* Beat-gated saw: 25%-duty bursts at the given BPM (for BPM detection) */
+static void run_blocks_beat(int nblocks, double bpm) {
+    static double phase = 0.0;
+    const double period = 60.0 / bpm * 44100.0;
+    int16_t in[BLK * 2], out[BLK * 2];
+    for (int b = 0; b < nblocks; b++) {
+        while (next_tick <= (double)frames_done) {
+            uint8_t tick = 0xF8;
+            smack_on_midi(S, &tick, 1, 3);
+            next_tick += FPT;
+        }
+        for (int i = 0; i < BLK; i++) {
+            phase += 220.0 / 44100.0;
+            if (phase >= 1.0) phase -= 1.0;
+            double beat_pos = fmod((double)frames_done + i, period);
+            int on = beat_pos < period * 0.25;
+            int16_t v = on ? (int16_t)((phase * 2.0 - 1.0) * 12000.0) : 0;
+            in[i * 2] = v;
+            in[i * 2 + 1] = v;
+        }
+        smack_process(S, in, out, BLK);
+        frames_done += BLK;
+    }
+}
+
 static long energy(const int16_t *buf) {
     long e = 0;
     for (int i = 0; i < BLK * 2; i++) e += labs((long)buf[i]);
@@ -295,6 +320,36 @@ int main(void) {
     smack_set_param(S, "seed", "888");         /* re-dial: canonical roll */
     smack_get_param(S, "pattern", buf, sizeof(buf));
     assert(strcmp(buf, patseed) == 0);         /* seeded pattern restored */
+
+    /* BPM detection: beat-gated input at 120 BPM detects ~120 and applies
+     * it as the free-run override; a steady tone reports none (0) */
+    smack_set_param(S, "clear", "1");
+    run_blocks_beat(3500, 120.0);              /* ~10 s of gated saw */
+    smack_set_param(S, "detect_bpm", "1");
+    {
+        char db[16];
+        int guard = 0;
+        do {
+            run_blocks(5, NULL);
+            smack_get_param(S, "detected_bpm", db, sizeof(db));
+        } while (atof(db) < 0.0 && ++guard < 200);
+        double bpm = atof(db);
+        assert(bpm > 114.0 && bpm < 126.0);
+        smack_get_param(S, "bpm_override", db, sizeof(db));
+        assert(atof(db) > 114.0 && atof(db) < 126.0);
+    }
+    smack_set_param(S, "bpm_override", "0");   /* back to project tempo */
+    run_blocks(3500, NULL);                    /* ~10 s of steady saw */
+    smack_set_param(S, "detect_bpm", "trigger");
+    {
+        char db[16];
+        int guard = 0;
+        do {
+            run_blocks(5, NULL);
+            smack_get_param(S, "detected_bpm", db, sizeof(db));
+        } while (atof(db) < 0.0 && ++guard < 200);
+        assert(atof(db) == 0.0);               /* confidence gate: no beat */
+    }
 
     printf("host_sim: all assertions passed\n");
     smack_destroy(S);
