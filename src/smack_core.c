@@ -30,6 +30,39 @@ static const float retrig_decay[16] = {
     0.2725f, 0.2316f, 0.1969f, 0.1673f, 0.1422f, 0.1209f, 0.1028f, 0.0874f
 };
 
+/* RBJ biquad for the FILTER sweep effect */
+typedef struct {
+    float b0, b1, b2, a1, a2, z1, z2;
+} smack_bq_t;
+
+static void bq_reset(smack_bq_t *q) { q->z1 = q->z2 = 0.0f; }
+
+static inline float bq_run(smack_bq_t *q, float x) {
+    float y = q->b0 * x + q->z1;
+    q->z1 = q->b1 * x - q->a1 * y + q->z2;
+    q->z2 = q->b2 * x - q->a2 * y;
+    return y;
+}
+
+static void bq_set(smack_bq_t *q, float freq, int highpass) {
+    const float Q = 0.9f;
+    float w0 = 6.2831853f * freq / (float)SMACK_SR;
+    float cw = cosf(w0), sw = sinf(w0);
+    float alpha = sw / (2.0f * Q);
+    float inv = 1.0f / (1.0f + alpha);
+    if (highpass) {
+        q->b0 = (1.0f + cw) * 0.5f * inv;
+        q->b1 = -(1.0f + cw) * inv;
+        q->b2 = q->b0;
+    } else {
+        q->b0 = (1.0f - cw) * 0.5f * inv;
+        q->b1 = (1.0f - cw) * inv;
+        q->b2 = q->b0;
+    }
+    q->a1 = -2.0f * cw * inv;
+    q->a2 = (1.0f - alpha) * inv;
+}
+
 struct smack {
     const host_api_v1_t *host;
 
@@ -68,6 +101,14 @@ struct smack {
     int   ab_pending;            /* -1 none, else target value */
     int   quantize_mode;         /* 0 instant, 1 next slice, 2 next loop start */
     uint32_t seed;
+    int   follow_transport;      /* 1 = Move stop pauses the loop (default) */
+    int   transport_paused;      /* loop exists but transport is stopped */
+    uint8_t last_trig[4];        /* change detection: capture, arm, reroll, clear */
+
+    /* FILTER effect runtime */
+    smack_bq_t fltL, fltR;
+    int flt_slice;               /* output slice the filter is tracking, -1 none */
+    int flt_counter;             /* frames until coefficient recompute */
 
     /* Pattern */
     int      n_slices;
@@ -154,6 +195,13 @@ static void roll_pattern(smack_t *s) {
             case SMACK_FX_SPEED: s->fxp[i] = (int8_t)(xs32(&s->rng) & 1); break;
             case SMACK_FX_BUZZ:  s->fxp[i] = (int8_t)(xs32(&s->rng) & 3); break;
             case SMACK_FX_CRUSH: s->fxp[i] = (int8_t)(2 + (xs32(&s->rng) & 6)); break;
+            case SMACK_FX_REPEAT:
+            case SMACK_FX_REVAFTER: s->fxp[i] = (int8_t)(1 + rnd_below(&s->rng, 3)); break;
+            case SMACK_FX_TAPESTOP: s->fxp[i] = (int8_t)(xs32(&s->rng) & 1); break;
+            case SMACK_FX_SCRATCH:  s->fxp[i] = (int8_t)(1 + rnd_below(&s->rng, 3)); break;
+            case SMACK_FX_ENV:      s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_PAN:      s->fxp[i] = (int8_t)rnd_below(&s->rng, 3); break;
+            case SMACK_FX_FILTER:   s->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
             default:             s->fxp[i] = 0; break;
             }
         } else {
@@ -235,7 +283,28 @@ smack_t *smack_create(const host_api_v1_t *host) {
     s->ab_pending = -1;
     s->quantize_mode = 1;        /* next slice */
     s->seed = 0x5EEDu;
+    s->follow_transport = 1;
+    s->flt_slice = -1;
+    memset(s->last_trig, 0xFF, sizeof(s->last_trig));
     return s;
+}
+
+/* Trigger params ride enum knobs whose engine caches its own position, so a
+ * knob parked on "Grab" never re-sends the same value. Fire on the FIRST
+ * non-zero value, then on EVERY change — wiggling the knob back and forth
+ * fires each detent, and autosave restores (a single value at load) don't. */
+static int trig_fired(smack_t *s, int idx, const char *val) {
+    int v = atoi(val) ? 1 : 0;
+    int fired = (s->last_trig[idx] == 0xFF) ? v : (v != s->last_trig[idx]);
+    s->last_trig[idx] = (uint8_t)v;
+    return fired;
+}
+
+static int json_int(const char *js, const char *key, int def) {
+    char pat[40];
+    snprintf(pat, sizeof(pat), "\"%s\":", key);
+    const char *p = strstr(js, pat);
+    return p ? atoi(p + strlen(pat)) : def;
 }
 
 void smack_destroy(smack_t *s) {
@@ -257,8 +326,16 @@ void smack_on_midi(smack_t *s, const uint8_t *msg, int len, int source) {
         s->tick_total = 0;
         s->clock_running = 1;
         s->last_halfstep_global = s->global_frames;
+        if (s->transport_paused) { /* resume the loop from its top */
+            s->transport_paused = 0;
+            s->play_pos = 0.0;
+        }
         break;
-    case 0xFC: s->clock_running = 0; break;
+    case 0xFC:
+        s->clock_running = 0;
+        if (s->follow_transport && s->state == SMACK_LOOPING)
+            s->transport_paused = 1;
+        break;
     case 0xF8: {
         if (s->clock_seen && s->global_frames > s->last_tick_global) {
             double d = (double)(s->global_frames - s->last_tick_global);
@@ -309,15 +386,16 @@ static void render_loop_frame(smack_t *s, float *l, float *r) {
     int oslice = (sf > 0.0) ? (int)(s->play_pos / sf) : 0;
     if (oslice >= s->n_slices) oslice = s->n_slices - 1;
     double p = s->play_pos - (double)oslice * sf;
-    float g = 1.0f;
+    float g = 1.0f, gl = 1.0f, gr = 1.0f;
+    int f = SMACK_FX_NONE, fp = 0;
     double src;
 
     if (!s->ab) {
         src = s->play_pos;                      /* A: clean, original order */
     } else {
         int sslice = s->order[oslice];
-        int f  = s->fx[oslice];
-        int fp = s->fxp[oslice];
+        f  = s->fx[oslice];
+        fp = s->fxp[oslice];
         double rp = p;
         switch (f) {
         case SMACK_FX_RETRIG: {
@@ -352,6 +430,62 @@ static void render_loop_frame(smack_t *s, float *l, float *r) {
             rp = floor(p / hold) * hold;
             break;
         }
+        case SMACK_FX_REPEAT: {
+            /* play the head, then stutter it (Looperator "repeat after X") */
+            static const double frac[4] = { 0.5, 0.5, 0.25, 0.75 };
+            double split = sf * frac[fp & 3];
+            rp = (p < split) ? p : fmod(p - split, split);
+            break;
+        }
+        case SMACK_FX_REVAFTER: {
+            /* forward, then play backwards from the split point */
+            static const double frac[4] = { 0.5, 0.5, 0.6667, 0.75 };
+            double split = sf * frac[fp & 3];
+            if (p < split) rp = p;
+            else {
+                rp = split - (p - split);
+                if (rp < 0.0) rp = 0.0;
+            }
+            break;
+        }
+        case SMACK_FX_TAPESTOP: {
+            /* rate ramps 1 -> 0; position is the integral of the ramp */
+            if (fp) { /* fast: dead by half-slice */
+                rp = (p < sf * 0.5) ? p - p * p / sf : sf * 0.25;
+                if (p >= sf * 0.5) g = 0.0f;
+            } else {
+                rp = p - p * p / (2.0 * sf);
+            }
+            break;
+        }
+        case SMACK_FX_TAPESTART:
+            rp = p * p / (2.0 * sf);            /* spin up from standstill */
+            break;
+        case SMACK_FX_SCRATCH: {
+            double cyc = (double)(fp & 3);
+            double depth = sf / 10.0;
+            rp = p + depth * sin(6.2831853 * cyc * p / sf);
+            break;
+        }
+        case SMACK_FX_ENV:
+            switch (fp & 3) {
+            case 0: g *= (float)(p / sf); break;                 /* fade in */
+            case 1: g *= (float)(1.0 - p / sf); break;           /* fade out */
+            case 2: g *= 0.5f + 0.5f * sinf((float)(6.2831853 * 6.0 * p / sf)); break;
+            case 3: if (p < sf * 0.5) g = 0.0f; break;           /* off-then-on */
+            }
+            break;
+        case SMACK_FX_PAN:
+            switch (fp % 3) {
+            case 0: gr = 0.08f; break;                           /* hard left */
+            case 1: gl = 0.08f; break;                           /* hard right */
+            case 2: {                                            /* ping-pong x4 */
+                int seg = (int)(p * 4.0 / sf);
+                if (seg & 1) gl = 0.08f; else gr = 0.08f;
+                break;
+            }
+            }
+            break;
         default: break;
         }
         if (rp < 0.0) rp = 0.0;
@@ -371,10 +505,38 @@ static void render_loop_frame(smack_t *s, float *l, float *r) {
     if (ltail < SMACK_EDGE_FADE) g *= (float)(ltail / SMACK_EDGE_FADE);
 
     ring_read_lerp(s, src, l, r);
-    *l *= g;
-    *r *= g;
 
-    if (s->fx[oslice] == SMACK_FX_CRUSH && s->ab) {
+    if (f == SMACK_FX_FILTER) {
+        if (s->flt_slice != oslice) { /* fresh sweep on slice entry */
+            bq_reset(&s->fltL);
+            bq_reset(&s->fltR);
+            s->flt_slice = oslice;
+            s->flt_counter = 0;
+        }
+        if (s->flt_counter-- <= 0) {
+            s->flt_counter = 32;
+            float t = (float)(p / sf);
+            float fc;
+            int hp = (fp & 3) >= 2;
+            switch (fp & 3) {
+            case 0:  fc = 6000.0f * powf(200.0f / 6000.0f, t); break; /* LP down */
+            case 1:  fc = 200.0f * powf(6000.0f / 200.0f, t); break;  /* LP up */
+            case 2:  fc = 120.0f * powf(4000.0f / 120.0f, t); break;  /* HP up */
+            default: fc = 4000.0f * powf(120.0f / 4000.0f, t); break; /* HP down */
+            }
+            bq_set(&s->fltL, fc, hp);
+            s->fltR = s->fltL;
+        }
+        *l = bq_run(&s->fltL, *l);
+        *r = bq_run(&s->fltR, *r);
+    } else {
+        s->flt_slice = -1;
+    }
+
+    *l *= g * gl;
+    *r *= g * gr;
+
+    if (f == SMACK_FX_CRUSH) {
         *l = (float)(((int)*l >> 5) << 5);
         *r = (float)(((int)*r >> 5) << 5);
     }
@@ -391,7 +553,7 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
     for (int n = 0; n < frames; n++) {
         float inl = (float)in[n * 2], inr = (float)in[n * 2 + 1];
 
-        if (s->state != SMACK_LOOPING) {
+        if (s->state != SMACK_LOOPING || s->transport_paused) {
             /* record + pass through */
             s->ring[s->ring_w * 2]     = in[n * 2];
             s->ring[s->ring_w * 2 + 1] = in[n * 2 + 1];
@@ -463,25 +625,61 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         s->seed = (uint32_t)strtoul(val, NULL, 10);
         if (s->state == SMACK_LOOPING) roll_pattern(s);
     } else if (!strcmp(key, "reroll")) {
-        /* trigger params fire only on non-zero: UIs and autosave restores
-         * send "0" on init, which must be a no-op */
-        if (atoi(val)) {
+        if (trig_fired(s, 2, val)) {
             s->seed = s->seed * 1664525u + 1013904223u;
             if (s->state == SMACK_LOOPING) roll_pattern(s);
         }
     } else if (!strcmp(key, "capture")) {
-        if (atoi(val)) capture_retro(s);
+        if (trig_fired(s, 0, val)) {
+            capture_retro(s);
+            s->transport_paused = 0; /* manual grab plays even when stopped */
+        }
     } else if (!strcmp(key, "arm")) {
-        if (atoi(val) && (s->state == SMACK_IDLE || s->state == SMACK_LOOPING)) {
+        if (trig_fired(s, 1, val) &&
+            (s->state == SMACK_IDLE || s->state == SMACK_LOOPING)) {
             s->state = SMACK_ARMED;
+            s->transport_paused = 0;
             s->arm_start_flag = !s->clock_running; /* free-run: start next block */
         }
     } else if (!strcmp(key, "clear")) {
-        if (atoi(val)) {
+        if (trig_fired(s, 3, val)) {
             s->state = SMACK_IDLE;
             s->ab_pending = -1;
+            s->transport_paused = 0;
             memset(s->fx_locked, 0, sizeof(s->fx_locked));
         }
+    } else if (!strcmp(key, "transport")) {
+        s->follow_transport = atoi(val) ? 0 : 1; /* 0 Follow, 1 Free */
+        if (!s->follow_transport) s->transport_paused = 0;
+    } else if (!strcmp(key, "state")) {
+        /* preset/autosave restore: settings + slice locks, never audio */
+        s->loop_len_idx  = clampi(json_int(val, "loop_len", s->loop_len_idx), 0, LOOP_LEN_COUNT - 1);
+        s->slice_res_idx = clampi(json_int(val, "slice_res", s->slice_res_idx), 0, SLICE_RES_COUNT - 1);
+        s->fx_density    = (float)clampi(json_int(val, "fx_density", (int)(s->fx_density * 100.0f)), 0, 100) / 100.0f;
+        s->order_density = (float)clampi(json_int(val, "order_density", (int)(s->order_density * 100.0f)), 0, 100) / 100.0f;
+        s->pitch_range   = clampi(json_int(val, "pitch_range", s->pitch_range), 1, 12);
+        s->wet           = (float)clampi(json_int(val, "wet", (int)(s->wet * 100.0f)), 0, 100) / 100.0f;
+        s->ab            = json_int(val, "ab", s->ab) ? 1 : 0;
+        s->quantize_mode = clampi(json_int(val, "quantize", s->quantize_mode), 0, 2);
+        s->seed          = (uint32_t)json_int(val, "seed", (int)s->seed);
+        s->follow_transport = json_int(val, "transport", s->follow_transport ? 0 : 1) ? 0 : 1;
+        memset(s->fx_locked, 0, sizeof(s->fx_locked));
+        const char *lk = strstr(val, "\"locks\":\"");
+        if (lk) {
+            lk += 9;
+            while (*lk && *lk != '"') {
+                char *end;
+                long i = strtol(lk, &end, 10);
+                if (end == lk || *end != ':') break;
+                long f = strtol(end + 1, &end, 10);
+                if (i >= 0 && i < SMACK_MAX_SLICES) {
+                    s->fx_locked[i] = 1;
+                    s->fx[i] = (uint8_t)clampi((int)f, 0, SMACK_FX_COUNT - 1);
+                }
+                if (*end == ',') lk = end + 1; else break;
+            }
+        }
+        if (s->state == SMACK_LOOPING) roll_pattern(s);
     } else if (!strncmp(key, "lock_slice_", 11)) {
         int i = clampi(atoi(key + 11), 0, SMACK_MAX_SLICES - 1);
         int f = atoi(val);
@@ -497,7 +695,7 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
 
 int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
     if (!s || !key || !buf || buf_len < 2) return -1;
-    if (!strcmp(key, "state"))
+    if (!strcmp(key, "run_state")) /* machine state: 0 idle..3 looping */
         return snprintf(buf, (size_t)buf_len, "%d", (int)s->state);
     if (!strcmp(key, "loop_len"))
         return snprintf(buf, (size_t)buf_len, "%d", s->loop_len_idx);
@@ -519,6 +717,30 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
     if (!strcmp(key, "capture") || !strcmp(key, "arm") ||
         !strcmp(key, "reroll") || !strcmp(key, "clear"))
         return snprintf(buf, (size_t)buf_len, "0");
+    if (!strcmp(key, "transport"))
+        return snprintf(buf, (size_t)buf_len, "%d", s->follow_transport ? 0 : 1);
+    if (!strcmp(key, "state")) {
+        /* full settings snapshot — powers slot autosave AND module presets
+         * (save/recall from the shadow UI). Audio is never serialized. */
+        int n = snprintf(buf, (size_t)buf_len,
+            "{\"loop_len\":%d,\"slice_res\":%d,\"fx_density\":%d,"
+            "\"order_density\":%d,\"pitch_range\":%d,\"wet\":%d,\"ab\":%d,"
+            "\"quantize\":%d,\"seed\":%u,\"transport\":%d,\"locks\":\"",
+            s->loop_len_idx, s->slice_res_idx, (int)(s->fx_density * 100.0f),
+            (int)(s->order_density * 100.0f), s->pitch_range,
+            (int)(s->wet * 100.0f), s->ab, s->quantize_mode, s->seed,
+            s->follow_transport ? 0 : 1);
+        if (n < 0 || n >= buf_len - 3) return -1;
+        int first = 1;
+        for (int i = 0; i < SMACK_MAX_SLICES && n < buf_len - 12; i++) {
+            if (!s->fx_locked[i]) continue;
+            n += snprintf(buf + n, (size_t)(buf_len - n), "%s%d:%d",
+                          first ? "" : ",", i, s->fx[i]);
+            first = 0;
+        }
+        n += snprintf(buf + n, (size_t)(buf_len - n), "\"}");
+        return n;
+    }
     if (!strcmp(key, "n_slices"))
         return snprintf(buf, (size_t)buf_len, "%d", s->n_slices);
     if (!strcmp(key, "play_slice")) { /* current output slice, -1 if idle */

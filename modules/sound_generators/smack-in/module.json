@@ -2,7 +2,7 @@
   "id": "smack-in",
   "name": "Smack In",
   "abbrev": "SMKI",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Standalone mic/line-in version of Smack: quantized loop capture with per-slice glitch FX",
   "dsp": "dsp.so",
   "ui_chain": "ui_chain.js",
@@ -24,14 +24,29 @@
               "key": "loop_len",
               "name": "Loop Len",
               "type": "enum",
-              "options": ["1 Step", "2 Steps", "1 Beat", "2 Beats", "1 Bar", "2 Bars", "4 Bars", "8 Bars", "16 Bars"],
+              "options": [
+                "1 Step",
+                "2 Steps",
+                "1 Beat",
+                "2 Beats",
+                "1 Bar",
+                "2 Bars",
+                "4 Bars",
+                "8 Bars",
+                "16 Bars"
+              ],
               "default": 4
             },
             {
               "key": "slice_res",
               "name": "Slice Res",
               "type": "enum",
-              "options": ["1/2 Step", "1 Step", "2 Steps", "4 Steps"],
+              "options": [
+                "1/2 Step",
+                "1 Step",
+                "2 Steps",
+                "4 Steps"
+              ],
               "default": 1
             },
             {
@@ -56,10 +71,21 @@
               "unit": "%",
               "display_format": "%.0f"
             },
-            { "level": "perform", "name": "Perform" },
-            { "level": "setup", "name": "Setup" }
+            {
+              "level": "perform",
+              "name": "Perform"
+            },
+            {
+              "level": "setup",
+              "name": "Setup"
+            }
           ],
-          "knobs": ["loop_len", "slice_res", "fx_density", "order_density"]
+          "knobs": [
+            "loop_len",
+            "slice_res",
+            "fx_density",
+            "order_density"
+          ]
         },
         "perform": {
           "name": "Perform",
@@ -68,39 +94,59 @@
               "key": "capture",
               "name": "Capture Now",
               "type": "enum",
-              "options": ["-", "Grab"],
+              "options": [
+                "-",
+                "Grab"
+              ],
               "default": 0
             },
             {
               "key": "arm",
               "name": "Arm Record",
               "type": "enum",
-              "options": ["-", "Arm"],
+              "options": [
+                "-",
+                "Arm"
+              ],
               "default": 0
             },
             {
               "key": "ab",
               "name": "A/B",
               "type": "enum",
-              "options": ["A Clean", "B Pattern"],
+              "options": [
+                "A Clean",
+                "B Pattern"
+              ],
               "default": 1
             },
             {
               "key": "reroll",
               "name": "Re-Roll",
               "type": "enum",
-              "options": ["-", "Roll"],
+              "options": [
+                "-",
+                "Roll"
+              ],
               "default": 0
             },
             {
               "key": "clear",
               "name": "Clear Loop",
               "type": "enum",
-              "options": ["-", "Clear"],
+              "options": [
+                "-",
+                "Clear"
+              ],
               "default": 0
             }
           ],
-          "knobs": ["capture", "ab", "reroll", "clear"]
+          "knobs": [
+            "capture",
+            "ab",
+            "reroll",
+            "clear"
+          ]
         },
         "setup": {
           "name": "Setup",
@@ -129,7 +175,11 @@
               "key": "quantize",
               "name": "AB Quantize",
               "type": "enum",
-              "options": ["Instant", "Slice", "Loop"],
+              "options": [
+                "Instant",
+                "Slice",
+                "Loop"
+              ],
               "default": 1
             },
             {
@@ -139,9 +189,24 @@
               "min": 1,
               "max": 9999,
               "default": 24301
+            },
+            {
+              "key": "transport",
+              "name": "Transport",
+              "type": "enum",
+              "options": [
+                "Follow",
+                "Free"
+              ],
+              "default": 0
             }
           ],
-          "knobs": ["wet", "pitch_range", "quantize", "seed"]
+          "knobs": [
+            "wet",
+            "pitch_range",
+            "quantize",
+            "seed"
+          ]
         }
       }
     }

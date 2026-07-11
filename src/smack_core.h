@@ -33,6 +33,15 @@ typedef enum {
     SMACK_FX_GATE,       /* 8-segment tremolo chop */
     SMACK_FX_BUZZ,       /* tiny-window repeat frozen at slice head */
     SMACK_FX_CRUSH,      /* sample-hold rate reduce + bit quantize */
+    /* Looperator-inspired additions */
+    SMACK_FX_REPEAT,     /* play head of slice, then stutter it (fxp: 1/2,1/4,3/4) */
+    SMACK_FX_REVAFTER,   /* forward, then backwards from split (fxp: 1/2,2/3,3/4) */
+    SMACK_FX_TAPESTOP,   /* varispeed ramp to zero (fxp 0 full-slice, 1 fast) */
+    SMACK_FX_TAPESTART,  /* turntable spin-up from zero */
+    SMACK_FX_SCRATCH,    /* oscillating playhead, vinyl wobble (fxp cycles) */
+    SMACK_FX_ENV,        /* volume shape: fade-in/out, wobble, half-gate */
+    SMACK_FX_PAN,        /* hard L / hard R / ping-pong within slice */
+    SMACK_FX_FILTER,     /* LP/HP sweep across the slice (fxp direction) */
     SMACK_FX_COUNT
 } smack_fx_t;
 

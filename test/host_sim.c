@@ -76,12 +76,12 @@ int main(void) {
     uint8_t start = 0xFA;
     smack_on_midi(S, &start, 1, 3);
     run_blocks(1400, out);
-    assert(gp("state") == '0');            /* IDLE, passing through */
+    assert(gp("run_state") == '0');            /* IDLE, passing through */
     assert(energy(out) > 0);
 
     /* retro-grab 1 bar (loop_len default idx 4), slice res 1 step */
     smack_set_param(S, "capture", "1");
-    assert(gp("state") == '3');            /* LOOPING */
+    assert(gp("run_state") == '3');            /* LOOPING */
     char buf[64];
     smack_get_param(S, "n_slices", buf, sizeof(buf));
     assert(atoi(buf) == 16);               /* 1 bar / 1 step = 16 slices */
@@ -115,16 +115,47 @@ int main(void) {
     run_blocks(700, out);
     assert(energy(out) > 0);
 
+    /* every effect renders without crashing: lock each fx onto slice 0 */
+    for (int f = 1; f < SMACK_FX_COUNT; f++) {
+        char v[8];
+        snprintf(v, sizeof(v), "%d", f);
+        smack_set_param(S, "lock_slice_0", v);
+        run_blocks(700, out);
+        assert(gp("run_state") == '3');
+    }
+    smack_set_param(S, "lock_slice_0", "-1"); /* unlock */
+
+    /* transport follow: Stop pauses the loop, Start resumes from the top */
+    uint8_t stop = 0xFC;
+    smack_on_midi(S, &stop, 1, 3);
+    run_blocks(5, out);
+    assert(gp("run_state") == '3');            /* loop retained while paused */
+    smack_on_midi(S, &start, 1, 3);
+    run_blocks(700, out);
+    assert(energy(out) > 0);               /* resumed */
+
+    /* state round-trip: snapshot, mutate, restore, verify */
+    char snap[1024], check[64];
+    assert(smack_get_param(S, "state", snap, sizeof(snap)) > 0);
+    smack_set_param(S, "seed", "1111");
+    smack_set_param(S, "fx_density", "10");
+    smack_set_param(S, "state", snap);
+    smack_get_param(S, "fx_density", check, sizeof(check));
+    assert(atoi(check) == 100);            /* restored */
+
     /* clear -> arm -> records exactly one loop then loops again */
     smack_set_param(S, "clear", "1");
-    assert(gp("state") == '0');
+    assert(gp("run_state") == '0');
     smack_set_param(S, "arm", "1");
-    assert(gp("state") == '1');            /* ARMED */
-    run_blocks(30, NULL);                  /* wait for step boundary */
-    assert(gp("state") == '2' || gp("state") == '3');
+    assert(gp("run_state") == '1');            /* ARMED */
+    smack_set_param(S, "arm", "1");        /* same value: no refire, harmless */
+    run_blocks(60, NULL);                  /* > 6 ticks: spans a step boundary */
+    assert(gp("run_state") == '2' || gp("run_state") == '3');
     run_blocks(1400, out);                 /* > 1 bar: recording must finish */
-    assert(gp("state") == '3');
+    assert(gp("run_state") == '3');
     assert(energy(out) > 0);
+    smack_set_param(S, "clear", "0");      /* toggle 1->0 fires clear again */
+    assert(gp("run_state") == '0');
 
     printf("host_sim: all assertions passed\n");
     smack_destroy(S);

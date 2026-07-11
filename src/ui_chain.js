@@ -45,14 +45,22 @@ const STEP_COUNT = 16;
 
 /* Slice LED color by effect code (matches smack_fx_t order in the DSP) */
 const FX_COLORS = [
-    0x10,        /* NONE   — dim white: slice exists, plays clean */
+    0x10,        /* NONE      — dim white: slice exists, plays clean */
     Red,         /* RETRIG */
     Blue,        /* REVERSE */
     Purple,      /* PITCH */
     Cyan,        /* SPEED */
     YellowGreen, /* GATE */
     OrangeRed,   /* BUZZ */
-    BrightGreen  /* CRUSH */
+    BrightGreen, /* CRUSH */
+    BrightRed,   /* REPEAT */
+    Blue,        /* REVAFTER  — reverse family */
+    LightGrey,   /* TAPESTOP */
+    Green,       /* TAPESTART */
+    Purple,      /* SCRATCH   — pitch family */
+    0x30,        /* ENV       — mid white */
+    Cyan,        /* PAN       — stereo/speed family */
+    YellowGreen  /* FILTER    — sweep family */
 ];
 
 const STATE_NAMES = ['IDLE', 'ARMED', 'REC', 'LOOP'];
@@ -88,7 +96,7 @@ function fetchAll() {
         const v = gp(KNOBS[i].key);
         if (v !== null) knobValues[i] = parseFloat(v) || 0;
     }
-    state = parseInt(gp('state') || '0');
+    state = parseInt(gp('run_state') || '0');
     ab = parseInt(gp('ab') || '1');
     pattern = gp('pattern') || '';
     nSlices = parseInt(gp('n_slices') || '0');
@@ -194,7 +202,7 @@ function tick() {
     /* periodic state/pattern refresh (knob edits, quantized AB flips) */
     if (tickCount % 12 === 0) {
         const oldState = state, oldAb = ab, oldPattern = pattern;
-        state = parseInt(gp('state') || '0');
+        state = parseInt(gp('run_state') || '0');
         ab = parseInt(gp('ab') || '1');
         pattern = gp('pattern') || '';
         nSlices = parseInt(gp('n_slices') || '0');
