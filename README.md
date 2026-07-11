@@ -6,6 +6,9 @@ randomness assign glitch effects and a new play order to the slices.
 Inspired by Sugar Bytes Looperator and dblue Glitch, built for hands-on
 hardware use.
 
+(It's basically how the artist Honeysmack uses the Octatrack to process
+modular. All hail Honeysmack!)
+
 - **Capture**: retroactive grab (loop the last N steps/bars you just played —
   also on the hardware Capture button) or arm-and-record. Lengths from
   1 step to 16 bars, clock-synced, with project-tempo free-run fallback.
