@@ -473,11 +473,21 @@ function drawUI() {
         }
     }
 
+    /* footer budget is ~20 chars total (128 px, no overlap guard in the
+     * shared helper) \u2014 show one context-relevant hint set at a time */
     const pages = stepPages();
-    const right = (state === 3 && pages > 1)
-        ? `Jog:pg ${stepPage + 1}/${pages}` : 'Back:hide';
-    const left = shiftHeld ? 'Knobs pg2 \u00b7 pins' : 'Step:sel Pad:fx';
-    drawFooter({ left, right });
+    let fLeft, fRight;
+    if (shiftHeld) {
+        fLeft = 'Knobs pg2 \u00b7 pins';
+        fRight = '';
+    } else if (state !== 3) {
+        fLeft = '';
+        fRight = 'Back:hide';
+    } else {
+        fLeft = 'Stp:sel Pad:fx';
+        fRight = pages > 1 ? `p${stepPage + 1}/${pages}` : '';
+    }
+    drawFooter({ left: fLeft, right: fRight });
     needsRedraw = false;
 }
 

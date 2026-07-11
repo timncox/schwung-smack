@@ -430,9 +430,23 @@ function drawUI() {
         print(2, 55, `${lanePfx}${nSlices}sl ${fxCount}fx${pins}${pg}`, 1);
     }
 
-    drawFooter(shiftHeld
-        ? { left: 'Knobs pg2 \u00b7 pins', right: 'Step:mute' }
-        : { left: 'Cap Arm A/B Roll', right: 'Step:mute' });
+    /* footer budget is ~20 chars total (128 px, no overlap guard in the
+     * shared helper) \u2014 show one context-relevant hint set at a time */
+    {
+        const pages = stepPages();
+        let fLeft, fRight;
+        if (shiftHeld) {
+            fLeft = 'Knobs pg2 \u00b7 pins';
+            fRight = '';
+        } else if (state !== 3) {
+            fLeft = 'Cap Arm A/B Roll';
+            fRight = '';
+        } else {
+            fLeft = 'Step:mute';
+            fRight = pages > 1 ? `p${stepPage + 1}/${pages}` : '';
+        }
+        drawFooter({ left: fLeft, right: fRight });
+    }
     needsRedraw = false;
 }
 
