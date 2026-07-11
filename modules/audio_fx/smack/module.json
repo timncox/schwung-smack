@@ -1,0 +1,144 @@
+{
+  "id": "smack",
+  "name": "Smack",
+  "abbrev": "SMK",
+  "version": "0.1.0",
+  "description": "Quantized live-loop capture with probabilistic per-slice glitch FX and slice reordering",
+  "dsp": "smack.so",
+  "api_version": 2,
+  "component_type": "audio_fx",
+  "capabilities": {
+    "chainable": true,
+    "component_type": "audio_fx",
+    "ui_hierarchy": {
+      "levels": {
+        "root": {
+          "name": "Smack",
+          "params": [
+            {
+              "key": "loop_len",
+              "name": "Loop Len",
+              "type": "enum",
+              "options": ["1 Step", "2 Steps", "1 Beat", "2 Beats", "1 Bar", "2 Bars", "4 Bars", "8 Bars", "16 Bars"],
+              "default": 4
+            },
+            {
+              "key": "slice_res",
+              "name": "Slice Res",
+              "type": "enum",
+              "options": ["1/2 Step", "1 Step", "2 Steps", "4 Steps"],
+              "default": 1
+            },
+            {
+              "key": "fx_density",
+              "name": "FX Density",
+              "type": "float",
+              "min": 0,
+              "max": 100,
+              "default": 50,
+              "step": 5,
+              "unit": "%",
+              "display_format": "%.0f"
+            },
+            {
+              "key": "order_density",
+              "name": "Order",
+              "type": "float",
+              "min": 0,
+              "max": 100,
+              "default": 0,
+              "step": 5,
+              "unit": "%",
+              "display_format": "%.0f"
+            },
+            { "level": "perform", "name": "Perform" },
+            { "level": "setup", "name": "Setup" }
+          ],
+          "knobs": ["loop_len", "slice_res", "fx_density", "order_density"]
+        },
+        "perform": {
+          "name": "Perform",
+          "params": [
+            {
+              "key": "capture",
+              "name": "Capture Now",
+              "type": "enum",
+              "options": ["-", "Grab"],
+              "default": 0
+            },
+            {
+              "key": "arm",
+              "name": "Arm Record",
+              "type": "enum",
+              "options": ["-", "Arm"],
+              "default": 0
+            },
+            {
+              "key": "ab",
+              "name": "A/B",
+              "type": "enum",
+              "options": ["A Clean", "B Pattern"],
+              "default": 1
+            },
+            {
+              "key": "reroll",
+              "name": "Re-Roll",
+              "type": "enum",
+              "options": ["-", "Roll"],
+              "default": 0
+            },
+            {
+              "key": "clear",
+              "name": "Clear Loop",
+              "type": "enum",
+              "options": ["-", "Clear"],
+              "default": 0
+            }
+          ],
+          "knobs": ["capture", "ab", "reroll", "clear"]
+        },
+        "setup": {
+          "name": "Setup",
+          "params": [
+            {
+              "key": "wet",
+              "name": "Wet",
+              "type": "float",
+              "min": 0,
+              "max": 100,
+              "default": 100,
+              "step": 5,
+              "unit": "%",
+              "display_format": "%.0f"
+            },
+            {
+              "key": "pitch_range",
+              "name": "Pitch Range",
+              "type": "int",
+              "min": 1,
+              "max": 12,
+              "default": 12,
+              "unit": "st"
+            },
+            {
+              "key": "quantize",
+              "name": "AB Quantize",
+              "type": "enum",
+              "options": ["Instant", "Slice", "Loop"],
+              "default": 1
+            },
+            {
+              "key": "seed",
+              "name": "Seed",
+              "type": "int",
+              "min": 1,
+              "max": 9999,
+              "default": 24301
+            }
+          ],
+          "knobs": ["wet", "pitch_range", "quantize", "seed"]
+        }
+      }
+    }
+  }
+}

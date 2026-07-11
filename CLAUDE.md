@@ -1,0 +1,76 @@
+---
+status: active
+last_touched: 2026-07-10
+---
+
+# Smack
+
+Schwung module for the Ableton Move: records incoming audio (mic/line or
+whatever is upstream in the Signal Chain), loops it quantized (1 step to 16
+bars), auto-slices at a chosen resolution, and assigns random playback FX to
+slices at a chosen density — retrigger, reverse, varispeed pitch, half/double
+speed, gate-chop, buzz glitch, bitcrush — plus random slice reordering.
+The pattern is seeded and stays fixed across loop repeats until re-rolled.
+A/B switches between the clean loop and the pattern.
+
+Schwung = charlesvestal/schwung, the Shadow-UI sidecar framework for the Move
+(LD_PRELOAD shim + QuickJS shadow UI + native ARM DSP modules).
+
+## Two builds, one core
+
+- `src/smack_core.c` — all engine logic (ring buffer, MIDI-clock tracking,
+  capture, slicing, pattern, FX render). Non-allocating render path.
+- `src/smack_fx.c` → **smack** (`audio_fx`): works in chain slots AND Master
+  FX slots (master FX loads the same audio_fx plugins). The .so MUST be named
+  `smack.so` — the chain host loads `modules/audio_fx/<id>/<id>.so` without
+  reading module.json.
+- `src/smack_gen.c` → **smack-in** (`sound_generator`, `audio_in: true`):
+  standalone mic/line looper reading the host mailbox input like linein does.
+
+## Build / test / deploy
+
+- `make test` — native compile of the core + `test/host_sim.c` (simulated
+  clock + capture/AB/reroll/arm assertions). No hardware needed.
+- `make arm` (= `scripts/build.sh`) — Docker cross-compile for aarch64 using
+  debian:bookworm + gcc-aarch64-linux-gnu (same toolchain family as schwung
+  itself). Produces module tarballs under `build/`.
+- `scripts/deploy.sh` — scp both modules to `ableton@move.local:` under
+  `/data/UserData/schwung/modules/`, then rescan modules on-device.
+
+`include/*.h` are vendored copies of schwung's stable ABI headers
+(`src/host/plugin_api_v1.h`, `src/host/audio_fx_api_v2.h`).
+
+## Timing model
+
+4/4, 16th-note steps, MIDI clock 24 ppqn (6 ticks/step, 96/bar) arriving via
+`on_midi` (source 3 = host). Free-run fallback derives phase from
+`host->get_bpm()`. Retro capture aligns to the last half-step boundary.
+
+## v1 limitations (deliberate, revisit)
+
+- Ring recording pauses while LOOPING (no incremental copy-out); re-grab
+  while looping re-slices the frozen history.
+- Arm/record starts on a block boundary (≤2.9 ms off), not sample-accurate.
+- Bar-phase (downbeat) alignment for ≥1-bar grabs assumes 0xFA start resets
+  the grid — VERIFY ON DEVICE.
+- Varispeed = linear interp, no anti-aliasing (lo-fi is part of the charm).
+
+## Not yet verified on hardware
+
+1. Whether chain/master audio_fx instances actually receive MIDI clock via
+   on_midi (the granular module's "MIDI sync" suggests yes).
+2. Downbeat/bar-phase tracking behavior.
+3. Enum "trigger" params (Capture/Arm/Re-Roll/Clear as knob enums) UX — the
+   real answer is a ui_chain.js with a punch pad + step-LED pattern display.
+
+## Next steps
+
+- On-device smoke test: build, deploy, load in a chain after linein, and on
+  Master FX; confirm clock arrives and capture aligns.
+- `ui_chain.js`: A/B punch pad (momentary + latch), re-roll pad, step LEDs
+  showing per-slice FX (colors by family), step-press to lock/clear a slice
+  (`lock_slice_<i>` param already exists in the core).
+- Move Capture button → retro grab (check what the shim exposes for it).
+- v2 FX: granular freeze/spray, tape-stop, time-preserving pitchshift.
+- Module Store distribution: release.json + tarballs already produced by
+  build.sh.
