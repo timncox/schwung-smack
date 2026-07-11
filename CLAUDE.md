@@ -98,6 +98,11 @@ target any loaded FX param — e.g. LFO on Smack's fx_density/order_density.
 
 ## Not yet verified on hardware
 
+0. USB-C audio as input: the XMOS muxes mic/line/USB-C into the single
+   SPI-mailbox Audio-IN region the modules read (Tim, 2026-07-11 — the
+   CPU just listens to "an audio source"). If so, Smack processes USB-C
+   audio with no code changes; verify by selecting USB as Move's input
+   and capturing in smack-in/oversmack.
 1. End-to-end smoke test (clock arrival, capture alignment, audio quality).
 2. Enum "trigger" params (Capture/Arm/Re-Roll/Clear as knob enums) UX — the
    real answer is a ui_chain.js with a punch pad + step-LED pattern display.
