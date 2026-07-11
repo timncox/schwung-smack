@@ -252,12 +252,12 @@ void smack_on_midi(smack_t *s, const uint8_t *msg, int len, int source) {
     (void)source;
     if (!s || len < 1) return;
     switch (msg[0]) {
-    case 0xFA: /* start: downbeat */
+    case 0xFA: /* start */
+    case 0xFB: /* continue: treated as downbeat too (pushnpull convention) */
         s->tick_total = 0;
         s->clock_running = 1;
         s->last_halfstep_global = s->global_frames;
         break;
-    case 0xFB: s->clock_running = 1; break;
     case 0xFC: s->clock_running = 0; break;
     case 0xF8: {
         if (s->clock_seen && s->global_frames > s->last_tick_global) {
@@ -460,19 +460,25 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
     } else if (!strcmp(key, "seed")) {
         s->seed = (uint32_t)strtoul(val, NULL, 10);
     } else if (!strcmp(key, "reroll")) {
-        s->seed = s->seed * 1664525u + 1013904223u;
-        if (s->state == SMACK_LOOPING) roll_pattern(s);
+        /* trigger params fire only on non-zero: UIs and autosave restores
+         * send "0" on init, which must be a no-op */
+        if (atoi(val)) {
+            s->seed = s->seed * 1664525u + 1013904223u;
+            if (s->state == SMACK_LOOPING) roll_pattern(s);
+        }
     } else if (!strcmp(key, "capture")) {
-        capture_retro(s);
+        if (atoi(val)) capture_retro(s);
     } else if (!strcmp(key, "arm")) {
-        if (s->state == SMACK_IDLE || s->state == SMACK_LOOPING) {
+        if (atoi(val) && (s->state == SMACK_IDLE || s->state == SMACK_LOOPING)) {
             s->state = SMACK_ARMED;
             s->arm_start_flag = !s->clock_running; /* free-run: start next block */
         }
     } else if (!strcmp(key, "clear")) {
-        s->state = SMACK_IDLE;
-        s->ab_pending = -1;
-        memset(s->fx_locked, 0, sizeof(s->fx_locked));
+        if (atoi(val)) {
+            s->state = SMACK_IDLE;
+            s->ab_pending = -1;
+            memset(s->fx_locked, 0, sizeof(s->fx_locked));
+        }
     } else if (!strncmp(key, "lock_slice_", 11)) {
         int i = clampi(atoi(key + 11), 0, SMACK_MAX_SLICES - 1);
         int f = clampi(atoi(val), 0, SMACK_FX_COUNT - 1);
@@ -501,6 +507,10 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
         return snprintf(buf, (size_t)buf_len, "%d", s->ab);
     if (!strcmp(key, "quantize"))
         return snprintf(buf, (size_t)buf_len, "%d", s->quantize_mode);
+    /* trigger params always read back as 0 so autosave never re-fires them */
+    if (!strcmp(key, "capture") || !strcmp(key, "arm") ||
+        !strcmp(key, "reroll") || !strcmp(key, "clear"))
+        return snprintf(buf, (size_t)buf_len, "0");
     if (!strcmp(key, "n_slices"))
         return snprintf(buf, (size_t)buf_len, "%d", s->n_slices);
     if (!strcmp(key, "pattern")) {

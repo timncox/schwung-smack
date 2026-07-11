@@ -16,7 +16,7 @@ CFLAGS="-O3 -g -shared -fPIC -Wall -Wextra -Iinclude"
 if ! docker image inspect "$IMAGE" &>/dev/null; then
     docker build -t "$IMAGE" - <<'EOF'
 FROM debian:bookworm
-RUN apt-get update && apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu file && rm -rf /var/lib/apt/lists/*
 EOF
 fi
 

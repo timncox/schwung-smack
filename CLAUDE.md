@@ -23,7 +23,11 @@ Schwung = charlesvestal/schwung, the Shadow-UI sidecar framework for the Move
 - `src/smack_fx.c` → **smack** (`audio_fx`): works in chain slots AND Master
   FX slots (master FX loads the same audio_fx plugins). The .so MUST be named
   `smack.so` — the chain host loads `modules/audio_fx/<id>/<id>.so` without
-  reading module.json.
+  reading module.json. **Critical ABI gotcha:** the chain host delivers MIDI
+  to audio FX via `dlsym("move_audio_fx_on_midi")`, NOT the struct's on_midi
+  field — the exported wrapper in smack_fx.c is what makes clock sync work
+  (pattern verified in ducker, pushnpull, punchfx; leave struct field NULL
+  for old-host ABI safety).
 - `src/smack_gen.c` → **smack-in** (`sound_generator`, `audio_in: true`):
   standalone mic/line looper reading the host mailbox input like linein does.
 
@@ -64,9 +68,18 @@ this clock→project-tempo fallback is the house convention (the built-in
 Quantized Sampler does the same). Also: Master FX has two LFOs that can
 target any loaded FX param — e.g. LFO on Smack's fx_density/order_density.
 
+## Clock findings from shipped modules (verified in repos 2026-07-10)
+
+- MIDI clock IS broadcast to audio-FX slots (pushnpull clock.c: "we lock to
+  the MIDI clock the host broadcasts to audio-FX slots").
+- Downbeat = 0xFA Start / 0xFB Continue resets beat phase to 0; phase resyncs
+  from tick_count each block (pushnpull convention; smack_core mirrors it).
+- Trigger params must only fire on non-zero values and read back "0"
+  (UI init / autosave restore sends "0"; autosave must never re-fire them).
+
 ## Not yet verified on hardware
 
-1. Downbeat/bar-phase tracking (0xFA start = grid reset assumption).
+1. End-to-end smoke test (clock arrival, capture alignment, audio quality).
 2. Enum "trigger" params (Capture/Arm/Re-Roll/Clear as knob enums) UX — the
    real answer is a ui_chain.js with a punch pad + step-LED pattern display.
 

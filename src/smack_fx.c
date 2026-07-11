@@ -42,8 +42,18 @@ static audio_fx_api_v2_t api = {
     .process_block    = fx_process,
     .set_param        = fx_set_param,
     .get_param        = fx_get_param,
-    .on_midi          = fx_on_midi,
+    /* on_midi deliberately unset: the chain host ignores the struct field
+     * and discovers MIDI via dlsym("move_audio_fx_on_midi") below; leaving
+     * it NULL avoids ABI issues with older 6-field hosts (ducker pattern). */
 };
+
+/* The chain host looks this up via dlsym — without it the FX build never
+ * receives MIDI clock and free-runs at the right tempo but wrong phase
+ * (verified against ducker, pushnpull, and punchfx). */
+__attribute__((visibility("default")))
+void move_audio_fx_on_midi(void *instance, const uint8_t *msg, int len, int source) {
+    fx_on_midi(instance, msg, len, source);
+}
 
 audio_fx_api_v2_t *move_audio_fx_init_v2(const host_api_v1_t *host) {
     g_host = host;
