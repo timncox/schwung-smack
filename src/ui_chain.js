@@ -152,6 +152,87 @@ let monitorOn = true;
 let guardMuted = false;
 let guardOverride = false;
 
+
+/* Knob page 2 — held-Shift layer. Same knobs, second param set. */
+const KNOBS2 = [
+    { key: 'pan_l',        name: 'PanL', min: 0, max: 100, step: 5,
+      speech: 'Pan left lane' },
+    { key: 'pan_r',        name: 'PanR', min: 0, max: 100, step: 5,
+      speech: 'Pan right lane' },
+    { key: 'channel_mode', name: 'Chan', opts: ['St', 'Dual'],
+      speech: 'Channels', speechOpts: ['stereo', 'dual mono'] },
+    { key: 'transport',    name: 'Trns', opts: ['Flw', 'Free'],
+      speech: 'Transport', speechOpts: ['follow', 'free'] },
+    { key: 'bpm_override', name: 'BPM',  min: 49, max: 200, step: 1,
+      speech: 'BPM override', isBpm: true },
+    { key: 'monitor',      name: 'Mon',  opts: ['Mute', 'On'],
+      speech: 'Monitoring', speechOpts: ['muted', 'on'] },
+    null,
+    null
+];
+let knob2Values = [0, 100, 0, 0, 0, 1, 0, 0];
+
+function knob2Display(i) {
+    const k = KNOBS2[i];
+    if (!k) return '';
+    if (k.isBpm) return knob2Values[i] > 0 ? `${Math.round(knob2Values[i])}` : 'Off';
+    if (k.opts) {
+        const idx = Math.max(0, Math.min(k.opts.length - 1, Math.round(knob2Values[i])));
+        return k.opts[idx];
+    }
+    return `${Math.round(knob2Values[i])}`;
+}
+
+function fetchKnob2() {
+    for (let i = 0; i < KNOBS2.length; i++) {
+        if (!KNOBS2[i]) continue;
+        const v = gp(KNOBS2[i].key);
+        if (v !== null) knob2Values[i] = parseFloat(v) || 0;
+    }
+}
+
+function adjustKnob2(i, delta) {
+    const k = KNOBS2[i];
+    if (!k) return;
+    let v;
+    if (k.isBpm) {
+        /* 49 and below = Off (project tempo); 50-200 = override */
+        const cur = knob2Values[i] > 0 ? knob2Values[i] : 49;
+        v = Math.max(49, Math.min(200, Math.round(cur) + delta * k.step));
+        const out = v < 50 ? 0 : v;
+        knob2Values[i] = out;
+        bpmOverride = out;
+        host_module_set_param(k.key, `${out}`);
+        announceParameter(k.speech, out > 0 ? `${out}` : 'off, project tempo');
+        needsRedraw = true;
+        return;
+    }
+    const max = k.opts ? k.opts.length - 1 : k.max;
+    const min = k.opts ? 0 : k.min;
+    const step = k.opts ? 1 : k.step;
+    v = Math.max(min, Math.min(max, knob2Values[i] + delta * step));
+    if (v === knob2Values[i]) return;
+    knob2Values[i] = v;
+    host_module_set_param(k.key, `${Math.round(v)}`);
+    if (k.speechOpts) announceParameter(k.speech, k.speechOpts[Math.round(v)]);
+    else announceParameter(k.speech, `${Math.round(v)}`);
+    /* keep the pad/guard state in sync with knob-driven changes */
+    if (k.key === 'channel_mode') {
+        chanMode = Math.round(v);
+        if (!chanMode) editLane = 0;
+    }
+    if (k.key === 'monitor') monitorOn = Math.round(v) !== 0;
+    if (k.key === 'pan_l') panL = Math.round(v);
+    if (k.key === 'pan_r') panR = Math.round(v);
+    syncPage2Paint();
+    needsRedraw = true;
+}
+
+function syncPage2Paint() {
+    updateTransportLEDs();
+    updateStepLEDs();
+}
+
 function startDetect() {
     host_module_set_param('detect_bpm', '1');
     detecting = true;
@@ -210,6 +291,7 @@ function fetchAll() {
     hwInput = gp('hw_input') === '1';
     monitorOn = (gp('monitor') || '1') !== '0';
     bpmOverride = parseFloat(gp('bpm_override')) || 0;
+    fetchKnob2();
 }
 
 /* pattern / lock target of the lane currently being edited */
@@ -290,10 +372,17 @@ function updateStepLEDs() {
         let color = Black;
         if (state === 3 && s < nSlices) {
             const code = pat.charCodeAt(s) - 48;
-            color = FX_COLORS[(code >= 0 && code < FX_COLORS.length) ? code : 0];
-            /* B side shows the pattern; A side shows all-clean */
-            if (!ab) color = FX_COLORS[0];
-            if (s === playSlice) color = White;   /* playhead chase */
+            const fxc = FX_COLORS[(code >= 0 && code < FX_COLORS.length) ? code : 0];
+            if (shiftHeld) {
+                /* page-2 view: light only the pinned slices */
+                const msk = (chanMode && editLane) ? lockedMaskR : lockedMask;
+                color = msk.charAt(s) === '1' ? fxc : Black;
+            } else {
+                color = fxc;
+                /* B side shows the pattern; A side shows all-clean */
+                if (!ab) color = FX_COLORS[0];
+                if (s === playSlice) color = White;   /* playhead chase */
+            }
         }
         setLED(STEP_FIRST + i, color);
     }
@@ -309,13 +398,20 @@ function drawUI() {
     else if (bpmOverride > 0) title += ` @${Math.round(bpmOverride)}`;
     drawHeader(title);
 
-    /* two rows of four knob params */
+    /* two rows of four knob params (Shift = page 2) */
     for (let i = 0; i < 8; i++) {
         const col = i % 4, row = (i / 4) | 0;
         const x = 2 + col * 32;
         const y = 15 + row * 20;
-        print(x, y, KNOBS[i].name, 1);
-        print(x, y + 8, knobDisplay(i), 1);
+        if (shiftHeld) {
+            if (KNOBS2[i]) {
+                print(x, y, KNOBS2[i].name, 1);
+                print(x, y + 8, knob2Display(i), 1);
+            }
+        } else {
+            print(x, y, KNOBS[i].name, 1);
+            print(x, y + 8, knobDisplay(i), 1);
+        }
     }
 
     /* pattern summary line */
@@ -334,7 +430,9 @@ function drawUI() {
         print(2, 55, `${lanePfx}${nSlices}sl ${fxCount}fx${pins}${pg}`, 1);
     }
 
-    drawFooter({ left: 'Cap Arm A/B Roll', right: 'Step:mute' });
+    drawFooter(shiftHeld
+        ? { left: 'Knobs pg2 \u00b7 pins', right: 'Step:mute' }
+        : { left: 'Cap Arm A/B Roll', right: 'Step:mute' });
     needsRedraw = false;
 }
 
@@ -426,7 +524,9 @@ function onMidiMessageInternal(data) {
 
     if (status === 0xB0) {
         if (d1 === MoveShift) {
+            const was = shiftHeld;
             shiftHeld = d2 >= 64;
+            if (was !== shiftHeld) { fetchKnob2(); updateStepLEDs(); needsRedraw = true; }
             return;
         }
         /* Capture button mirrors the capture pad; Shift+Capture = detect BPM */
@@ -445,6 +545,8 @@ function onMidiMessageInternal(data) {
             if (lanePadHeld && chanMode && k < 2) {
                 laneHoldUsed = true;
                 adjustPan(k, delta);
+            } else if (shiftHeld) {
+                adjustKnob2(k, delta);
             } else {
                 adjustKnob(k, delta);
             }
