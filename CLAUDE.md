@@ -83,14 +83,23 @@ target any loaded FX param — e.g. LFO on Smack's fx_density/order_density.
 2. Enum "trigger" params (Capture/Arm/Re-Roll/Clear as knob enums) UX — the
    real answer is a ui_chain.js with a punch pad + step-LED pattern display.
 
+## Chain UI (src/ui_chain.js, shipped in both tarballs)
+
+Loads when Smack's component editor is opened inside a slot's Signal Chain.
+**The Master FX editor never loads custom module UIs** (verified:
+shadow_ui_master_fx.mjs only uses hierarchy knob pages) — on master, knob
+pages are the interface. Pad map: 68 Capture / 69 Arm / 70 A-B / 71 Re-Roll
+/ 76 Clear; hardware Capture button (CC 52) = retro grab; step buttons 1-16
+show slice FX colors + playhead chase, press = mute slice fx, again =
+restore seeded fx (lock_slice_<i>, -1 unlocks). Knobs 1-8 = FX / Order /
+Len / Res / Wet / Pitch / Qnt / Seed.
+
 ## Next steps
 
-- On-device smoke test: build, deploy, load in a chain after linein, and on
-  Master FX; confirm clock arrives and capture aligns.
-- `ui_chain.js`: A/B punch pad (momentary + latch), re-roll pad, step LEDs
-  showing per-slice FX (colors by family), step-press to lock/clear a slice
-  (`lock_slice_<i>` param already exists in the core).
-- Move Capture button → retro grab (check what the shim exposes for it).
+- On-device: verify chain UI (LED colors on steps, pad consumption,
+  playhead chase rate) — untested on hardware.
+- Momentary A/B punch (hold pad = temporary flip, release = back) — needs
+  press-duration tracking in ui_chain.js.
 - v2 FX: granular freeze/spray, tape-stop, time-preserving pitchshift.
 - Module Store distribution: release.json + tarballs already produced by
   build.sh.

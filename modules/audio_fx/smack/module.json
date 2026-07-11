@@ -5,6 +5,7 @@
   "version": "0.1.0",
   "description": "Quantized live-loop capture with probabilistic per-slice glitch FX and slice reordering",
   "dsp": "smack.so",
+  "ui_chain": "ui_chain.js",
   "api_version": 2,
   "component_type": "audio_fx",
   "capabilities": {

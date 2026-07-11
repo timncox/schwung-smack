@@ -484,9 +484,14 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         }
     } else if (!strncmp(key, "lock_slice_", 11)) {
         int i = clampi(atoi(key + 11), 0, SMACK_MAX_SLICES - 1);
-        int f = clampi(atoi(val), 0, SMACK_FX_COUNT - 1);
-        s->fx[i] = (uint8_t)f;
-        s->fx_locked[i] = 1;
+        int f = atoi(val);
+        if (f < 0) { /* unlock: re-roll restores the seeded value */
+            s->fx_locked[i] = 0;
+            if (s->state == SMACK_LOOPING) roll_pattern(s);
+        } else {
+            s->fx[i] = (uint8_t)clampi(f, 0, SMACK_FX_COUNT - 1);
+            s->fx_locked[i] = 1;
+        }
     }
 }
 
@@ -516,6 +521,14 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
         return snprintf(buf, (size_t)buf_len, "0");
     if (!strcmp(key, "n_slices"))
         return snprintf(buf, (size_t)buf_len, "%d", s->n_slices);
+    if (!strcmp(key, "play_slice")) { /* current output slice, -1 if idle */
+        int ps = -1;
+        if (s->state == SMACK_LOOPING && s->slice_frames > 0.0) {
+            ps = (int)(s->play_pos / s->slice_frames);
+            if (ps >= s->n_slices) ps = s->n_slices - 1;
+        }
+        return snprintf(buf, (size_t)buf_len, "%d", ps);
+    }
     if (!strcmp(key, "pattern")) {
         /* fx codes per slice, for future step-LED UI: e.g. "0300102..." */
         int n = s->n_slices < buf_len - 1 ? s->n_slices : buf_len - 1;
