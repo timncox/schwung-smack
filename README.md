@@ -33,11 +33,11 @@ Two builds from one core:
 
 ## Install
 
-- **Module Store**: install `smack` from the schwung catalog (if listed).
-- **From GitHub**: schwung-manager → Install Custom Module → `timncox/schwung-smack`.
-- **smack-in** (standalone line-in looper): download `smack-in-module.tar.gz`
-  from [Releases](https://github.com/timncox/schwung-smack/releases) and use
-  Install Custom Module → From Tarball.
+- **Module Store**: install `smack` / `smack-in` from the schwung catalog
+  (if listed).
+- **From GitHub**: schwung-manager → Install Custom Module →
+  `timncox/schwung-smack` (chain/master FX) or `timncox/schwung-smack-in`
+  (standalone line-in looper — a thin distribution repo; source lives here).
 
 **Sync note:** set Move's **MIDI Clock to Out** so Smack locks to the
 transport (same requirement as the Arp). Without it, Smack free-runs at the

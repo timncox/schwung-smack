@@ -101,5 +101,15 @@ Len / Res / Wet / Pitch / Qnt / Seed.
 - Momentary A/B punch (hold pad = temporary flip, release = back) — needs
   press-duration tracking in ui_chain.js.
 - v2 FX: granular freeze/spray, tape-stop, time-preserving pitchshift.
-- Module Store distribution: release.json + tarballs already produced by
-  build.sh.
+## Release process (two repos, one source)
+
+Source + `smack` distribution: this repo (timncox/schwung-smack).
+`smack-in` distribution: timncox/schwung-smack-in — a THIN repo holding only
+README + release.json + release tarballs (the installer resolves one
+release.json per repo, so each catalog id needs its own repo).
+
+To ship version X: bump both module.json versions + root release.json here,
+`make arm`, commit/push, `gh release create vX` here with BOTH tarballs,
+then on schwung-smack-in: update its release.json via API and
+`gh release create vX` with smack-in-module.tar.gz.
+Catalog PR: charlesvestal/schwung#156 (both entries).
