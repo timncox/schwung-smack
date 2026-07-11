@@ -658,6 +658,16 @@ globalThis.onMidiMessageInternal = function(data) {
     const d1 = data[1];
     const d2 = data[2];
 
+    /* pad pressure (poly aftertouch) bends the punched effect */
+    if (status === 0xA0) {
+        if (punchPad >= 0 && d1 === punchPad &&
+            Math.abs(d2 - punchLastPressure) >= 3) {
+            punchLastPressure = d2;
+            host_module_set_param('punch_pressure', `${d2}`);
+        }
+        return;
+    }
+
     if (status === 0xB0) {
         if (d1 === MoveShift) {
             const was = shiftHeld;
@@ -703,6 +713,14 @@ globalThis.onMidiMessageInternal = function(data) {
             }
             return;
         }
+        return;
+    }
+
+    /* palette pad release: end a global punch */
+    if ((status === 0x80 || (status === 0x90 && d2 === 0)) && d1 === punchPad) {
+        punchPad = -1;
+        host_module_set_param('punch_fx', '-1');
+        needsRedraw = true;
         return;
     }
 
@@ -816,10 +834,20 @@ globalThis.onMidiMessageInternal = function(data) {
             return;
         }
 
-        /* Effect palette: tap = set (soft); hold = pin */
+        /* Effect palette. With a step selected: tap = set (soft), hold =
+         * pin. With NO selection: momentary global punch — the whole loop
+         * plays this one effect until release; pressure bends it. */
         if (d1 === PAD_UNLOCK) { unlockSlice(); return; }
         if (d1 >= PAD_PALETTE_FIRST && d1 < PAD_PALETTE_FIRST + FX_COLORS.length) {
             const code = d1 - PAD_PALETTE_FIRST;
+            if (state === 3 && selectedSlice < 0) {
+                punchPad = d1;
+                punchLastPressure = -1;
+                host_module_set_param('punch_fx', `${code}`);
+                announce(`${FX_SPEECH[code]} punch`);
+                needsRedraw = true;
+                return;
+            }
             const slice = selectedSlice;
             assignFx(code);
             if (state === 3 && slice >= 0 && slice < nSlices) {

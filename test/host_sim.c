@@ -408,6 +408,27 @@ int main(void) {
     /* 1 bar at 90 BPM = 44100 * 4 * 60/90 = 117600 frames */
     assert(atoi(buf) > 115000 && atoi(buf) < 120000);
 
+    /* global punch: every effect renders under pressure sweeps; readback
+     * works; -1 turns it off; punch survives the A side (forces effect) */
+    smack_set_param(S, "capture", "1");
+    assert(gp("run_state") == '3');
+    for (int f = 0; f < SMACK_FX_COUNT; f++) {
+        char v[8];
+        snprintf(v, sizeof(v), "%d", f);
+        smack_set_param(S, "punch_fx", v);
+        smack_get_param(S, "punch_fx", buf, sizeof(buf));
+        assert(atoi(buf) == f);
+        for (int p = 0; p <= 127; p += 25) {
+            snprintf(v, sizeof(v), "%d", p);
+            smack_set_param(S, "punch_pressure", v);
+            run_blocks(40, out);
+        }
+        assert(gp("run_state") == '3');
+    }
+    smack_set_param(S, "punch_fx", "-1");
+    smack_get_param(S, "punch_fx", buf, sizeof(buf));
+    assert(atoi(buf) == -1);
+
     printf("host_sim: all assertions passed\n");
     smack_destroy(S);
     return 0;

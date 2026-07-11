@@ -189,6 +189,12 @@ struct smack {
      * ring audio, autocorrelated across 60-180 BPM. Runs incrementally on
      * the audio thread (DET_FRAMES_PER_BLOCK ring frames per block) so the
      * render path never stalls. */
+    /* Global effect punch: while >= 0, every slice plays this effect
+     * (0 = clean) at full blend, original order — a performance override.
+     * punch_fxp follows pad pressure. Never preset-saved. */
+    int      punch_fx;           /* -1 = off */
+    int8_t   punch_fxp;
+
     int      det_active;         /* scanning in progress */
     uint32_t det_pos;            /* frames consumed so far */
     uint32_t det_total;          /* frames to consume */
@@ -360,6 +366,38 @@ static int8_t default_fxp(int f) {
     }
 }
 
+/* Pressure -> effect parameter for the global punch. Ranges mirror what
+ * roll_pattern/render use per effect; pressure 0..127 sweeps them. */
+static int8_t punch_map(int f, int pressure) {
+    int lo = 0, hi = 0;
+    switch (f) {
+    case SMACK_FX_RETRIG:   lo = 1; hi = 4; break;
+    case SMACK_FX_PITCH:    lo = -12; hi = 12; break;
+    case SMACK_FX_SPEED:
+    case SMACK_FX_TAPESTOP: lo = 0; hi = 1; break;
+    case SMACK_FX_BUZZ:     lo = 0; hi = 3; break;
+    case SMACK_FX_CRUSH:    lo = 2; hi = 8; break;
+    case SMACK_FX_REPEAT:
+    case SMACK_FX_REVAFTER:
+    case SMACK_FX_SCRATCH:  lo = 1; hi = 3; break;
+    case SMACK_FX_PAN:      lo = 0; hi = 2; break;
+    case SMACK_FX_ENV:
+    case SMACK_FX_FILTER:
+    case SMACK_FX_VOWEL:
+    case SMACK_FX_TONALDELAY:
+    case SMACK_FX_FREEZE:
+    case SMACK_FX_DELAY:
+    case SMACK_FX_DIST:
+    case SMACK_FX_PHASER:
+    case SMACK_FX_VERB:     lo = 0; hi = 3; break;
+    default: return 0;
+    }
+    int span = hi - lo + 1;
+    int v = lo + (pressure * span) / 128;
+    if (v > hi) v = hi;
+    return (int8_t)v;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Capture                                                            */
 /* ------------------------------------------------------------------ */
@@ -447,6 +485,7 @@ smack_t *smack_create(const host_api_v1_t *host) {
     s->seed = 4303u;  /* within the knob's 1..9999 range */
     s->follow_transport = 1;
     s->monitor = 1;
+    s->punch_fx = -1;
     s->chan_mode = 0;            /* stereo */
     s->pan_l = 0;                /* dual-mono defaults keep input sides */
     s->pan_r = 100;
@@ -568,6 +607,8 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
     double src2 = -1.0;   /* FREEZE: second grain tap (slice-relative) */
     float  mix2 = 0.0f;   /* FREEZE: crossfade toward primary tap */
     int use_pattern = (side < 0) ? s->ab : side;
+    if (s->punch_fx == 0) use_pattern = 0;      /* punching clean */
+    else if (s->punch_fx > 0) use_pattern = 1;  /* punching an effect */
 
     if (!use_pattern) {
         src = s->play_pos;                      /* clean, original order */
@@ -575,6 +616,11 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
         int sslice = ln->order[oslice];
         f  = ln->fx[oslice];
         fp = ln->fxp[oslice];
+        if (s->punch_fx > 0) {
+            sslice = oslice;                    /* punch: original order, */
+            f  = s->punch_fx;                   /* one forced effect      */
+            fp = s->punch_fxp;
+        }
         double rp = p;
         switch (f) {
         case SMACK_FX_RETRIG: {
@@ -1068,6 +1114,8 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
                  * (0 = unaffected loop, 100 = fully effected); the A side
                  * hard-punches to clean; the live input rides Monitor. */
                 float w = s->ab ? s->wet : 0.0f;
+                if (s->punch_fx > 0) w = 1.0f;       /* punch = full effect */
+                else if (s->punch_fx == 0) w = 0.0f; /* punch clean */
                 float cl = 0.0f, cr = 0.0f, pl = 0.0f, pr = 0.0f;
                 if (w < 1.0f)
                     render_lane(s, &s->lane[0], -1, 0, &cl, &cr);
@@ -1266,6 +1314,17 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         parse_locks(&s->lane[0], strstr(val, "\"locks\":\""), 9);
         parse_locks(&s->lane[1], strstr(val, "\"locks_r\":\""), 11);
         if (s->state == SMACK_LOOPING) roll_pattern(s);
+    } else if (!strcmp(key, "punch_fx")) {
+        int f = atoi(val);
+        if (f < 0 || f >= SMACK_FX_COUNT) {
+            s->punch_fx = -1;
+        } else {
+            s->punch_fx = f;
+            s->punch_fxp = default_fxp(f);
+        }
+    } else if (!strcmp(key, "punch_pressure")) {
+        if (s->punch_fx > 0)
+            s->punch_fxp = punch_map(s->punch_fx, clampi(atoi(val), 0, 127));
     } else if (!strcmp(key, "detect_bpm")) {
         if (trig_active(val) && !s->det_active) det_begin(s);
     } else if (!strcmp(key, "bpm_override")) {
@@ -1345,6 +1404,8 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
         n += snprintf(buf + n, (size_t)(buf_len - n), "\"}");
         return n;
     }
+    if (!strcmp(key, "punch_fx"))
+        return snprintf(buf, (size_t)buf_len, "%d", s->punch_fx);
     if (!strcmp(key, "loop_frames"))
         return snprintf(buf, (size_t)buf_len, "%u", s->loop_len);
     if (!strcmp(key, "n_slices"))
