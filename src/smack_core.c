@@ -44,8 +44,7 @@ static inline float bq_run(smack_bq_t *q, float x) {
     return y;
 }
 
-static void bq_set(smack_bq_t *q, float freq, int highpass) {
-    const float Q = 0.9f;
+static void bq_set_q(smack_bq_t *q, float freq, int highpass, float Q) {
     float w0 = 6.2831853f * freq / (float)SMACK_SR;
     float cw = cosf(w0), sw = sinf(w0);
     float alpha = sw / (2.0f * Q);
@@ -85,7 +84,10 @@ static const float vowel_f[5][3] = {
     { 570.0f,  840.0f, 2410.0f },  /* O */
     { 440.0f, 1020.0f, 2240.0f },  /* U */
 };
-static const int vowel_pair[4][2] = { {0, 2}, {3, 2}, {0, 4}, {1, 3} }; /* A>I O>I A>U E>O */
+static const int vowel_pair[8][2] = {
+    {0, 2}, {3, 2}, {0, 4}, {1, 3},   /* A>I O>I A>U E>O (rolled range) */
+    {2, 0}, {1, 4}, {4, 3}, {0, 1},   /* I>A E>U U>O A>E (editor-only)  */
+};
 static const float vowel_gain[3] = { 1.0f, 0.7f, 0.45f };
 
 #define SMACK_DLY_LEN 8192  /* tonal-delay line, frames */
@@ -380,16 +382,17 @@ static int8_t default_fxp(int f) {
 static int8_t punch_map(int f, int pressure) {
     int lo = 0, hi = 0;
     switch (f) {
-    case SMACK_FX_RETRIG:   lo = 1; hi = 4; break;
-    case SMACK_FX_PITCH:    lo = -12; hi = 12; break;
+    case SMACK_FX_RETRIG:   lo = 1; hi = 6; break;
+    case SMACK_FX_PITCH:    lo = -24; hi = 24; break;
     case SMACK_FX_SPEED:
-    case SMACK_FX_TAPESTOP: lo = 0; hi = 1; break;
-    case SMACK_FX_BUZZ:     lo = 0; hi = 3; break;
-    case SMACK_FX_CRUSH:    lo = 2; hi = 8; break;
+    case SMACK_FX_TAPESTOP:
+    case SMACK_FX_GATE:     lo = 0; hi = 3; break;
+    case SMACK_FX_BUZZ:     lo = 0; hi = 5; break;
+    case SMACK_FX_CRUSH:    lo = 2; hi = 24; break;
     case SMACK_FX_REPEAT:
-    case SMACK_FX_REVAFTER:
-    case SMACK_FX_SCRATCH:  lo = 1; hi = 3; break;
-    case SMACK_FX_PAN:      lo = 0; hi = 2; break;
+    case SMACK_FX_REVAFTER: lo = 1; hi = 7; break;
+    case SMACK_FX_SCRATCH:  lo = 1; hi = 8; break;
+    case SMACK_FX_PAN:      lo = 0; hi = 5; break;
     case SMACK_FX_ENV:
     case SMACK_FX_FILTER:
     case SMACK_FX_VOWEL:
@@ -398,7 +401,7 @@ static int8_t punch_map(int f, int pressure) {
     case SMACK_FX_DELAY:
     case SMACK_FX_DIST:
     case SMACK_FX_PHASER:
-    case SMACK_FX_VERB:     lo = 0; hi = 3; break;
+    case SMACK_FX_VERB:     lo = 0; hi = 7; break;
     default: return 0;
     }
     int span = hi - lo + 1;
@@ -633,7 +636,10 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
         double rp = p;
         switch (f) {
         case SMACK_FX_RETRIG: {
-            double win = sf / (double)(1 << fp);
+            /* fp 1..6 = repeat window 1/2 .. 1/64 of the slice. Rolls stay
+             * 1..3; the deeper rates are editor/punch territory. */
+            int rr = fp < 1 ? 1 : (fp > 6 ? 6 : fp);
+            double win = sf / (double)(1 << rr);
             if (win < 32.0) win = 32.0;
             int k = (int)(p / win);
             rp = p - (double)k * win;
@@ -646,35 +652,48 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
             rp = fmod(p * rate, sf);
             break;
         }
-        case SMACK_FX_SPEED:
-            rp = fp ? fmod(p * 2.0, sf) : p * 0.5;
+        case SMACK_FX_SPEED: {
+            /* 0 half, 1 double, 2 x1.5 (fifth up), 3 x0.75 (fourth down) */
+            static const double spd[4] = { 0.5, 2.0, 1.5, 0.75 };
+            rp = fmod(p * spd[fp & 3], sf);
             break;
+        }
         case SMACK_FX_GATE: {
-            int seg = (int)(p * 8.0 / sf);
+            /* fp: 0 = 8 chops, 1 = 4, 2 = 16, 3 = swung 8 (long-short) */
+            int seg;
+            if ((fp & 3) == 3) {
+                seg = (fmod(p * 4.0 / sf, 1.0) < 0.667) ? 0 : 1;
+            } else {
+                static const double nseg[3] = { 8.0, 4.0, 16.0 };
+                seg = (int)(p * nseg[fp & 3] / sf);
+            }
             if (seg & 1) g *= 0.12f;
             break;
         }
         case SMACK_FX_BUZZ: {
-            double win = (double)(96 << (fp & 3));
+            int bw = fp < 0 ? 0 : (fp > 5 ? 5 : fp);   /* 96..3072 frames */
+            double win = (double)(96 << bw);
             rp = fmod(p, win);
             break;
         }
         case SMACK_FX_CRUSH: {
-            double hold = (double)fp;
+            double hold = (double)(fp < 2 ? 2 : (fp > 24 ? 24 : fp));
             rp = floor(p / hold) * hold;
             break;
         }
         case SMACK_FX_REPEAT: {
             /* play the head, then stutter it (Looperator "repeat after X") */
-            static const double frac[4] = { 0.5, 0.5, 0.25, 0.75 };
-            double split = sf * frac[fp & 3];
+            static const double frac[8] =
+                { 0.5, 0.5, 0.25, 0.75, 0.125, 0.3333, 0.6667, 0.0625 };
+            double split = sf * frac[fp & 7];
             rp = (p < split) ? p : fmod(p - split, split);
             break;
         }
         case SMACK_FX_REVAFTER: {
             /* forward, then play backwards from the split point */
-            static const double frac[4] = { 0.5, 0.5, 0.6667, 0.75 };
-            double split = sf * frac[fp & 3];
+            static const double frac[8] =
+                { 0.5, 0.5, 0.6667, 0.75, 0.25, 0.125, 0.875, 0.9375 };
+            double split = sf * frac[fp & 7];
             if (p < split) rp = p;
             else {
                 rp = split - (p - split);
@@ -683,12 +702,24 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
             break;
         }
         case SMACK_FX_TAPESTOP: {
-            /* rate ramps 1 -> 0; position is the integral of the ramp */
-            if (fp) { /* fast: dead by half-slice */
+            /* rate ramps 1 -> 0; position is the integral of the ramp.
+             * 0 full-slice stop, 1 fast (dead by half), 2 sag (down to
+             * half speed, never stops), 3 slam (dead by quarter) */
+            switch (fp & 3) {
+            case 1:
                 rp = (p < sf * 0.5) ? p - p * p / sf : sf * 0.25;
                 if (p >= sf * 0.5) g = 0.0f;
-            } else {
+                break;
+            case 2:
+                rp = p - p * p / (4.0 * sf);
+                break;
+            case 3:
+                rp = (p < sf * 0.25) ? p - 2.0 * p * p / sf : sf * 0.125;
+                if (p >= sf * 0.25) g = 0.0f;
+                break;
+            default:
                 rp = p - p * p / (2.0 * sf);
+                break;
             }
             break;
         }
@@ -696,26 +727,45 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
             rp = p * p / (2.0 * sf);            /* spin up from standstill */
             break;
         case SMACK_FX_SCRATCH: {
-            double cyc = (double)(fp & 3);
+            double cyc = (double)(fp < 1 ? 1 : (fp > 8 ? 8 : fp));
             double depth = sf / 10.0;
             rp = p + depth * sin(6.2831853 * cyc * p / sf);
             break;
         }
         case SMACK_FX_ENV:
-            switch (fp & 3) {
+            switch (fp & 7) {
             case 0: g *= (float)(p / sf); break;                 /* fade in */
             case 1: g *= (float)(1.0 - p / sf); break;           /* fade out */
             case 2: g *= 0.5f + 0.5f * sinf((float)(6.2831853 * 6.0 * p / sf)); break;
             case 3: if (p < sf * 0.5) g = 0.0f; break;           /* off-then-on */
+            case 4: g *= (float)sin(3.1415926 * p / sf); break;  /* swell mid */
+            case 5: g *= 0.5f + 0.5f * sinf((float)(6.2831853 * 16.0 * p / sf)); break; /* shiver */
+            case 6: { int sg = (int)(p * 4.0 / sf); if (sg & 1) g = 0.0f; break; } /* hard chop 4 */
+            case 7: g *= 1.0f - 0.9f * (float)sin(3.1415926 * p / sf); break; /* duck mid */
             }
             break;
         case SMACK_FX_PAN:
-            switch (fp % 3) {
+            switch (fp < 0 ? 0 : (fp > 5 ? 5 : fp)) {
             case 0: gr = 0.08f; break;                           /* hard left */
             case 1: gl = 0.08f; break;                           /* hard right */
             case 2: {                                            /* ping-pong x4 */
                 int seg = (int)(p * 4.0 / sf);
                 if (seg & 1) gl = 0.08f; else gr = 0.08f;
+                break;
+            }
+            case 3: {                                            /* ping-pong x8 */
+                int seg = (int)(p * 8.0 / sf);
+                if (seg & 1) gl = 0.08f; else gr = 0.08f;
+                break;
+            }
+            case 4: {                                            /* sweep L -> R */
+                float t = (float)(p / sf);
+                gl = 1.0f - 0.92f * t; gr = 0.08f + 0.92f * t;
+                break;
+            }
+            case 5: {                                            /* sweep R -> L */
+                float t = (float)(p / sf);
+                gr = 1.0f - 0.92f * t; gl = 0.08f + 0.92f * t;
                 break;
             }
             }
@@ -725,9 +775,12 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
              * jitter (deterministic from grain index + seed) sprays the
              * texture. Two taps, triangular crossfade. */
             const double H = 512.0;                 /* half grain (~12 ms) */
-            double region = sf * 0.25 - 2.0 * H;
+            /* 0-3: spray 25..100% of a quarter-slice zone (rolled range,
+             * unchanged). 4-7: same sprays over a half-slice zone. */
+            int sv = fp < 0 ? 0 : (fp > 7 ? 7 : fp);
+            double region = sf * ((sv >= 4) ? 0.5 : 0.25) - 2.0 * H;
             if (region < 0.0) region = 0.0;
-            double spray = region * (double)((fp & 3) + 1) * 0.25;
+            double spray = region * (double)((sv & 3) + 1) * 0.25;
             int a = (int)(p / H);
             double local = p - (double)a * H;
             uint32_t h1 = ((uint32_t)a * 2654435761u) ^ s->seed;
@@ -786,7 +839,8 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
             case 2:  fc = 120.0f * powf(4000.0f / 120.0f, t); break;  /* HP up */
             default: fc = 4000.0f * powf(120.0f / 4000.0f, t); break; /* HP down */
             }
-            bq_set(&ln->fltL, fc, hp);
+            /* variants 4-7 = the same four sweeps, resonant */
+            bq_set_q(&ln->fltL, fc, hp, ((fp & 7) >= 4) ? 4.0f : 0.9f);
             ln->fltR = ln->fltL;
         }
         *l = bq_run(&ln->fltL, *l);
@@ -804,7 +858,7 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
         if (ln->vow_counter-- <= 0) {
             ln->vow_counter = 32;
             float t = (float)(p / sf);
-            const int *pr = vowel_pair[fp & 3];
+            const int *pr = vowel_pair[fp & 7];
             for (int k = 0; k < 3; k++) {
                 float fc = vowel_f[pr[0]][k] + (vowel_f[pr[1]][k] - vowel_f[pr[0]][k]) * t;
                 bq_set_bandpass(&ln->vowL[k], fc, 8.0f);
@@ -832,18 +886,25 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
         if (f == SMACK_FX_TONALDELAY) {
             double t = p / sf;
             const double dmax = 3000.0, dmin = 700.0;
-            switch (fp & 3) {
+            switch (fp & 7) {
             case 0:  d = dmax - (dmax - dmin) * t; break;   /* repeats pitch up */
             case 1:  d = dmin + (dmax - dmin) * t; break;   /* repeats pitch down */
             case 2:  d = dmin + (dmax - dmin) * 0.5 * (1.0 + sin(6.2831853 * 2.0 * t)); break;
-            default: d = dmax - (dmax - dmin) * (floor(t * 4.0) * 0.25); break; /* stepped */
+            case 3:  d = dmax - (dmax - dmin) * (floor(t * 4.0) * 0.25); break; /* stepped */
+            case 4:  d = dmax - (dmax - dmin) * 0.5 * t; break; /* slow rise */
+            case 5:  d = dmin + (dmax - dmin) * 0.5 * t; break; /* slow fall */
+            case 6:  d = dmin + (dmax - dmin) * 0.5 * (1.0 + sin(6.2831853 * 6.0 * t)); break;
+            default: d = dmax - (dmax - dmin) * (floor(t * 8.0) * 0.125); break; /* stairs 8 */
             }
         } else { /* DELAY: fixed tempo-synced echo time */
             double step = frames_per_halfstep(s) * 2.0;
-            switch (fp & 3) {
-            case 1:  d = step * 2.0; break;                 /* 8th */
+            switch (fp & 7) {
+            case 1: case 7: d = step * 2.0; break;          /* 8th (7 = pingpong 8th) */
             case 2:  d = step * 1.5; break;                 /* dotted 16th */
-            default: d = step; break;                       /* 16th; 3 = pingpong */
+            case 4:  d = step * 0.5; break;                 /* 32nd */
+            case 5:  d = step * 4.0 / 3.0; break;           /* triplet 8th */
+            case 6:  d = step * 0.25; break;                /* 64th buzz */
+            default: d = step; break;                       /* 16th; 3 = pingpong 16th */
             }
             if (d > (double)(SMACK_DLY_LEN - 2)) d = (double)(SMACK_DLY_LEN - 2);
             if (d < 64.0) d = 64.0;
@@ -855,7 +916,7 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
         float fr2 = (float)(rpos - floor(rpos));
         float dl = ln->dly[i0 * 2]     + fr2 * (ln->dly[i1 * 2]     - ln->dly[i0 * 2]);
         float dr = ln->dly[i0 * 2 + 1] + fr2 * (ln->dly[i1 * 2 + 1] - ln->dly[i0 * 2 + 1]);
-        if (f == SMACK_FX_DELAY && (fp & 3) == 3) {
+        if (f == SMACK_FX_DELAY && ((fp & 7) == 3 || (fp & 7) == 7)) {
             ln->dly[ln->dly_w * 2]     = *l * 0.5f + dr * 0.45f; /* ping-pong */
             ln->dly[ln->dly_w * 2 + 1] = *r * 0.5f + dl * 0.45f;
         } else {
@@ -871,7 +932,8 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
     }
 
     if (f == SMACK_FX_DIST) {
-        float drive = 2.5f + (float)(fp & 3);
+        /* variants 4-7 = the same four shapes, driven ~4x hotter */
+        float drive = 2.5f + (float)(fp & 3) + (((fp & 7) >= 4) ? 4.0f : 0.0f);
         for (int ch = 0; ch < 2; ch++) {
             float x = (ch ? *r : *l) / 32768.0f * drive;
             switch (fp & 3) {
@@ -906,11 +968,15 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
         }
         double t = p / sf;
         float gph;
-        switch (fp & 3) {
+        switch (fp & 7) {
         case 0:  gph = 0.15f + 0.7f * (float)t; break;      /* sweep up */
         case 1:  gph = 0.85f - 0.7f * (float)t; break;      /* sweep down */
         case 2:  gph = 0.5f + 0.35f * sinf((float)(6.2831853 * 2.0 * t)); break;
-        default: gph = 0.5f + 0.35f * sinf((float)(6.2831853 * 6.0 * t)); break;
+        case 3:  gph = 0.5f + 0.35f * sinf((float)(6.2831853 * 6.0 * t)); break;
+        case 4:  gph = 0.5f + 0.45f * sinf((float)(6.2831853 * 1.0 * t)); break; /* deep slow */
+        case 5:  gph = 0.55f; break;                        /* static notch mid */
+        case 6:  gph = 0.25f; break;                        /* static notch low */
+        default: gph = 0.85f; break;                        /* static notch high */
         }
         for (int ch = 0; ch < 2; ch++) {
             float x = (ch ? *r : *l);
@@ -932,7 +998,10 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
          * keeps ringing between passes and decays on its own */
         static const int verb_off[4] = { 0, 673, 1386, 2152 };
         float feed = (*l + *r) * 0.5f * 0.55f;
-        float fb = 0.68f + 0.05f * (float)(fp & 3);
+        /* 0-3 unchanged (rolled range); 4-7 stretch decay toward 0.96 */
+        int vv = fp & 7;
+        float fb = (vv <= 3) ? 0.68f + 0.05f * (float)vv
+                             : 0.83f + 0.033f * (float)(vv - 3);
         float acc = 0.0f;
         for (int c = 0; c < 4; c++) {
             float *b = ln->verb + verb_off[c];

@@ -476,6 +476,27 @@ int main(void) {
         assert(tick >= 0 && tick < atoi(buf));
     }
 
+    /* extended per-effect option space (v0.8.0): every effect renders
+     * cleanly at its widest editor/punch parameter, both extremes */
+    {
+        static const int pmin[SMACK_FX_COUNT] =
+            { 0, 1, 0, -24, 0, 0, 0, 2, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+        static const int pmax[SMACK_FX_COUNT] =
+            { 0, 6, 0,  24, 3, 3, 5, 24, 7, 7, 3, 0, 8, 7, 5, 7, 7, 7, 7, 7, 7, 7, 7 };
+        for (int f = 1; f < SMACK_FX_COUNT; f++) {
+            char v[16];
+            snprintf(v, sizeof(v), "%d:%d", f, pmax[f]);
+            smack_set_param(S, "lock_slice_0", v);
+            run_blocks(80, out);
+            assert(gp("run_state") == '3');
+            snprintf(v, sizeof(v), "%d:%d", f, pmin[f]);
+            smack_set_param(S, "lock_slice_0", v);
+            run_blocks(80, out);
+            assert(gp("run_state") == '3');
+        }
+        smack_set_param(S, "lock_slice_0", "-1");
+    }
+
     /* layout apply: a partial state blob re-applies a pattern recipe
      * (seed/nonce/locks) without touching wet or the loop audio */
     {
