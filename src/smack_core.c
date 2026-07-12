@@ -1281,16 +1281,24 @@ static void lock_from_str(smack_t *s, smack_lane_t *ln, int i, const char *val) 
         ln->fxp[i] = (int8_t)clampi((int)strtol(end + 1, NULL, 10), -128, 127);
 }
 
+/* snprintf returns the WOULD-HAVE-WRITTEN length — on truncation a raw
+ * `n += snprintf(...)` pushes n past buf_len, and the next append writes
+ * out of bounds (buf + n) with an underflowed size. Every state-JSON
+ * append goes through this clamp instead. */
+static int nclamp(int n, int buf_len) {
+    return (n < 0) ? 0 : (n >= buf_len ? buf_len - 1 : n);
+}
+
 /* Append ,"key":"v0,v1,..." from one lane array (0 fx, 1 fxp, 2 order) —
  * read-only display fields in the state JSON for the browser editor. */
 static int csv_lane(char *buf, int n, int buf_len, const char *key,
                     const smack_lane_t *ln, int which, int cnt) {
     if (n < 0 || n >= buf_len - 16) return n;
-    n += snprintf(buf + n, (size_t)(buf_len - n), ",\"%s\":\"", key);
+    n = nclamp(n + snprintf(buf + n, (size_t)(buf_len - n), ",\"%s\":\"", key), buf_len);
     for (int i = 0; i < cnt && n < buf_len - 12; i++)
-        n += snprintf(buf + n, (size_t)(buf_len - n), "%s%d", i ? "," : "",
+        n = nclamp(n + snprintf(buf + n, (size_t)(buf_len - n), "%s%d", i ? "," : "",
                       which == 0 ? (int)ln->fx[i] :
-                      which == 1 ? (int)ln->fxp[i] : (int)ln->order[i]);
+                      which == 1 ? (int)ln->fxp[i] : (int)ln->order[i]), buf_len);
     if (n < buf_len - 2) n += snprintf(buf + n, (size_t)(buf_len - n), "\"");
     return n;
 }
@@ -1513,22 +1521,22 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
         if (n < 0 || n >= buf_len - 3) return -1;
         for (int k = 0; k < 2; k++) {
             if (k == 1)
-                n += snprintf(buf + n, (size_t)(buf_len - n), "\",\"locks_r\":\"");
+                n = nclamp(n + snprintf(buf + n, (size_t)(buf_len - n), "\",\"locks_r\":\""), buf_len);
             int first = 1;
             for (int i = 0; i < SMACK_MAX_SLICES && n < buf_len - 20; i++) {
                 if (!s->lane[k].locked[i]) continue;
-                n += snprintf(buf + n, (size_t)(buf_len - n), "%s%d:%d:%d",
-                              first ? "" : ",", i, s->lane[k].fx[i], s->lane[k].fxp[i]);
+                n = nclamp(n + snprintf(buf + n, (size_t)(buf_len - n), "%s%d:%d:%d",
+                              first ? "" : ",", i, s->lane[k].fx[i], s->lane[k].fxp[i]), buf_len);
                 first = 0;
             }
         }
-        n += snprintf(buf + n, (size_t)(buf_len - n), "\"");
+        n = nclamp(n + snprintf(buf + n, (size_t)(buf_len - n), "\""), buf_len);
         for (int k = 0; k < (s->chan_mode ? 2 : 1) && s->n_slices > 0; k++) {
             n = csv_lane(buf, n, buf_len, k ? "pat_r" : "pat", &s->lane[k], 0, s->n_slices);
             n = csv_lane(buf, n, buf_len, k ? "fxp_r" : "fxp", &s->lane[k], 1, s->n_slices);
             n = csv_lane(buf, n, buf_len, k ? "ord_r" : "ord", &s->lane[k], 2, s->n_slices);
         }
-        n += snprintf(buf + n, (size_t)(buf_len - n), "}");
+        n = nclamp(n + snprintf(buf + n, (size_t)(buf_len - n), "}"), buf_len);
         return n;
     }
     if (!strcmp(key, "rui_poll")) {

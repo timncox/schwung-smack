@@ -240,8 +240,10 @@ const FX = [
   {n:"Phaser",  a:"PHA", c:"#b3e600", p:{opts:["Sweep up","Sweep down","Wobble","Fast wobble","Deep slow","Notch mid","Notch low","Notch high"]}},
   {n:"Reverb",  a:"VRB", c:"#33cccc", p:{opts:["Small","Mid","Large","Huge","Vast","Bloom","Wash","Endless"]}},
 ];
-/* hardware pad palette order (rows bottom-up), mirrors ui_overtake.js */
+/* hardware pad palette order (rows bottom-up), mirrors ui_overtake.js.
+ * Rendered top-down like the Move: top pad row first, Unlock at top-right. */
 const PALETTE = [0,1,8,6,5,10,11,12, 2,9,3,4,18,13,14,7, 15,16,21,17,19,22,20];
+const PAL_ROWS = [PALETTE.slice(16, 23), PALETTE.slice(8, 16), PALETTE.slice(0, 8)];
 const LLEN = ["1 step","2 steps","1 beat","2 beats","1 bar","2 bars","4 bars","8 bars","16 bars"];
 const SRES = ["1/2 step","1 step","2 steps","4 steps"];
 const RUNNAMES = ["IDLE","ARMED","REC","LOOP"];
@@ -379,10 +381,12 @@ function renderGrid() {
   el("gridinfo").textContent = run === 3 ? "· " + n + " slices" : "· no loop yet";
   g.innerHTML = "";
   if (run !== 3 || !n || !pat.length) return;
+  const dimA = num("ab", 0) === 0;   /* A side playing: mirror the dimmed pads */
   for (let i = 0; i < n; i++) {
     const f = pat[i] || 0, meta = FX[f] || FX[0];
     const d = document.createElement("div");
     d.className = "cell" + (i === sel ? " sel" : "") + (i === playSlice && playOn ? " play" : "");
+    if (dimA) d.style.opacity = "0.45";
     d.style.borderColor = meta.c;
     d.style.background = f ? meta.c + "22" : "#191920";
     d.innerHTML =
@@ -413,15 +417,33 @@ function renderInspector() {
   pal.innerHTML = "";
   const pat = csv(laneKey("pat"));
   const curF = sel >= 0 ? (pat[sel] || 0) : (brush ? brush.f : -1);
-  PALETTE.forEach(function (f) {
-    const b = document.createElement("button");
-    b.textContent = FX[f].a;
-    b.title = FX[f].n;
-    b.style.borderColor = FX[f].c;
-    b.style.color = FX[f].c;
-    if (f === curF) { b.style.background = FX[f].c; b.style.color = "#111"; }
-    b.onclick = function () { chooseFx(f); };
-    pal.appendChild(b);
+  PAL_ROWS.forEach(function (row, ri) {
+    const rdiv = document.createElement("div");
+    rdiv.style.cssText = "display:flex;gap:4px;margin-bottom:4px";
+    row.forEach(function (f) {
+      const b = document.createElement("button");
+      b.textContent = FX[f].a;
+      b.title = FX[f].n;
+      b.style.borderColor = FX[f].c;
+      b.style.color = FX[f].c;
+      b.style.cssText += ";width:64px;padding:4px 2px;font-size:10px;font-weight:700;border-width:2px";
+      if (f === curF) { b.style.background = FX[f].c; b.style.color = "#111"; }
+      b.onclick = function () { chooseFx(f); };
+      rdiv.appendChild(b);
+    });
+    if (ri === 0) {                       /* top-right pad 99 = unlock */
+      const u = document.createElement("button");
+      u.textContent = "UNLK";
+      u.title = "Unlock — the seeded roll owns this slice again (pad 99)";
+      u.style.cssText += "width:64px;padding:4px 2px;font-size:10px;font-weight:700;border-width:2px;border-style:dashed";
+      u.onclick = function () {
+        if (sel >= 0) send((lane ? "lock_slice_r_" : "lock_slice_") + sel, "-1");
+        brush = null;
+        render();
+      };
+      rdiv.appendChild(u);
+    }
+    pal.appendChild(rdiv);
   });
   renderParamCtl(curF);
 }

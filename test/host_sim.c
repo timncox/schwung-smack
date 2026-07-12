@@ -497,6 +497,45 @@ int main(void) {
         smack_set_param(S, "lock_slice_0", "-1");
     }
 
+    /* state GET must never overflow a small caller buffer — snprintf
+     * returns would-have-written lengths, so unclamped accumulation walks
+     * past buf_len (the on-device host reads state into 16 KB; a 16-bar
+     * dual-mono loop with heavy pins emits more than that) */
+    {
+        smack_set_param(S, "clear", "1");
+        smack_set_param(S, "loop_len", "8");       /* 16 bars */
+        smack_set_param(S, "slice_res", "0");      /* 1/2 step = 512 slices */
+        smack_set_param(S, "channel_mode", "1");
+        run_blocks(400, NULL);
+        smack_set_param(S, "capture", "1");
+        assert(gp("run_state") == '3');
+        for (int i = 0; i < SMACK_MAX_SLICES; i++) {  /* max-size locks */
+            char k[32];
+            snprintf(k, sizeof(k), "lock_slice_%d", i);
+            smack_set_param(S, k, "22:-100");
+            snprintf(k, sizeof(k), "lock_slice_r_%d", i);
+            smack_set_param(S, k, "22:-100");
+        }
+        static char big[65536];
+        int sizes[3] = { 1024, 16384, 65536 };
+        for (int z = 0; z < 3; z++) {
+            memset(big, 0x7E, sizeof(big));
+            int r = smack_get_param(S, "state", big, sizes[z]);
+            assert(r >= 0 && r < sizes[z]);
+            assert(big[sizes[z] - 1] == 0x7E ||
+                   (r == sizes[z] - 1));            /* never past buf_len */
+            assert(memchr(big, 0, (size_t)sizes[z]));  /* NUL-terminated */
+        }
+        smack_set_param(S, "unlock_all", "1");
+        smack_set_param(S, "channel_mode", "0");
+        smack_set_param(S, "loop_len", "4");
+        smack_set_param(S, "slice_res", "1");
+        smack_set_param(S, "clear", "1");
+        run_blocks(1400, NULL);
+        smack_set_param(S, "capture", "1");
+        assert(gp("run_state") == '3');
+    }
+
     /* layout apply: a partial state blob re-applies a pattern recipe
      * (seed/nonce/locks) without touching wet or the loop audio */
     {
