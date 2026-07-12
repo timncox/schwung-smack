@@ -164,7 +164,15 @@ target any loaded FX param — e.g. LFO on Smack's fx_density/order_density.
   and must never auto-mute). Both UIs poll host_speaker_active() &&
   !host_line_in_connected() ~2x/s: risk -> auto-mute + announce; safe ->
   auto-restore; Monitor pad (73 in both UIs, green/red) toggles manually
-  and overrides during risk. oversmack module.json now declares audio_in.
+  and overrides during risk.
+- ⚠️ oversmack does NOT declare capabilities.audio_in (dropped in 0.5.4):
+  schwung's feedback gate raises a launch confirmation modal for
+  audio-in tools (speakers on, no line-in), and on the v0.11.x shim
+  that sequence ends in a NATIVE crash (hardware-observed 2026-07-12).
+  Safe to drop: the shim feeds overtake DSPs raw hardware input
+  unconditionally — the flag only drives the gate heuristic. RESTORE
+  the flag once schwung ships a release newer than v0.11.4 (main's
+  gate is display-mode aware).
 
 Loads when Smack's component editor is opened inside a slot's Signal Chain.
 **The Master FX editor never loads custom module UIs** (verified:
