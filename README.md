@@ -9,6 +9,9 @@ hardware use.
 (It's basically how the artist Honeysmack uses the Octatrack to process
 modular. All hail Honeysmack!)
 
+**📖 [Operation manual](https://timncox.github.io/schwung-smack/)** — every
+pad, knob, and effect, with an interactive surface map.
+
 - **Capture**: retroactive grab (loop the last N steps/bars you just played —
   also on the hardware Capture button) or arm-and-record. Lengths from
   1 step to 16 bars, clock-synced, with project-tempo free-run fallback.
