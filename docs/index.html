@@ -128,6 +128,8 @@ p .hl{color:var(--acc)}
 .fstep::after{content:"→";position:absolute;right:-14px;top:50%;transform:translateY(-50%);
   color:var(--acc);font-size:18px;z-index:2}
 .fstep:last-child::after{content:"⟲";right:10px;top:12px;transform:none;opacity:.6}
+@media(max-width:820px){.fstep::after{display:none}}
+@media(max-width:520px){.flow{grid-template-columns:1fr}}
 
 /* ---------- tables ---------- */
 .tscroll{overflow-x:auto;margin:20px 0}
@@ -145,6 +147,8 @@ tr:hover td{background:var(--panel)}
   background:transparent;color:var(--dim);border:1px solid var(--line);border-radius:6px;
   padding:8px 14px;cursor:pointer;transition:.15s}
 .mode-tabs button.on{background:var(--acc);border-color:var(--acc);color:#140b06}
+.gridscroll{overflow-x:auto;margin:0 -6px;padding:0 6px;-webkit-overflow-scrolling:touch}
+.gridpane{min-width:620px}
 .steps-row{display:grid;grid-template-columns:repeat(16,1fr);gap:4px;margin-bottom:6px}
 .stp{aspect-ratio:2.2/1;border-radius:3px;background:#241f18;position:relative;cursor:pointer;border:1px solid transparent}
 .stp i{position:absolute;inset:3px;border-radius:2px;background:var(--c,#2a251c);opacity:.9;box-shadow:0 0 8px -2px var(--c,transparent)}
@@ -215,6 +219,27 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
 .chips{animation-delay:.22s}.lede{animation-delay:.3s}.demo{animation-delay:.4s}
 @keyframes up{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}html.js section:not(.vis){opacity:1;transform:none}}
+
+/* ---------- mobile ---------- */
+@media(max-width:640px){
+  .wrap{padding:0 14px}
+  nav .wrap{gap:12px;height:46px}
+  nav .logo{font-size:19px}
+  header{padding:44px 0 40px}
+  section{padding:52px 0 8px}
+  .lede{font-size:16.5px}
+  .surface{padding:14px 10px 16px}
+  .steps-cap::after{content:"  ·  swipe to pan →";color:var(--acc)}
+  .slices{padding:12px;gap:2px;height:120px}
+  .demo-head{padding:10px 12px}
+  .demo-head .ro{flex-basis:100%;order:9}
+  .knobs{gap:7px}
+  .knob .dial{width:38px;height:38px}
+  .knob .dial::after{transform-origin:50% 16px;top:2px;height:10px}
+  .readout{min-height:96px}
+  .hwbtn{padding:9px 11px}
+  footer .big{-webkit-text-stroke-width:.6px}
+}
 </style>
 </head>
 <body>
@@ -367,10 +392,11 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
       <button id="tabChain">Chain UI — smack / smack-in</button>
     </div>
 
-    <div class="steps-row" id="stepsRow"></div>
-    <div class="steps-cap">Step buttons 1–16 — slice pattern, one color per effect, white playhead chase</div>
-
-    <div class="padgrid" id="padGrid"></div>
+    <div class="gridscroll"><div class="gridpane">
+      <div class="steps-row" id="stepsRow"></div>
+      <div class="steps-cap">Step buttons 1–16 — slice pattern, one color per effect, white playhead chase</div>
+      <div class="padgrid" id="padGrid"></div>
+    </div></div>
 
     <div class="readout">
       <div class="rt" id="roT">— tap a pad —</div>
