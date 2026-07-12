@@ -273,6 +273,24 @@
       ]
     },
     {
+      "title": "Web Editor",
+      "lines": [
+        "The chain FX build",
+        "has no browser page",
+        "(host limit: only",
+        "synth slots + tools",
+        "get custom web UI).",
+        "",
+        "Use smack-in or",
+        "oversmack for the",
+        "browser editor.",
+        "",
+        "Pin with parameter:",
+        "lock_slice takes",
+        "'effect:param' too."
+      ]
+    },
+    {
       "title": "Screen Reader",
       "lines": [
         "With the screen",

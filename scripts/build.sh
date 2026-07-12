@@ -32,6 +32,10 @@ cp src/help_smack_in.json build/modules/sound_generators/smack-in/help.json
 cp modules/overtake/oversmack/module.json build/modules/overtake/oversmack/
 cp src/ui_overtake.js build/modules/overtake/oversmack/ui.js
 cp src/help_oversmack.json build/modules/overtake/oversmack/help.json
+# Browser editor: schwung-manager serves web_ui.html from the module dir
+# (Remote UI iframe for the smack-in synth slot; Tool tab for oversmack).
+cp src/web_ui.html build/modules/sound_generators/smack-in/web_ui.html
+cp src/web_ui.html build/modules/overtake/oversmack/web_ui.html
 
 # Compile AND tar inside the container: macOS bsdtar embeds AppleDouble
 # (._*) xattr entries that Linux tar extracts as real files — the schwung

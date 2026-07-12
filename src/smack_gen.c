@@ -8,6 +8,7 @@
  * boot feedback protection automatically.
  */
 #include <stddef.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "plugin_api_v1.h"
@@ -47,6 +48,13 @@ static void gen_set_param(void *inst, const char *key, const char *val) {
 }
 
 static int gen_get_param(void *inst, const char *key, char *buf, int buf_len) {
+    /* schwung-manager discovers the active overtake tool by probing
+     * overtake_dsp:module_id (remote_ui.go activeOvertakeToolID) — the shim
+     * forwards it straight to the DSP, so the plugin must answer. Only the
+     * overtake load path can reach this key; as a slot synth (smack-in)
+     * nothing probes it, so the shared .so answering "oversmack" is safe. */
+    if (!strcmp(key, "module_id"))
+        return snprintf(buf, (size_t)buf_len, "oversmack");
     return smack_get_param((smack_t *)inst, key, buf, buf_len);
 }
 

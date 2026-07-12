@@ -304,6 +304,30 @@
       ]
     },
     {
+      "title": "Web Editor",
+      "lines": [
+        "Open the schwung",
+        "manager in a browser",
+        "(move.local) and go",
+        "to Remote UI.",
+        "",
+        "oversmack: Tool tab.",
+        "smack-in: its slot.",
+        "",
+        "Full slice grid,",
+        "per-slice effect +",
+        "parameter editing,",
+        "effect presets, and",
+        "named layouts that",
+        "re-apply a whole",
+        "pattern (seed +",
+        "pins) to any loop.",
+        "",
+        "Edits sync live in",
+        "both directions."
+      ]
+    },
+    {
       "title": "Screen Reader",
       "lines": [
         "With the screen",

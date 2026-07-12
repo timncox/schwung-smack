@@ -429,6 +429,83 @@ int main(void) {
     smack_get_param(S, "punch_fx", buf, sizeof(buf));
     assert(atoi(buf) == -1);
 
+    /* ---- web-editor surface (v0.7.0) ---------------------------------- */
+
+    /* lock_slice with "f:p": pin an effect WITH an explicit parameter */
+    smack_set_param(S, "lock_slice_2", "3:-9");    /* pitch, -9 st */
+    {
+        char snap[32768];
+        assert(smack_get_param(S, "state", snap, sizeof(snap)) > 0);
+        assert(strstr(snap, "2:3:-9"));            /* serialized as i:f:p */
+        smack_get_param(S, "pattern", buf, sizeof(buf));
+        assert(buf[2] == '0' + 3);
+        smack_get_param(S, "locked", buf, sizeof(buf));
+        assert(buf[2] == '1');
+
+        /* bare "f" still works (pad UIs), and display fields are present
+         * and consistent: nsl matches n_slices, pat csv mirrors pattern */
+        smack_set_param(S, "lock_slice_2", "-1");
+        assert(smack_get_param(S, "state", snap, sizeof(snap)) > 0);
+        assert(strstr(snap, "\"run\":3"));
+        assert(strstr(snap, "\"pat\":\""));
+        assert(strstr(snap, "\"fxp\":\""));
+        assert(strstr(snap, "\"ord\":\""));
+        char want[32];
+        smack_get_param(S, "n_slices", buf, sizeof(buf));
+        snprintf(want, sizeof(want), "\"nsl\":%d,", atoi(buf));
+        assert(strstr(snap, want));
+        /* first pat csv entry == first pattern char's fx code */
+        const char *pp = strstr(snap, "\"pat\":\"") + 7;
+        smack_get_param(S, "pattern", buf, sizeof(buf));
+        assert(atoi(pp) == buf[0] - '0');
+    }
+
+    /* rui_poll digest: rev:on:tick:bpm; rev must move on a content edit */
+    {
+        unsigned r0, r1;
+        int on, tick, bpm;
+        smack_get_param(S, "rui_poll", buf, sizeof(buf));
+        assert(sscanf(buf, "%u:%d:%d:%d", &r0, &on, &tick, &bpm) == 4);
+        assert(on == 1);                           /* looping */
+        assert(bpm > 85 && bpm < 95);              /* override 90 governs */
+        smack_set_param(S, "reroll", "trigger");
+        smack_get_param(S, "rui_poll", buf, sizeof(buf));
+        assert(sscanf(buf, "%u:%d:%d:%d", &r1, &on, &tick, &bpm) == 4);
+        assert(r1 != r0);                          /* edit bumped the rev */
+        smack_get_param(S, "n_slices", buf, sizeof(buf));
+        assert(tick >= 0 && tick < atoi(buf));
+    }
+
+    /* layout apply: a partial state blob re-applies a pattern recipe
+     * (seed/nonce/locks) without touching wet or the loop audio */
+    {
+        char snap[32768], pat_a[600];
+        smack_set_param(S, "seed", "777");
+        smack_set_param(S, "lock_slice_5", "7:6"); /* crush depth 6 */
+        smack_get_param(S, "pattern", pat_a, sizeof(pat_a));
+        assert(smack_get_param(S, "state", snap, sizeof(snap)) > 0);
+
+        smack_set_param(S, "wet", "40");
+        smack_set_param(S, "seed", "31337");       /* wander away */
+        smack_set_param(S, "unlock_all", "1");
+        smack_get_param(S, "pattern", buf, sizeof(buf));
+        assert(strcmp(buf, pat_a) != 0);
+
+        char part[4096];                           /* pattern recipe only */
+        const char *lk = strstr(snap, "\"locks\":\"");
+        assert(lk);
+        char locks[2048];
+        sscanf(lk + 9, "%2047[^\"]", locks);
+        snprintf(part, sizeof(part),
+                 "{\"seed\":777,\"nonce\":0,\"locks\":\"%s\"}", locks);
+        smack_set_param(S, "state", part);
+        smack_get_param(S, "pattern", buf, sizeof(buf));
+        assert(strcmp(buf, pat_a) == 0);           /* exact pattern back */
+        smack_get_param(S, "state", snap, sizeof(snap));
+        assert(strstr(snap, "\"wet\":40"));        /* wet untouched */
+        assert(strstr(snap, "5:7:6"));             /* lock w/ param back */
+    }
+
     printf("host_sim: all assertions passed\n");
     smack_destroy(S);
     return 0;

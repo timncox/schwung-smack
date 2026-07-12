@@ -193,6 +193,35 @@ Len / Res / Wet / Pitch / Qnt / Seed.
   through `stepPage*16`; footer/summary show p N/M; page clamps on
   pattern refresh, resets when the loop ends.
 
+## Web editor + per-slice tweaking (v0.7.0 / oversmack 0.4.0)
+
+- `src/web_ui.html` ships in the smack-in + oversmack tarballs; schwung-manager
+  auto-serves it (Remote UI iframe for the smack-in synth slot, Tool tab for
+  oversmack; pop-out standalone works via `?schwungStandalone=1[&tool=1]`).
+  The chain audio_fx build CANNOT have one — remote_ui.go only wires custom
+  web UIs for slot synths and overtake tools.
+- Protocol (all verified in schwung-manager source): browser cache seeds from
+  the module's `state` JSON via fetchAllParams (value must start `{`);
+  device→browser sync is rev-gated on `rui_poll` = "rev:on:tick:bpm"
+  (`edit_rev` bumps on every content edit EXCEPT punch_pressure; playhead
+  rides `rui_play` pushes, slot mode falls back to `ps` in state). The DSP
+  must answer `module_id` (gen wrapper returns "oversmack") or the manager
+  thinks no tool is loaded.
+- `state` JSON now carries read-only display fields (run/nsl/mon/ps/det/pfx/
+  bpmo + pat/fxp/ord csv per lane) — the restore parser ignores them, old
+  presets still load.
+- `lock_slice_<i>` (and `_r_`) accepts "f:p" to pin an effect WITH a chosen
+  parameter; bare "f" keeps pad-UI semantics.
+- roll_lane now CONSUMES rng draws for locked slices (computed, discarded):
+  unlocked slices roll identically with or without pins, so preset/layout
+  restores reproduce exactly what was heard when the pin was placed live.
+  (Before this, a pin shifted every later slice on the next roll.)
+- Layouts need no engine support: a layout = partial state blob
+  {slice_res, densities, pitch_range, seed, nonce, chan, locks, locks_r};
+  applying = one `state` SET (absent keys keep current values; audio
+  untouched). Effect presets = (f,p) pairs. Both live in browser
+  localStorage with export/import in the editor.
+
 ## Next steps
 
 - On-device: verify chain UI (LED colors on steps, pad consumption,

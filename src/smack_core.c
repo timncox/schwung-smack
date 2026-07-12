@@ -205,6 +205,8 @@ struct smack {
     float    det_bpm;            /* last result; 0 = none */
     float    bpm_override;       /* free-run tempo override; 0 = project tempo */
     uint32_t roll_nonce;         /* advanced by reroll; 0 = canonical seed pattern */
+    uint32_t edit_rev;           /* bumped on any content edit; gates the
+                                    Remote-UI browser's full-state refetch */
 
     /* Dual-mono: L/R inputs as independent mono lanes, each panned back
      * into the stereo field. 0 = Stereo (lane[0] only), 1 = Dual Mono. */
@@ -281,42 +283,48 @@ static void roll_lane(smack_t *s, smack_lane_t *ln) {
         }
     }
 
+    /* Locked slices still CONSUME their rng draws (computed then discarded)
+     * so the stream stays aligned: for a given seed+nonce the unlocked
+     * slices roll identically whether or not pins exist. That is what lets
+     * a preset/layout restore (which re-rolls with locks applied) reproduce
+     * exactly the pattern heard when the pin was placed live. */
     for (int i = 0; i < n; i++) {
-        if (ln->locked[i]) continue;
+        uint8_t rf = SMACK_FX_NONE;
+        int8_t  rp = 0;
         if (rnd01(&s->rng) < s->fx_density) {
             int f = 1 + rnd_below(&s->rng, SMACK_FX_COUNT - 1);
-            ln->fx[i] = (uint8_t)f;
+            rf = (uint8_t)f;
             switch (f) {
-            case SMACK_FX_RETRIG: ln->fxp[i] = (int8_t)(1 + rnd_below(&s->rng, 3)); break;
+            case SMACK_FX_RETRIG: rp = (int8_t)(1 + rnd_below(&s->rng, 3)); break;
             case SMACK_FX_PITCH: {
                 int semi = 1 + rnd_below(&s->rng, s->pitch_range);
                 if (xs32(&s->rng) & 1) semi = -semi;
-                ln->fxp[i] = (int8_t)semi;
+                rp = (int8_t)semi;
                 break;
             }
-            case SMACK_FX_SPEED: ln->fxp[i] = (int8_t)(xs32(&s->rng) & 1); break;
-            case SMACK_FX_BUZZ:  ln->fxp[i] = (int8_t)(xs32(&s->rng) & 3); break;
-            case SMACK_FX_CRUSH: ln->fxp[i] = (int8_t)(2 + (xs32(&s->rng) & 6)); break;
+            case SMACK_FX_SPEED: rp = (int8_t)(xs32(&s->rng) & 1); break;
+            case SMACK_FX_BUZZ:  rp = (int8_t)(xs32(&s->rng) & 3); break;
+            case SMACK_FX_CRUSH: rp = (int8_t)(2 + (xs32(&s->rng) & 6)); break;
             case SMACK_FX_REPEAT:
-            case SMACK_FX_REVAFTER: ln->fxp[i] = (int8_t)(1 + rnd_below(&s->rng, 3)); break;
-            case SMACK_FX_TAPESTOP: ln->fxp[i] = (int8_t)(xs32(&s->rng) & 1); break;
-            case SMACK_FX_SCRATCH:  ln->fxp[i] = (int8_t)(1 + rnd_below(&s->rng, 3)); break;
-            case SMACK_FX_ENV:      ln->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_PAN:      ln->fxp[i] = (int8_t)rnd_below(&s->rng, 3); break;
-            case SMACK_FX_FILTER:   ln->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_VOWEL:    ln->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_TONALDELAY: ln->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_FREEZE:   ln->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_DELAY:    ln->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_DIST:     ln->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_PHASER:   ln->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            case SMACK_FX_VERB:     ln->fxp[i] = (int8_t)rnd_below(&s->rng, 4); break;
-            default:             ln->fxp[i] = 0; break;
+            case SMACK_FX_REVAFTER: rp = (int8_t)(1 + rnd_below(&s->rng, 3)); break;
+            case SMACK_FX_TAPESTOP: rp = (int8_t)(xs32(&s->rng) & 1); break;
+            case SMACK_FX_SCRATCH:  rp = (int8_t)(1 + rnd_below(&s->rng, 3)); break;
+            case SMACK_FX_ENV:      rp = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_PAN:      rp = (int8_t)rnd_below(&s->rng, 3); break;
+            case SMACK_FX_FILTER:   rp = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_VOWEL:    rp = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_TONALDELAY: rp = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_FREEZE:   rp = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_DELAY:    rp = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_DIST:     rp = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_PHASER:   rp = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_VERB:     rp = (int8_t)rnd_below(&s->rng, 4); break;
+            default:                rp = 0; break;
             }
-        } else {
-            ln->fx[i] = SMACK_FX_NONE;
-            ln->fxp[i] = 0;
         }
+        if (ln->locked[i]) continue;
+        ln->fx[i]  = rf;
+        ln->fxp[i] = rp;
     }
 }
 
@@ -336,6 +344,7 @@ static void roll_pattern(smack_t *s) {
      * determines both lanes, and lane 0 matches what stereo mode rolls */
     roll_lane(s, &s->lane[0]);
     if (s->chan_mode) roll_lane(s, &s->lane[1]);
+    s->edit_rev++;
 }
 
 /* Equal-power pan: 0 = hard left, 50 = center, 100 = hard right. */
@@ -1066,6 +1075,7 @@ static void det_step(smack_t *s) {
     if (s->det_pos >= s->det_total) {
         s->det_active = 0;
         det_finish(s);
+        s->edit_rev++; /* browser editor refreshes its BPM readout */
     }
 }
 
@@ -1104,7 +1114,7 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
                     double p = fmod(s->play_pos, s->slice_frames);
                     if (p < 1.0) apply = 1;
                 } else if (s->play_pos < 1.0) apply = 1;
-                if (apply) { s->ab = s->ab_pending; s->ab_pending = -1; }
+                if (apply) { s->ab = s->ab_pending; s->ab_pending = -1; s->edit_rev++; }
             }
 
             float ll, rr;
@@ -1189,6 +1199,31 @@ static void set_soft(smack_t *s, smack_lane_t *ln, int i, int f) {
     f = clampi(f, 0, SMACK_FX_COUNT - 1);
     if (ln->fx[i] != (uint8_t)f) ln->fxp[i] = default_fxp(f);
     ln->fx[i] = (uint8_t)f;
+}
+
+/* lock_slice_<i> value "f" or "f:p": pin effect f, optionally with an
+ * explicit parameter (the web editor's per-slice tweak path). Bare "f"
+ * keeps the set_lock semantics the pad UIs rely on. */
+static void lock_from_str(smack_t *s, smack_lane_t *ln, int i, const char *val) {
+    char *end;
+    long f = strtol(val, &end, 10);
+    set_lock(s, ln, i, (int)f);
+    if (f >= 0 && *end == ':')
+        ln->fxp[i] = (int8_t)clampi((int)strtol(end + 1, NULL, 10), -128, 127);
+}
+
+/* Append ,"key":"v0,v1,..." from one lane array (0 fx, 1 fxp, 2 order) —
+ * read-only display fields in the state JSON for the browser editor. */
+static int csv_lane(char *buf, int n, int buf_len, const char *key,
+                    const smack_lane_t *ln, int which, int cnt) {
+    if (n < 0 || n >= buf_len - 16) return n;
+    n += snprintf(buf + n, (size_t)(buf_len - n), ",\"%s\":\"", key);
+    for (int i = 0; i < cnt && n < buf_len - 12; i++)
+        n += snprintf(buf + n, (size_t)(buf_len - n), "%s%d", i ? "," : "",
+                      which == 0 ? (int)ln->fx[i] :
+                      which == 1 ? (int)ln->fxp[i] : (int)ln->order[i]);
+    if (n < buf_len - 2) n += snprintf(buf + n, (size_t)(buf_len - n), "\"");
+    return n;
 }
 
 /* Parse a locks string ("i:f:p,i:f:p,..."; bare i:f pairs from older
@@ -1338,14 +1373,18 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
             if (s->state == SMACK_LOOPING) roll_pattern(s);
         }
     } else if (!strncmp(key, "lock_slice_r_", 13)) {
-        set_lock(s, &s->lane[1], clampi(atoi(key + 13), 0, SMACK_MAX_SLICES - 1), atoi(val));
+        lock_from_str(s, &s->lane[1], clampi(atoi(key + 13), 0, SMACK_MAX_SLICES - 1), val);
     } else if (!strncmp(key, "lock_slice_", 11)) {
-        set_lock(s, &s->lane[0], clampi(atoi(key + 11), 0, SMACK_MAX_SLICES - 1), atoi(val));
+        lock_from_str(s, &s->lane[0], clampi(atoi(key + 11), 0, SMACK_MAX_SLICES - 1), val);
     } else if (!strncmp(key, "set_slice_r_", 12)) {
         set_soft(s, &s->lane[1], clampi(atoi(key + 12), 0, SMACK_MAX_SLICES - 1), atoi(val));
     } else if (!strncmp(key, "set_slice_", 10)) {
         set_soft(s, &s->lane[0], clampi(atoi(key + 10), 0, SMACK_MAX_SLICES - 1), atoi(val));
     }
+    /* Any recognized edit invalidates the browser editor's snapshot. The
+     * punch pressure stream is the one exception — it arrives at aftertouch
+     * rate and would turn every Remote-UI poll into a full state refetch. */
+    if (strcmp(key, "punch_pressure")) s->edit_rev++;
 }
 
 int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
@@ -1378,17 +1417,30 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
         return snprintf(buf, (size_t)buf_len, "%d", s->follow_transport ? 0 : 1);
     if (!strcmp(key, "state")) {
         /* full settings snapshot — powers slot autosave AND module presets
-         * (save/recall from the shadow UI). Audio is never serialized. */
+         * (save/recall from the shadow UI) AND the Remote-UI browser editor
+         * (schwung-manager flattens this JSON into param_update messages).
+         * run/nsl/mon/ps/det/pfx/pat/fxp/ord are read-only display fields;
+         * the restore parser ignores them. Audio is never serialized. */
+        int ps = -1;
+        if (s->state == SMACK_LOOPING && s->slice_frames > 0.0) {
+            ps = (int)(s->play_pos / s->slice_frames);
+            if (ps >= s->n_slices) ps = s->n_slices - 1;
+        }
         int n = snprintf(buf, (size_t)buf_len,
             "{\"loop_len\":%d,\"slice_res\":%d,\"fx_density\":%d,"
             "\"order_density\":%d,\"pitch_range\":%d,\"wet\":%d,\"ab\":%d,"
             "\"quantize\":%d,\"seed\":%u,\"nonce\":%u,\"transport\":%d,"
-            "\"chan\":%d,\"pan_l\":%d,\"pan_r\":%d,\"locks\":\"",
+            "\"chan\":%d,\"pan_l\":%d,\"pan_r\":%d,"
+            "\"run\":%d,\"nsl\":%d,\"mon\":%d,\"ps\":%d,\"det\":%d,\"pfx\":%d,"
+            "\"bpmo\":%d,\"locks\":\"",
             s->loop_len_idx, s->slice_res_idx, (int)(s->fx_density * 100.0f),
             (int)(s->order_density * 100.0f), s->pitch_range,
             (int)(s->wet * 100.0f), s->ab, s->quantize_mode, s->seed,
             s->roll_nonce, s->follow_transport ? 0 : 1,
-            s->chan_mode, s->pan_l, s->pan_r);
+            s->chan_mode, s->pan_l, s->pan_r,
+            (int)s->state, s->n_slices, s->monitor, ps,
+            s->det_active ? -1 : (int)(s->det_bpm + 0.5f), s->punch_fx,
+            (int)(s->bpm_override + 0.5f));
         if (n < 0 || n >= buf_len - 3) return -1;
         for (int k = 0; k < 2; k++) {
             if (k == 1)
@@ -1401,8 +1453,30 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
                 first = 0;
             }
         }
-        n += snprintf(buf + n, (size_t)(buf_len - n), "\"}");
+        n += snprintf(buf + n, (size_t)(buf_len - n), "\"");
+        for (int k = 0; k < (s->chan_mode ? 2 : 1) && s->n_slices > 0; k++) {
+            n = csv_lane(buf, n, buf_len, k ? "pat_r" : "pat", &s->lane[k], 0, s->n_slices);
+            n = csv_lane(buf, n, buf_len, k ? "fxp_r" : "fxp", &s->lane[k], 1, s->n_slices);
+            n = csv_lane(buf, n, buf_len, k ? "ord_r" : "ord", &s->lane[k], 2, s->n_slices);
+        }
+        n += snprintf(buf + n, (size_t)(buf_len - n), "}");
         return n;
+    }
+    if (!strcmp(key, "rui_poll")) {
+        /* schwung-manager Remote-UI poll digest "rev:on:tick:bpm"
+         * (remote_ui.go parseRuiPoll): rev gates the heavy full-state
+         * refetch, tick drives the browser playhead while nothing edits. */
+        int on = (s->state == SMACK_LOOPING && !s->transport_paused) ? 1 : 0;
+        int ps = -1;
+        if (on && s->slice_frames > 0.0) {
+            ps = (int)(s->play_pos / s->slice_frames);
+            if (ps >= s->n_slices) ps = s->n_slices - 1;
+        }
+        double fpt = frames_per_tick_now(s);
+        int bpm = fpt > 0.0
+            ? (int)((double)SMACK_SR * 60.0 / (fpt * 24.0) + 0.5) : 0;
+        return snprintf(buf, (size_t)buf_len, "%u:%d:%d:%d",
+                        s->edit_rev, on, ps, bpm);
     }
     if (!strcmp(key, "punch_fx"))
         return snprintf(buf, (size_t)buf_len, "%d", s->punch_fx);

@@ -1,0 +1,626 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smack Editor</title>
+<style>
+  :root {
+    --bg: #101014; --panel: #17171d; --edge: #2a2a33; --ink: #e8e8ee;
+    --dim: #8a8a96; --accent: #ff7733;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 13px/1.45 "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  h1 { font-size: 15px; letter-spacing: 3px; margin: 0; }
+  .bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 12px; border-bottom: 1px solid var(--edge);
+    position: sticky; top: 0; background: var(--bg); z-index: 5;
+  }
+  .chip {
+    padding: 2px 10px; border-radius: 3px; font-weight: 700;
+    background: #333; color: #ccc;
+  }
+  .chip.loop { background: #1d5c2e; color: #b6ffcb; }
+  .chip.rec  { background: #7a1d1d; color: #ffc7c7; }
+  .chip.armed{ background: #7a5b1d; color: #ffedbd; }
+  button {
+    background: #23232c; color: var(--ink); border: 1px solid var(--edge);
+    border-radius: 4px; padding: 5px 10px; font: inherit; cursor: pointer;
+  }
+  button:hover { border-color: #55555f; }
+  button.on { background: var(--accent); border-color: var(--accent); color: #111; font-weight: 700; }
+  button.warn { color: #ff9d9d; }
+  button.sure { background: #7a1d1d; border-color: #a33; color: #fff; }
+  input[type=range] { accent-color: var(--accent); vertical-align: middle; }
+  input[type=text], input[type=number], select {
+    background: #1e1e26; color: var(--ink); border: 1px solid var(--edge);
+    border-radius: 4px; padding: 4px 6px; font: inherit;
+  }
+  label.k { color: var(--dim); }
+  .wrap { display: flex; gap: 14px; padding: 12px; align-items: flex-start; flex-wrap: wrap; }
+  .left { flex: 1 1 560px; min-width: 340px; }
+  .right { flex: 0 1 380px; min-width: 300px; display: flex; flex-direction: column; gap: 12px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--edge);
+    border-radius: 6px; padding: 10px 12px;
+  }
+  .panel h2 {
+    font-size: 11px; letter-spacing: 2px; color: var(--dim);
+    margin: 0 0 8px; text-transform: uppercase;
+  }
+  #grid {
+    display: grid; grid-template-columns: repeat(16, minmax(34px, 1fr));
+    gap: 4px; overflow-x: auto;
+  }
+  .cell {
+    position: relative; border: 1px solid #333; border-radius: 4px;
+    padding: 3px 2px 2px; min-height: 46px; cursor: pointer; text-align: center;
+    background: #191920;
+  }
+  .cell .idx { position: absolute; top: 1px; left: 3px; font-size: 8px; color: #666; }
+  .cell .lock { position: absolute; top: 1px; right: 3px; font-size: 8px; }
+  .cell .fx { font-weight: 700; font-size: 11px; margin-top: 9px; }
+  .cell .p  { font-size: 9px; color: #bbb; }
+  .cell .ord { font-size: 8px; color: #888; }
+  .cell.sel { outline: 2px solid #fff; }
+  .cell.play { box-shadow: 0 0 0 2px var(--accent) inset; }
+  .pal { display: flex; flex-wrap: wrap; gap: 4px; }
+  .pal button {
+    width: 64px; padding: 4px 2px; font-size: 10px; font-weight: 700;
+    border-width: 2px;
+  }
+  .optrow { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .row { display: flex; align-items: center; gap: 8px; margin: 5px 0; flex-wrap: wrap; }
+  .row .k { width: 84px; flex: none; }
+  .list { display: flex; flex-wrap: wrap; gap: 5px; }
+  .list .item { display: flex; align-items: center; gap: 0; }
+  .list .item button.x { border-left: none; border-radius: 0 4px 4px 0; color: #f88; padding: 5px 6px; }
+  .list .item button.nm { border-radius: 4px 0 0 4px; }
+  textarea { width: 100%; height: 90px; background: #1e1e26; color: var(--ink);
+    border: 1px solid var(--edge); border-radius: 4px; font: inherit; font-size: 11px; }
+  .note { color: var(--dim); font-size: 11px; }
+  .lanetabs button { border-radius: 4px 4px 0 0; }
+  #offline {
+    padding: 26px; text-align: center; color: var(--dim);
+  }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <h1>SMACK</h1>
+  <span id="stchip" class="chip">—</span>
+  <span id="bpm" class="note"></span>
+  <button id="bCap">Capture</button>
+  <button id="bArm">Arm</button>
+  <button id="bRoll">Re-Roll</button>
+  <button id="bClear" class="warn">Clear</button>
+  <button id="bUnlock">Unlock All</button>
+  <span style="flex:1"></span>
+  <button id="bAB">A/B</button>
+  <button id="bMon">Monitor</button>
+  <label class="k">Wet <input id="wet" type="range" min="0" max="100" step="5"></label>
+  <span id="wetv" class="note"></span>
+</div>
+
+<div id="offline">Waiting for Smack… load oversmack (or a smack-in slot) on the Move,
+then this page syncs live.</div>
+
+<div class="wrap" id="ui" style="display:none">
+  <div class="left">
+    <div class="panel">
+      <div class="row" id="lanerow" style="display:none">
+        <span class="lanetabs">
+          <button id="laneA">Lane L</button><button id="laneB">Lane R</button>
+        </span>
+        <span class="note">dual mono: each lane has its own pattern</span>
+      </div>
+      <div class="row">
+        <h2 style="margin:0;flex:1">Slices <span id="gridinfo" class="note"></span></h2>
+        <label class="k"><input id="paint" type="checkbox"> paint with selected effect</label>
+      </div>
+      <div id="grid"></div>
+      <div class="note" id="abnote" style="margin-top:6px"></div>
+    </div>
+
+    <div class="panel" style="margin-top:12px">
+      <h2>Pattern &amp; Loop</h2>
+      <div class="row"><span class="k">FX density</span>
+        <input id="fxd" type="range" min="0" max="100" step="5" style="flex:1"><span id="fxdv" class="note"></span></div>
+      <div class="row"><span class="k">Order</span>
+        <input id="ordd" type="range" min="0" max="100" step="5" style="flex:1"><span id="orddv" class="note"></span></div>
+      <div class="row"><span class="k">Seed</span>
+        <input id="seed" type="number" min="0" style="width:110px">
+        <button id="dice">🎲</button>
+        <span class="note">seed + pins = the whole pattern</span></div>
+      <div class="row"><span class="k">Loop len</span><select id="llen"></select>
+        <span class="k" style="width:auto">Res</span><select id="sres"></select></div>
+      <div class="row"><span class="k">Quantize</span><select id="qnt">
+          <option value="0">Instant</option><option value="1">1/2 Step</option>
+          <option value="2">Loop</option></select>
+        <span class="k" style="width:auto">Pitch ±</span>
+        <input id="prange" type="number" min="1" max="24" style="width:60px"> st</div>
+      <div class="row"><span class="k">Channels</span><select id="chan">
+          <option value="0">Stereo</option><option value="1">Dual Mono</option></select>
+        <span id="panbox" style="display:none">
+          <span class="k" style="width:auto">Pan L</span><input id="panl" type="range" min="0" max="100">
+          <span class="k" style="width:auto">Pan R</span><input id="panr" type="range" min="0" max="100">
+        </span></div>
+      <div class="row"><span class="k">Clock</span><select id="tspt">
+          <option value="0">Follow transport</option><option value="1">Free run</option></select>
+        <button id="bDet">Detect BPM</button>
+        <input id="bpmo" type="number" min="0" max="200" step="0.1" style="width:80px" title="BPM override; 0 = project tempo">
+        <span class="note">override (0 = off)</span></div>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="panel">
+      <h2>Slice <span id="selno">—</span></h2>
+      <div class="pal" id="pal"></div>
+      <div id="pctl"></div>
+      <div class="row" style="margin-top:8px">
+        <button id="bPin">Pin</button>
+        <button id="bUnpin">Unpin (re-roll owns it)</button>
+        <button id="bClean">Mute (clean)</button>
+      </div>
+      <div class="note">Pinned slices survive Re-Roll and save into presets/layouts.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Effect presets</h2>
+      <div class="row">
+        <input id="pname" type="text" placeholder="name this effect+setting" style="flex:1">
+        <button id="pSave">Save</button>
+      </div>
+      <div class="list" id="plist"></div>
+      <div class="note">Click a preset, then click slices to stamp it (auto-pins).</div>
+    </div>
+
+    <div class="panel">
+      <h2>Layouts</h2>
+      <div class="row">
+        <input id="lname" type="text" placeholder="name this whole pattern" style="flex:1">
+        <button id="lSave">Save</button>
+      </div>
+      <div class="list" id="llist"></div>
+      <div class="row" style="margin-top:6px">
+        <button id="lExp">Export all</button>
+        <button id="lImp">Import</button>
+      </div>
+      <textarea id="lio" style="display:none" spellcheck="false"></textarea>
+      <div class="note">A layout = seed + densities + pins. Applying re-rolls the
+        current loop into that exact pattern (audio is untouched).</div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/schwung-remote-api.js"></script>
+<script>
+"use strict";
+
+/* ---- effect metadata (mirrors smack_core.c) ------------------------- */
+const FX = [
+  {n:"Clean",   a:"CLN", c:"#555555"},
+  {n:"Retrig",  a:"RTG", c:"#ff4d4d", p:{min:1,max:4,label:"Repeats"}},
+  {n:"Reverse", a:"REV", c:"#4da6ff"},
+  {n:"Pitch",   a:"PIT", c:"#b366ff", p:{min:-24,max:24,label:"Semitones"}},
+  {n:"Speed",   a:"SPD", c:"#b366ff", p:{opts:["Half speed","Double speed"]}},
+  {n:"Gate",    a:"GAT", c:"#ff1a1a"},
+  {n:"Buzz",    a:"BZZ", c:"#ff1a1a", p:{opts:["Tight","Narrow","Mid","Wide"]}},
+  {n:"Crush",   a:"CRU", c:"#66ff33", p:{min:2,max:8,label:"Hold ÷"}},
+  {n:"Repeat",  a:"RPT", c:"#ff4d4d", p:{opts:[null,"After 1/2","After 1/4","After 3/4"],min:1}},
+  {n:"RevAfter",a:"RVA", c:"#4da6ff", p:{opts:[null,"At 1/2","At 2/3","At 3/4"],min:1}},
+  {n:"TapeStop",a:"TST", c:"#ff7733", p:{opts:["Full slice","Fast"]}},
+  {n:"TapeStart",a:"TSA",c:"#ff7733"},
+  {n:"Scratch", a:"SCR", c:"#ff7733", p:{min:1,max:3,label:"Cycles"}},
+  {n:"Envelope",a:"ENV", c:"#b0b0b0", p:{opts:["Fade in","Fade out","Wobble","Late half"]}},
+  {n:"Pan",     a:"PAN", c:"#b0b0b0", p:{opts:["Hard left","Hard right","Ping-pong"]}},
+  {n:"Filter",  a:"FLT", c:"#33cc66", p:{opts:["LP down","LP up","HP up","HP down"]}},
+  {n:"Vowel",   a:"VWL", c:"#33cc66", p:{opts:["A→I","O→I","A→U","E→O"]}},
+  {n:"TonalDly",a:"TDL", c:"#33cccc", p:{opts:["Rise","Fall","Wobble","Stepped"]}},
+  {n:"Freeze",  a:"FRZ", c:"#f0f0f0", p:{opts:["Spray 1","Spray 2","Spray 3","Spray 4"]}},
+  {n:"Delay",   a:"DLY", c:"#33cccc", p:{opts:["16th","8th","Dotted","Ping-pong"]}},
+  {n:"Distort", a:"DST", c:"#66ff33", p:{opts:["Soft clip","Hard clip","Foldback","Gnash"]}},
+  {n:"Phaser",  a:"PHA", c:"#b3e600", p:{opts:["Sweep up","Sweep down","Wobble","Fast wobble"]}},
+  {n:"Reverb",  a:"VRB", c:"#33cccc", p:{opts:["Small","Mid","Large","Huge"]}},
+];
+/* hardware pad palette order (rows bottom-up), mirrors ui_overtake.js */
+const PALETTE = [0,1,8,6,5,10,11,12, 2,9,3,4,18,13,14,7, 15,16,21,17,19,22,20];
+const LLEN = ["1 step","2 steps","1 beat","2 beats","1 bar","2 bars","4 bars","8 bars","16 bars"];
+const SRES = ["1/2 step","1 step","2 steps","4 steps"];
+const RUNNAMES = ["IDLE","ARMED","REC","LOOP"];
+
+/* ---- device model --------------------------------------------------- */
+let PREFIX = null;               /* "overtake_dsp:" (tool) or "synth:" (slot) */
+const M = {};                    /* stripped key -> string value */
+let playSlice = -1, liveBpm = 0, playOn = false, lastRuiPlay = 0;
+let sel = -1, lane = 0, brush = null; /* brush: {f,p} while a preset is armed */
+const touched = {};              /* control-key -> ts of last local edit */
+
+function el(id) { return document.getElementById(id); }
+function num(k, d) { const v = M[k]; return v === undefined ? d : parseFloat(v); }
+function laneKey(base) { return lane ? base + "_r" : base; }
+function csv(k) { const v = M[k]; return v ? v.split(",").map(Number) : []; }
+function locksOf(k) {            /* "i:f:p,..." -> Map(i -> {f,p}) */
+  const m = new Map();
+  (M[k] || "").split(",").forEach(t => {
+    const a = t.split(":").map(Number);
+    if (a.length >= 2 && !isNaN(a[0])) m.set(a[0], {f: a[1], p: a[2] || 0});
+  });
+  return m;
+}
+function send(key, val) {
+  if (PREFIX) schwungRemote.setParam(PREFIX + key, String(val));
+}
+function trig(key) { send(key, "1"); }
+
+/* ---- incoming sync --------------------------------------------------- */
+schwungRemote.onParamChange(function (params) {
+  let dirty = false;
+  for (const k in params) {
+    let p = null;
+    if (k.indexOf("overtake_dsp:") === 0) p = "overtake_dsp:";
+    else if (k.indexOf("synth:") === 0) p = "synth:";
+    if (!p) continue;
+    if (!PREFIX) PREFIX = p;
+    const key = k.slice(p.length);
+    if (key === "rui_play") {    /* cheap playhead push: on:tick:bpm */
+      const a = params[k].split(":").map(Number);
+      playOn = !!a[0]; playSlice = a[1]; liveBpm = a[2];
+      lastRuiPlay = Date.now();
+      paintPlayhead();
+      continue;
+    }
+    if (M[key] !== params[k]) { M[key] = params[k]; dirty = true; }
+  }
+  if (dirty) render();
+});
+setInterval(function () { schwungRemote.resubscribe(); }, 400);
+
+/* ---- rendering -------------------------------------------------------- */
+function setIf(id, prop, v) {    /* skip controls the user is touching */
+  const e = el(id);
+  if (Date.now() - (touched[id] || 0) < 1200) return;
+  if (String(e[prop]) !== String(v)) e[prop] = v;
+}
+
+function render() {
+  if (M.nsl === undefined && M.seed === undefined) return;
+  el("offline").style.display = "none";
+  el("ui").style.display = "";
+
+  const run = num("run", 0);
+  if (Date.now() - lastRuiPlay > 1500) {
+    /* slot mode has no rui_play pushes — fall back to the state poll */
+    playSlice = num("ps", -1);
+    playOn = run === 3 && playSlice >= 0;
+  }
+  const chip = el("stchip");
+  chip.textContent = RUNNAMES[run] || "—";
+  chip.className = "chip " + (run === 3 ? "loop" : run === 2 ? "rec" : run === 1 ? "armed" : "");
+  const det = num("det", 0);
+  el("bpm").textContent =
+    (liveBpm ? "@" + liveBpm + " BPM" : "") +
+    (det === -1 ? " · detecting…" : det > 0 ? " · det " + det : "");
+
+  el("bAB").classList.toggle("on", num("ab", 0) === 1);
+  el("bAB").textContent = num("ab", 0) ? "B (pattern)" : "A (clean)";
+  el("bMon").classList.toggle("on", num("mon", 0) === 1);
+  setIf("wet", "value", num("wet", 100));
+  el("wetv").textContent = num("wet", 100) + "%";
+
+  setIf("fxd", "value", num("fx_density", 50));
+  el("fxdv").textContent = num("fx_density", 50) + "%";
+  setIf("ordd", "value", num("order_density", 0));
+  el("orddv").textContent = num("order_density", 0) + "%";
+  setIf("seed", "value", num("seed", 0));
+  setIf("llen", "value", num("loop_len", 4));
+  setIf("sres", "value", num("slice_res", 1));
+  setIf("qnt", "value", num("quantize", 0));
+  setIf("prange", "value", num("pitch_range", 12));
+  setIf("chan", "value", num("chan", 0));
+  setIf("panl", "value", num("pan_l", 0));
+  setIf("panr", "value", num("pan_r", 100));
+  setIf("tspt", "value", num("transport", 0));
+  setIf("bpmo", "value", num("bpmo", 0) || "");
+
+  const dual = num("chan", 0) === 1;
+  el("lanerow").style.display = dual ? "" : "none";
+  el("panbox").style.display = dual ? "" : "none";
+  if (!dual) lane = 0;
+  el("laneA").classList.toggle("on", lane === 0);
+  el("laneB").classList.toggle("on", lane === 1);
+
+  el("abnote").textContent = num("ab", 0)
+    ? (num("pfx", -1) >= 0 ? "PUNCH active — pads override the pattern" : "")
+    : "A side (clean loop) is playing — edits apply to the B pattern.";
+
+  renderGrid();
+  renderInspector();
+  renderPresets();
+  renderLayouts();
+}
+
+function renderGrid() {
+  const g = el("grid");
+  const n = num("nsl", 0), run = num("run", 0);
+  const pat = csv(laneKey("pat")), fxp = csv(laneKey("fxp")), ord = csv(laneKey("ord"));
+  const locks = locksOf(laneKey("locks"));
+  el("gridinfo").textContent = run === 3 ? "· " + n + " slices" : "· no loop yet";
+  g.innerHTML = "";
+  if (run !== 3 || !n || !pat.length) return;
+  for (let i = 0; i < n; i++) {
+    const f = pat[i] || 0, meta = FX[f] || FX[0];
+    const d = document.createElement("div");
+    d.className = "cell" + (i === sel ? " sel" : "") + (i === playSlice && playOn ? " play" : "");
+    d.style.borderColor = meta.c;
+    d.style.background = f ? meta.c + "22" : "#191920";
+    d.innerHTML =
+      '<span class="idx">' + (i + 1) + '</span>' +
+      (locks.has(i) ? '<span class="lock">📌</span>' : "") +
+      '<div class="fx" style="color:' + meta.c + '">' + meta.a + "</div>" +
+      '<div class="p">' + pdisp(f, fxp[i] || 0) + "</div>" +
+      (ord[i] !== undefined && ord[i] !== i ? '<div class="ord">&#8592;' + (ord[i] + 1) + "</div>" : "");
+    d.onclick = function () {
+      if (el("paint").checked && brush) { stamp(i, brush.f, brush.p); return; }
+      sel = (sel === i) ? -1 : i;
+      render();
+    };
+    g.appendChild(d);
+  }
+}
+
+function pdisp(f, p) {
+  const meta = FX[f];
+  if (!meta || !meta.p) return "";
+  if (meta.p.opts) { const o = meta.p.opts[p]; return o || String(p); }
+  return (f === 3 && p > 0 ? "+" : "") + p + (f === 3 ? "st" : "");
+}
+
+function renderInspector() {
+  el("selno").textContent = sel < 0 ? "— (click a slice)" : "#" + (sel + 1) + (lane ? " · Lane R" : "");
+  const pal = el("pal");
+  pal.innerHTML = "";
+  const pat = csv(laneKey("pat"));
+  const curF = sel >= 0 ? (pat[sel] || 0) : (brush ? brush.f : -1);
+  PALETTE.forEach(function (f) {
+    const b = document.createElement("button");
+    b.textContent = FX[f].a;
+    b.title = FX[f].n;
+    b.style.borderColor = FX[f].c;
+    b.style.color = FX[f].c;
+    if (f === curF) { b.style.background = FX[f].c; b.style.color = "#111"; }
+    b.onclick = function () { chooseFx(f); };
+    pal.appendChild(b);
+  });
+  renderParamCtl(curF);
+}
+
+function renderParamCtl(f) {
+  const box = el("pctl");
+  box.innerHTML = "";
+  if (f < 0 || !FX[f]) return;
+  const meta = FX[f], fxp = csv(laneKey("fxp"));
+  const cur = sel >= 0 ? (fxp[sel] || 0) : (brush ? brush.p : dflt(f));
+  const lbl = document.createElement("div");
+  lbl.className = "row";
+  lbl.innerHTML = '<span class="k">' + meta.n + "</span>";
+  box.appendChild(lbl);
+  if (!meta.p) {
+    lbl.innerHTML += '<span class="note">no parameter</span>';
+    return;
+  }
+  if (meta.p.opts) {
+    const row = document.createElement("div");
+    row.className = "optrow";
+    meta.p.opts.forEach(function (o, idx) {
+      if (o === null) return;
+      const b = document.createElement("button");
+      b.textContent = o;
+      if (idx === cur) b.classList.add("on");
+      b.onclick = function () { chooseP(f, idx); };
+      row.appendChild(b);
+    });
+    box.appendChild(row);
+  } else {
+    const r = document.createElement("input");
+    r.type = "range"; r.min = meta.p.min; r.max = meta.p.max; r.step = 1; r.value = cur;
+    r.style.width = "70%";
+    const v = document.createElement("span");
+    v.className = "note"; v.textContent = " " + pdisp(f, cur) + " " + (meta.p.label || "");
+    r.oninput = function () {
+      v.textContent = " " + pdisp(f, parseInt(r.value, 10)) + " " + (meta.p.label || "");
+    };
+    r.onchange = function () { chooseP(f, parseInt(r.value, 10)); };
+    box.appendChild(r);
+    box.appendChild(v);
+  }
+}
+
+function dflt(f) {               /* mirrors default_fxp() in the core */
+  return {1:2, 8:2, 9:2, 12:2, 3:5, 4:1, 6:1, 7:4}[f] || 0;
+}
+
+/* ---- edits ------------------------------------------------------------ */
+function stamp(i, f, p) {        /* pin effect f with param p on slice i */
+  send((lane ? "lock_slice_r_" : "lock_slice_") + i, f + ":" + p);
+  const locks = locksOf(laneKey("locks"));
+  locks.set(i, {f: f, p: p});    /* optimistic: poll confirms shortly */
+  M[laneKey("locks")] = Array.from(locks, function (e) { return e[0] + ":" + e[1].f + ":" + e[1].p; }).join(",");
+  const pat = csv(laneKey("pat")), fxp = csv(laneKey("fxp"));
+  pat[i] = f; fxp[i] = p;
+  M[laneKey("pat")] = pat.join(","); M[laneKey("fxp")] = fxp.join(",");
+  render();
+}
+function chooseFx(f) {
+  brush = {f: f, p: dflt(f)};
+  if (sel >= 0) stamp(sel, f, brush.p); else render();
+}
+function chooseP(f, p) {
+  brush = {f: f, p: p};
+  if (sel >= 0) stamp(sel, f, p); else render();
+}
+
+el("bPin").onclick = function () {
+  if (sel < 0) return;
+  const pat = csv(laneKey("pat")), fxp = csv(laneKey("fxp"));
+  stamp(sel, pat[sel] || 0, fxp[sel] || 0);   /* pin as-is */
+};
+el("bUnpin").onclick = function () {
+  if (sel < 0) return;
+  send((lane ? "lock_slice_r_" : "lock_slice_") + sel, "-1");
+};
+el("bClean").onclick = function () { if (sel >= 0) stamp(sel, 0, 0); };
+
+el("laneA").onclick = function () { lane = 0; sel = -1; render(); };
+el("laneB").onclick = function () { lane = 1; sel = -1; render(); };
+
+/* transport + toggles */
+el("bCap").onclick = function () { trig("capture"); };
+el("bArm").onclick = function () { trig("arm"); };
+el("bRoll").onclick = function () { trig("reroll"); };
+el("bUnlock").onclick = function () { trig("unlock_all"); };
+el("bDet").onclick = function () { send("detect_bpm", "trigger"); };
+armConfirm(el("bClear"), function () { trig("clear"); });
+el("bAB").onclick = function () { send("ab", num("ab", 0) ? 0 : 1); };
+el("bMon").onclick = function () { send("monitor", num("mon", 0) ? 0 : 1); };
+
+/* two-click confirm (sandbox blocks window.confirm) */
+function armConfirm(b, fn) {
+  let armed = 0;
+  b.onclick = function () {
+    if (Date.now() - armed < 2200) { b.classList.remove("sure"); b.textContent = "Clear"; fn(); armed = 0; return; }
+    armed = Date.now(); b.classList.add("sure"); b.textContent = "Sure?";
+    setTimeout(function () { b.classList.remove("sure"); b.textContent = "Clear"; }, 2300);
+  };
+}
+
+/* knobs / settings — mark touched so polls don't fight the drag */
+function wire(id, key, ev) {
+  const e = el(id);
+  e.addEventListener("input", function () { touched[id] = Date.now(); });
+  e.addEventListener(ev || "change", function () {
+    touched[id] = Date.now();
+    send(key, e.value);
+  });
+}
+wire("wet", "wet");
+wire("fxd", "fx_density");
+wire("ordd", "order_density");
+wire("seed", "seed");
+wire("llen", "loop_len");
+wire("sres", "slice_res");
+wire("qnt", "quantize");
+wire("prange", "pitch_range");
+wire("chan", "channel_mode");
+wire("panl", "pan_l");
+wire("panr", "pan_r");
+wire("tspt", "transport");
+wire("bpmo", "bpm_override");
+el("dice").onclick = function () {
+  const v = Math.floor(Math.random() * 99999);
+  el("seed").value = v; send("seed", v);
+};
+
+LLEN.forEach(function (o, i) { el("llen").add(new Option(o, i)); });
+SRES.forEach(function (o, i) { el("sres").add(new Option(o, i)); });
+
+function paintPlayhead() {
+  const cells = el("grid").children;
+  for (let i = 0; i < cells.length; i++)
+    cells[i].classList.toggle("play", playOn && i === playSlice);
+}
+
+/* ---- effect presets (browser-local) ----------------------------------- */
+function store(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+function load(k) { try { return JSON.parse(localStorage.getItem(k)) || []; } catch (e) { return []; } }
+
+el("pSave").onclick = function () {
+  if (!brush) return;
+  const name = el("pname").value.trim() || (FX[brush.f].n + " " + pdisp(brush.f, brush.p));
+  const ps = load("smack_fx_presets");
+  ps.push({name: name, f: brush.f, p: brush.p});
+  store("smack_fx_presets", ps);
+  el("pname").value = "";
+  renderPresets();
+};
+function renderPresets() {
+  const box = el("plist");
+  box.innerHTML = "";
+  load("smack_fx_presets").forEach(function (pr, idx) {
+    const it = document.createElement("span"); it.className = "item";
+    const b = document.createElement("button"); b.className = "nm";
+    b.textContent = pr.name;
+    b.style.borderColor = FX[pr.f].c; b.style.color = FX[pr.f].c;
+    if (brush && brush.f === pr.f && brush.p === pr.p) b.classList.add("on");
+    b.onclick = function () {
+      brush = {f: pr.f, p: pr.p};
+      el("paint").checked = true;
+      if (sel >= 0) stamp(sel, pr.f, pr.p); else render();
+    };
+    const x = document.createElement("button"); x.className = "x"; x.textContent = "×";
+    x.onclick = function () {
+      const ps = load("smack_fx_presets"); ps.splice(idx, 1); store("smack_fx_presets", ps); renderPresets();
+    };
+    it.appendChild(b); it.appendChild(x); box.appendChild(it);
+  });
+}
+
+/* ---- layouts (pattern recipes) ----------------------------------------- */
+function currentLayout() {
+  return {
+    slice_res: num("slice_res", 1), fx_density: num("fx_density", 50),
+    order_density: num("order_density", 0), pitch_range: num("pitch_range", 12),
+    seed: num("seed", 0), nonce: num("nonce", 0), chan: num("chan", 0),
+    locks: M.locks || "", locks_r: M.locks_r || ""
+  };
+}
+el("lSave").onclick = function () {
+  const name = el("lname").value.trim() || "layout " + (load("smack_layouts").length + 1);
+  const ls = load("smack_layouts");
+  ls.push({name: name, blob: currentLayout()});
+  store("smack_layouts", ls);
+  el("lname").value = "";
+  renderLayouts();
+};
+function renderLayouts() {
+  const box = el("llist");
+  box.innerHTML = "";
+  load("smack_layouts").forEach(function (ly, idx) {
+    const it = document.createElement("span"); it.className = "item";
+    const b = document.createElement("button"); b.className = "nm";
+    b.textContent = ly.name;
+    b.title = "seed " + ly.blob.seed + " · fx " + ly.blob.fx_density + "%";
+    b.onclick = function () { send("state", JSON.stringify(ly.blob)); };
+    const x = document.createElement("button"); x.className = "x"; x.textContent = "×";
+    x.onclick = function () {
+      const ls = load("smack_layouts"); ls.splice(idx, 1); store("smack_layouts", ls); renderLayouts();
+    };
+    it.appendChild(b); it.appendChild(x); box.appendChild(it);
+  });
+}
+el("lExp").onclick = function () {
+  const t = el("lio");
+  t.style.display = "";
+  t.value = JSON.stringify({fx_presets: load("smack_fx_presets"), layouts: load("smack_layouts")});
+  t.focus(); t.select();
+};
+el("lImp").onclick = function () {
+  const t = el("lio");
+  if (t.style.display === "none") { t.style.display = ""; t.value = ""; t.placeholder = "paste an export here, then press Import again"; t.focus(); return; }
+  try {
+    const d = JSON.parse(t.value);
+    if (d.fx_presets) store("smack_fx_presets", load("smack_fx_presets").concat(d.fx_presets));
+    if (d.layouts) store("smack_layouts", load("smack_layouts").concat(d.layouts));
+    t.style.display = "none";
+    renderPresets(); renderLayouts();
+  } catch (e) { t.value = "import failed: " + e.message + "\n\n" + t.value; }
+};
+</script>
+</body>
+</html>
