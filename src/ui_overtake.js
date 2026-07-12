@@ -572,10 +572,16 @@ globalThis.init = function() {
     }
 };
 
+let resumeRepaints = 0;   /* extra forced repaints after resume: a single
+                             paintAll(true) is ~56 LED writes in one tick,
+                             and the shim's LED queue can drop under that
+                             burst — re-force a few times, spaced out */
+
 globalThis.onResume = function() {
     /* LEDs were cleared while suspended: full forced repaint */
     dspReady = fetchAll();
     paintAll(true);
+    resumeRepaints = 3;
     needsRedraw = true;
     announceView('Oversmack');
     reconcileFeedbackGuard();
@@ -600,6 +606,13 @@ globalThis.tick = function() {
     /* jack state can change mid-session (headphones unplugged) — re-check
      * the feedback guard about twice a second */
     if (tickCount % 15 === 0) reconcileFeedbackGuard();
+
+    /* spaced post-resume repaints heal any LED writes the queue dropped */
+    if (resumeRepaints > 0 && tickCount % 8 === 0) {
+        paintAll(true);
+        needsRedraw = true;
+        resumeRepaints--;
+    }
 
     /* poll the async BPM detection result */
     if (detecting && tickCount % 6 === 0) {
