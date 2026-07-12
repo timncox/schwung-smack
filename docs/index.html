@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SMACK — Operation Manual</title>
+<meta name="description" content="Operation manual for Smack, a schwung module for the Ableton Move: quantized loop capture, auto-slicing, and seeded glitch effects.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👊</text></svg>">
+<script>document.documentElement.classList.add("js")</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;700;900&family=Archivo:wght@400;500;600;700&family=Martian+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0c0b09; --panel:#14120e; --panel2:#191611; --ink:#e8e2d5; --dim:#968d7a;
+  --line:rgba(232,226,213,.13); --line2:rgba(232,226,213,.07);
+  --acc:#ff7733;            /* tape orange — structural accent */
+  --rec:#ff1a1a; --grn:#33cc66; --cyn:#33cccc; --blu:#4da6ff; --pur:#b366ff;
+  --disp:"Big Shoulders Display",Impact,sans-serif;
+  --mono:"Martian Mono","SFMono-Regular",Consolas,monospace;
+  --body:"Archivo","Helvetica Neue",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg); color:var(--ink); font-family:var(--body);
+  font-size:16px; line-height:1.6; overflow-x:hidden;
+}
+/* grain + blueprint grid atmosphere */
+body::before{
+  content:""; position:fixed; inset:0; z-index:0; pointer-events:none;
+  background-image:
+    repeating-linear-gradient(0deg, var(--line2) 0 1px, transparent 1px 64px),
+    repeating-linear-gradient(90deg, var(--line2) 0 1px, transparent 1px 64px);
+  mask-image:radial-gradient(ellipse 90% 70% at 50% 0%, #000 0%, transparent 75%);
+}
+body::after{
+  content:""; position:fixed; inset:0; z-index:99; pointer-events:none; opacity:.05;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+a{color:var(--acc);text-decoration:none;border-bottom:1px solid rgba(255,119,51,.35)}
+a:hover{border-bottom-color:var(--acc)}
+code,kbd{font-family:var(--mono);font-size:.82em;background:var(--panel2);
+  border:1px solid var(--line);border-radius:4px;padding:.1em .4em;white-space:nowrap}
+kbd{border-bottom-width:2px}
+.wrap{max-width:1100px;margin:0 auto;padding:0 24px;position:relative;z-index:1}
+
+/* ---------- top nav ---------- */
+nav{
+  position:sticky;top:0;z-index:50;background:rgba(12,11,9,.88);
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--line);
+}
+nav .wrap{display:flex;align-items:center;gap:18px;height:52px;overflow-x:auto;scrollbar-width:none}
+nav .wrap::-webkit-scrollbar{display:none}
+nav .logo{font-family:var(--disp);font-weight:900;font-size:22px;letter-spacing:.04em;color:var(--ink);border:none;flex:none}
+nav .logo em{color:var(--acc);font-style:normal}
+nav a.s{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:var(--dim);
+  border:none;flex:none;text-transform:uppercase;padding:4px 0}
+nav a.s:hover{color:var(--ink)}
+nav a.s b{color:var(--acc);font-weight:400;margin-right:4px}
+
+/* ---------- masthead ---------- */
+header{padding:72px 0 56px;position:relative}
+.kicker{font-family:var(--mono);font-size:12px;letter-spacing:.28em;color:var(--acc);
+  text-transform:uppercase;margin-bottom:10px}
+h1.title{
+  font-family:var(--disp);font-weight:900;line-height:.85;
+  font-size:clamp(88px,17vw,220px);letter-spacing:.01em;
+  text-transform:uppercase;
+}
+.subtitle{display:flex;flex-wrap:wrap;align-items:baseline;gap:14px;margin-top:14px}
+.subtitle h2{font-family:var(--disp);font-weight:500;font-size:clamp(22px,3.5vw,34px);
+  letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+.chip{font-family:var(--mono);font-size:11px;letter-spacing:.05em;padding:5px 10px;
+  border:1px solid var(--line);border-radius:999px;color:var(--dim)}
+.chip b{color:var(--ink);font-weight:400}
+.lede{max-width:640px;margin-top:28px;font-size:18px;color:var(--ink)}
+.lede em{color:var(--acc);font-style:normal}
+
+/* ---------- seeded demo ---------- */
+.demo{margin-top:44px;border:1px solid var(--line);background:var(--panel);border-radius:10px;overflow:hidden}
+.demo-head{display:flex;flex-wrap:wrap;align-items:center;gap:14px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.demo-head .lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;color:var(--dim);text-transform:uppercase}
+.demo-head .seed{font-family:var(--mono);font-size:13px;color:var(--ink)}
+.demo-head .seed b{color:var(--acc);font-weight:400}
+.demo-head button{
+  font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  background:var(--acc);color:#140b06;border:0;border-radius:5px;padding:8px 16px;cursor:pointer;
+  transition:transform .08s ease, filter .15s;
+}
+.demo-head button:hover{filter:brightness(1.12)}
+.demo-head button:active{transform:scale(.96)}
+.demo-head button.ghost{background:transparent;color:var(--dim);border:1px solid var(--line)}
+.demo-head button.ghost:hover{color:var(--ink)}
+.demo-head .sp{flex:1}
+.demo-head .ro{font-family:var(--mono);font-size:11px;color:var(--dim);min-height:1em}
+.demo-head .ro b{color:var(--ink);font-weight:400}
+.slices{display:grid;grid-template-columns:repeat(16,1fr);gap:3px;padding:16px;height:150px;align-items:end}
+.slice{border-radius:3px 3px 1px 1px;min-height:8%;cursor:crosshair;position:relative;
+  transition:height .28s cubic-bezier(.2,1.4,.4,1), background .2s, opacity .2s;
+  box-shadow:0 0 14px -3px currentColor}
+.slice.mut{opacity:.22;box-shadow:none}
+.slice::after{content:"";position:absolute;inset:auto 0 -9px 0;height:3px;border-radius:2px;background:currentColor;opacity:.5}
+.demo-foot{display:flex;justify-content:space-between;padding:8px 16px 12px;font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.08em}
+
+/* ---------- sections ---------- */
+section{padding:72px 0 8px;transition:opacity .6s ease,transform .6s ease}
+html.js section:not(.vis){opacity:0;transform:translateY(18px)}
+.snum{font-family:var(--mono);font-size:12px;letter-spacing:.3em;color:var(--acc);text-transform:uppercase}
+.snum::after{content:"";display:inline-block;width:64px;height:1px;background:var(--acc);vertical-align:middle;margin-left:14px;opacity:.5}
+h2.sh{font-family:var(--disp);font-weight:900;font-size:clamp(38px,6vw,64px);
+  letter-spacing:.02em;text-transform:uppercase;line-height:.95;margin:8px 0 20px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:36px}
+@media(max-width:820px){.cols{grid-template-columns:1fr}}
+p+p{margin-top:14px}
+p .hl{color:var(--acc)}
+.note{border-left:3px solid var(--acc);background:var(--panel);padding:14px 18px;margin:20px 0;border-radius:0 8px 8px 0;font-size:15px}
+.note b{color:var(--acc)}
+
+/* ---------- flow diagram ---------- */
+.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:28px 0 8px}
+@media(max-width:820px){.flow{grid-template-columns:repeat(2,1fr)}}
+.fstep{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:18px 16px;position:relative}
+.fstep .n{font-family:var(--mono);font-size:10px;color:var(--acc);letter-spacing:.2em}
+.fstep h4{font-family:var(--disp);font-weight:700;font-size:26px;letter-spacing:.04em;text-transform:uppercase;margin:6px 0 6px}
+.fstep p{font-size:13.5px;color:var(--dim);line-height:1.5}
+.fstep::after{content:"→";position:absolute;right:-14px;top:50%;transform:translateY(-50%);
+  color:var(--acc);font-size:18px;z-index:2}
+.fstep:last-child::after{content:"⟲";right:10px;top:12px;transform:none;opacity:.6}
+
+/* ---------- tables ---------- */
+.tscroll{overflow-x:auto;margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:560px}
+th{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--dim);text-align:left;padding:10px 14px;border-bottom:1px solid var(--line)}
+td{padding:11px 14px;border-bottom:1px solid var(--line2);vertical-align:top}
+td:first-child{font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+tr:hover td{background:var(--panel)}
+
+/* ---------- surface (pad map) ---------- */
+.surface{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:22px;margin-top:26px}
+.mode-tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+.mode-tabs button{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  background:transparent;color:var(--dim);border:1px solid var(--line);border-radius:6px;
+  padding:8px 14px;cursor:pointer;transition:.15s}
+.mode-tabs button.on{background:var(--acc);border-color:var(--acc);color:#140b06}
+.steps-row{display:grid;grid-template-columns:repeat(16,1fr);gap:4px;margin-bottom:6px}
+.stp{aspect-ratio:2.2/1;border-radius:3px;background:#241f18;position:relative;cursor:pointer;border:1px solid transparent}
+.stp i{position:absolute;inset:3px;border-radius:2px;background:var(--c,#2a251c);opacity:.9;box-shadow:0 0 8px -2px var(--c,transparent)}
+.stp.ph i{background:#fff !important;box-shadow:0 0 12px -1px #fff}
+.steps-cap{font-family:var(--mono);font-size:9.5px;color:var(--dim);letter-spacing:.14em;text-transform:uppercase;margin:2px 2px 16px}
+.padgrid{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+.pad{aspect-ratio:1.35/1;border-radius:6px;background:#221d15;border:1px solid rgba(232,226,213,.09);
+  display:flex;flex-direction:column;justify-content:space-between;padding:6px 7px;cursor:pointer;
+  transition:transform .1s, box-shadow .15s, border-color .15s;position:relative;overflow:hidden}
+.pad:hover{transform:translateY(-2px);border-color:var(--pc,var(--acc))}
+.pad.sel{border-color:var(--pc,var(--acc));box-shadow:0 0 0 1px var(--pc,var(--acc)), 0 0 18px -6px var(--pc,var(--acc))}
+.pad .no{font-family:var(--mono);font-size:8.5px;color:rgba(232,226,213,.35)}
+.pad .lb{font-family:var(--mono);font-size:9.5px;letter-spacing:.02em;color:var(--ink);line-height:1.15;word-break:break-word}
+.pad .led{position:absolute;top:7px;right:7px;width:7px;height:7px;border-radius:50%;
+  background:var(--pc,transparent);box-shadow:0 0 8px 0 var(--pc,transparent)}
+.pad.off{opacity:.32;cursor:default}
+.pad.off:hover{transform:none;border-color:rgba(232,226,213,.09)}
+.readout{margin-top:18px;border-top:1px solid var(--line);padding-top:14px;min-height:74px}
+.readout .rt{font-family:var(--mono);font-size:12px;color:var(--acc);letter-spacing:.08em;text-transform:uppercase}
+.readout .rd{font-size:14.5px;color:var(--ink);margin-top:4px;max-width:760px}
+.hwrow{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.hwbtn{font-family:var(--mono);font-size:10.5px;border:1px solid var(--line);border-radius:6px;
+  padding:8px 12px;color:var(--dim);cursor:pointer;transition:.15s}
+.hwbtn:hover,.hwbtn.sel{color:var(--ink);border-color:var(--acc)}
+
+/* ---------- knobs ---------- */
+.knobs{display:grid;grid-template-columns:repeat(8,1fr);gap:10px;margin-top:26px}
+@media(max-width:820px){.knobs{grid-template-columns:repeat(4,1fr)}}
+.knob{text-align:center;padding:14px 6px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
+.knob .dial{width:46px;height:46px;margin:0 auto 10px;border-radius:50%;
+  border:2px solid var(--dim);position:relative;background:radial-gradient(circle at 35% 30%, #2c261d, #16130e)}
+.knob .dial::after{content:"";position:absolute;left:50%;top:3px;width:2px;height:12px;
+  background:var(--acc);transform-origin:50% 20px;transform:translateX(-50%) rotate(var(--r,0deg))}
+.knob .kn{font-family:var(--mono);font-size:11px;color:var(--ink)}
+.knob .kv{font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:3px;line-height:1.4}
+.klayer{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);margin:26px 0 0}
+.klayer b{color:var(--acc);font-weight:400}
+
+/* ---------- effects ---------- */
+.fxgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:26px}
+.fxcard{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:14px 16px 14px;
+  border-top:3px solid var(--fc,#555);transition:transform .12s, box-shadow .2s}
+.fxcard:hover{transform:translateY(-3px);box-shadow:0 8px 26px -14px var(--fc,#000)}
+.fxcard .fh{display:flex;align-items:baseline;gap:10px}
+.fxcard h4{font-family:var(--disp);font-weight:700;font-size:24px;letter-spacing:.04em;text-transform:uppercase}
+.fxcard .fa{font-family:var(--mono);font-size:9.5px;color:var(--fc,#555);letter-spacing:.12em}
+.fxcard .fd{font-size:13px;color:var(--dim);line-height:1.5;margin-top:6px}
+.fxcard .fo{font-family:var(--mono);font-size:9.5px;color:var(--ink);opacity:.75;margin-top:10px;line-height:1.8}
+.fxcard .fo b{color:var(--fc);font-weight:400;letter-spacing:.1em}
+.famkey{display:flex;flex-wrap:wrap;gap:14px;margin-top:22px;font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+.famkey span i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+
+/* ---------- spec / footer ---------- */
+.spec{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:26px}
+.spec div{background:var(--panel);padding:16px 18px}
+.spec .sk{font-family:var(--mono);font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim)}
+.spec .sv{font-size:14.5px;margin-top:5px}
+footer{margin-top:90px;border-top:1px solid var(--line);padding:36px 0 60px;
+  font-family:var(--mono);font-size:11px;color:var(--dim);line-height:2}
+footer .big{font-family:var(--disp);font-weight:900;font-size:clamp(50px,9vw,110px);
+  color:transparent;-webkit-text-stroke:1px rgba(232,226,213,.18);text-transform:uppercase;line-height:1;margin-bottom:18px}
+
+/* masthead entrance */
+header .kicker,header h1.title,header .subtitle,header .chips,header .lede,header .demo{
+  animation:up .7s cubic-bezier(.2,.9,.3,1) both}
+header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
+.chips{animation-delay:.22s}.lede{animation-delay:.3s}.demo{animation-delay:.4s}
+@keyframes up{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}html.js section:not(.vis){opacity:1;transform:none}}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <a class="logo" href="#top">SMACK<em>.</em></a>
+  <a class="s" href="#what"><b>01</b>What</a>
+  <a class="s" href="#builds"><b>02</b>Builds</a>
+  <a class="s" href="#setup"><b>03</b>Setup</a>
+  <a class="s" href="#surface"><b>04</b>Surface</a>
+  <a class="s" href="#workflow"><b>05</b>Workflow</a>
+  <a class="s" href="#effects"><b>06</b>Effects</a>
+  <a class="s" href="#pinning"><b>07</b>Pinning</a>
+  <a class="s" href="#editor"><b>08</b>Web&nbsp;Editor</a>
+  <a class="s" href="#dualmono"><b>09</b>Dual&nbsp;Mono</a>
+  <a class="s" href="#extras"><b>10</b>Extras</a>
+  <a class="s" href="#spec"><b>11</b>Spec</a>
+</div></nav>
+
+<div class="wrap" id="top">
+
+<header>
+  <div class="kicker">Schwung module · Ableton Move · Operation Manual</div>
+  <h1 class="title">Smack</h1>
+  <div class="subtitle">
+    <h2>Loop it. Slice it. Roll the dice.</h2>
+  </div>
+  <div class="chips">
+    <span class="chip">smack <b>v0.9.1</b> · audio_fx</span>
+    <span class="chip">smack-in <b>v0.9.1</b> · sound_generator</span>
+    <span class="chip">oversmack <b>v0.6.1</b> · overtake</span>
+    <span class="chip">requires <b>schwung</b></span>
+  </div>
+  <p class="lede">Smack grabs a quantized loop of whatever you're playing,
+    auto-slices it on the grid, and lets <em>seeded randomness</em> assign
+    glitch effects and a new play order to the slices. The pattern repeats
+    identically every pass until you re-roll — chaos you can perform.</p>
+
+  <div class="demo" id="demo">
+    <div class="demo-head">
+      <span class="lbl">Pattern</span>
+      <span class="seed">SEED <b id="dseed">0001</b></span>
+      <button id="dreroll">⟳ Re-Roll</button>
+      <button class="ghost" id="dab">A / B</button>
+      <span class="sp"></span>
+      <span class="ro" id="dro">hover a slice · click to mute — this is exactly how the module rolls</span>
+    </div>
+    <div class="slices" id="dslices"></div>
+    <div class="demo-foot"><span>16 SLICES · 1 BAR · RES 1 STEP</span><span id="ddens">FX 65% · ORDER 40%</span></div>
+  </div>
+</header>
+
+<!-- ============================ 01 WHAT ============================ -->
+<section id="what">
+  <div class="snum">01 · What it is</div>
+  <h2 class="sh">Four moves, one loop</h2>
+  <div class="cols">
+    <div>
+      <p>Smack is a performance looper-mangler in the family of Sugar Bytes
+      Looperator and dblue Glitch, built for hands-on hardware use on the
+      Move. It records incoming audio — mic, line, USB-C, or whatever is
+      upstream in the Signal Chain — into a continuously running 70-second
+      ring buffer.</p>
+      <p><span class="hl">Capture is retroactive:</span> press it and the last
+      1 step to 16 bars you <i>already played</i> become the loop, aligned to
+      the clock grid. No punch-in anxiety. Prefer to record forward?
+      Arm does that.</p>
+    </div>
+    <div>
+      <p>The loop is sliced on the grid, then a <span class="hl">seeded roll</span>
+      hands out effects and slice-order swaps at the densities you set. Seed
+      1234 always produces pattern 1234 — the Seed knob literally browses
+      patterns by number, and Re-Roll deals a fresh hand.</p>
+      <p>A/B punches between the untouched loop and the pattern, quantized so
+      it always lands musically. Every slice can be inspected, muted, pinned
+      to a chosen effect, or tweaked — from the pads or from a browser.</p>
+    </div>
+  </div>
+  <div class="flow">
+    <div class="fstep"><span class="n">STEP 1</span><h4>Capture</h4><p>Grab the last N bars retroactively, or arm and record forward. Clock-synced, half-step aligned.</p></div>
+    <div class="fstep"><span class="n">STEP 2</span><h4>Slice</h4><p>Grid slicing at ½-step to 4-step resolution. Up to 16 slices per page on the step buttons.</p></div>
+    <div class="fstep"><span class="n">STEP 3</span><h4>Roll</h4><p>Seeded randomness assigns one of 22 effects per slice and shuffles play order, at your densities.</p></div>
+    <div class="fstep"><span class="n">STEP 4</span><h4>A / B</h4><p>Punch between clean loop and pattern — instant, slice-, or loop-quantized. Re-roll until it slaps.</p></div>
+  </div>
+</section>
+
+<!-- ============================ 02 BUILDS ============================ -->
+<section id="builds">
+  <div class="snum">02 · Three builds, one engine</div>
+  <h2 class="sh">Pick your host</h2>
+  <p>The same DSP core ships as three modules. Install the one(s) that match
+  how you want to route audio.</p>
+  <div class="tscroll"><table>
+    <tr><th>Module</th><th>Type</th><th>Audio source</th><th>Where it runs</th></tr>
+    <tr><td>smack</td><td>audio_fx</td><td>whatever is upstream in the chain</td>
+      <td>Signal Chain slots <b>and</b> Master FX — put it on the master to glitch the entire Move mix. On Master FX there's no custom pad UI; the knob pages are the interface, and the two master LFOs can target any Smack parameter (try FX Density).</td></tr>
+    <tr><td>smack-in</td><td>sound_generator</td><td>Move's selected input (mic / line / USB-C)</td>
+      <td>Standalone looper in a track slot. Gets the full pad + step UI in the component editor, plus a browser editor via schwung-manager.</td></tr>
+    <tr><td>oversmack</td><td>overtake</td><td>Move's selected input (mic / line / USB-C)</td>
+      <td>Takes over the <b>whole Move surface</b>: steps select slices, three pad rows become an effect palette, bottom row is transport. Launch from the overtake menu (<kbd>Shift</kbd>+<kbd>Vol</kbd>+<kbd>jog-click</kbd>). Play passes through, so Move's transport and clock keep running underneath.</td></tr>
+  </table></div>
+  <div class="note"><b>Back ≠ exit on oversmack.</b> Pressing Back merely hides
+  the UI — the DSP keeps looping (great for tweaking the mix elsewhere while
+  Smack plays). Re-enter from the overtake menu; full exit is
+  <kbd>Shift</kbd>+<kbd>Vol</kbd>+<kbd>jog-click</kbd> again.</div>
+</section>
+
+<!-- ============================ 03 SETUP ============================ -->
+<section id="setup">
+  <div class="snum">03 · Install &amp; setup</div>
+  <h2 class="sh">Two minutes to first loop</h2>
+  <div class="cols">
+    <div>
+      <p><b>1 — Install.</b> In schwung-manager, use <i>Install Custom
+      Module</i> with one of the repos (or the Module Store, when listed):</p>
+      <div class="tscroll"><table>
+        <tr><th>Repo</th><th>Installs</th></tr>
+        <tr><td><a href="https://github.com/timncox/schwung-smack">timncox/schwung-smack</a></td><td>smack — chain / Master FX</td></tr>
+        <tr><td><a href="https://github.com/timncox/schwung-smack-in">timncox/schwung-smack-in</a></td><td>smack-in — standalone input looper</td></tr>
+        <tr><td><a href="https://github.com/timncox/schwung-oversmack">timncox/schwung-oversmack</a></td><td>oversmack — full-surface editor</td></tr>
+      </table></div>
+      <p><b>2 — Load it.</b> smack / smack-in go in a Signal Chain slot (smack
+      also in Master FX); oversmack launches from the overtake menu.</p>
+    </div>
+    <div>
+      <div class="note"><b>Sync note — do this once.</b> Set Move's
+      <b>MIDI Clock to Out</b> (same requirement as the Arp). That's how
+      modules hear the transport. Without it Smack free-runs at the project
+      tempo — still functional, just not phase-locked to Move's playback.
+      Ableton Link works with zero extra setup: Move's tempo follows Link and
+      Smack follows Move.</div>
+      <p><b>On-device help</b> ships with the modules: <kbd>Shift</kbd>+<kbd>Vol</kbd>+<kbd>Menu</kbd>
+      → Help → Modules. And with schwung's screen reader enabled, the editor
+      announces pads, knobs, and loop state as you go.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 04 SURFACE ============================ -->
+<section id="surface">
+  <div class="snum">04 · The surface</div>
+  <h2 class="sh">Every pad, mapped</h2>
+  <p>Tap any pad or step below to see what it does. The two layouts share the
+  same bottom-row muscle memory — oversmack adds the three-row effect palette
+  on top.</p>
+
+  <div class="surface">
+    <div class="mode-tabs">
+      <button id="tabOver" class="on">Oversmack — full surface</button>
+      <button id="tabChain">Chain UI — smack / smack-in</button>
+    </div>
+
+    <div class="steps-row" id="stepsRow"></div>
+    <div class="steps-cap">Step buttons 1–16 — slice pattern, one color per effect, white playhead chase</div>
+
+    <div class="padgrid" id="padGrid"></div>
+
+    <div class="readout">
+      <div class="rt" id="roT">— tap a pad —</div>
+      <div class="rd" id="roD">Colors match the actual step-LED colors on the device: reds are stutters, blues reverses, purples pitch, oranges tape, greens filters &amp; destruction, cyans space.</div>
+    </div>
+
+    <div class="hwrow" id="hwRow">
+      <span class="hwbtn" data-t="Capture button (hardware)" data-d="Same as the Capture pad: retroactively grab the last Loop-Length of audio you already played, aligned to the grid.">⏺ CAPTURE — retro grab</span>
+      <span class="hwbtn" data-t="Shift + Capture" data-d="Detect BPM: scans the last 8 seconds of the ring for tempo (60–180 BPM, octave-biased toward the project tempo) and applies it as the free-run tempo. Real MIDI clock always wins when present.">⇧+⏺ — detect BPM</span>
+      <span class="hwbtn" data-t="Play button (oversmack)" data-d="Passed straight through to Move — transport and clock keep working under the overtake UI.">▶ PLAY — passthrough</span>
+      <span class="hwbtn" data-t="Jog wheel (oversmack)" data-d="Pages the 16 step buttons through loops with more than 16 slices (e.g. 4 bars at 1-step resolution = 64 slices = 4 pages). In the chain UI, pad 72 does the paging.">◎ JOG — step pages</span>
+    </div>
+  </div>
+
+  <h3 class="klayer">Knobs 1–8</h3>
+  <div class="knobs">
+    <div class="knob"><div class="dial" style="--r:-45deg"></div><div class="kn">FX</div><div class="kv">effect density<br>0–100%</div></div>
+    <div class="knob"><div class="dial" style="--r:-90deg"></div><div class="kn">ORD</div><div class="kv">reorder density<br>0–100%</div></div>
+    <div class="knob"><div class="dial" style="--r:20deg"></div><div class="kn">LEN</div><div class="kv">loop length<br>1 step – 16 bars</div></div>
+    <div class="knob"><div class="dial" style="--r:-20deg"></div><div class="kn">RES</div><div class="kv">slice size<br>½ – 4 steps</div></div>
+    <div class="knob"><div class="dial" style="--r:70deg"></div><div class="kn">WET</div><div class="kv">effect mix<br>0–100%</div></div>
+    <div class="knob"><div class="dial" style="--r:45deg"></div><div class="kn">PIT</div><div class="kv">pitch range<br>±1–24 st</div></div>
+    <div class="knob"><div class="dial" style="--r:0deg"></div><div class="kn">QNT</div><div class="kv">A/B quantize<br>instant · slice · loop</div></div>
+    <div class="knob"><div class="dial" style="--r:110deg"></div><div class="kn">SEED</div><div class="kv">pattern number<br>1–9999</div></div>
+  </div>
+  <p class="klayer">Hold <b>SHIFT</b> for layer two (oversmack) — <b>PanL · PanR · Channels · Transport · BPM · Monitor</b>. In the chain UI the same settings live on the Setup knob page.</p>
+
+  <div class="note"><b>LEN vs RES — the one people mix up.</b> <b>Len</b> is how much
+  audio the loop holds (1 step to 16 bars). <b>Res</b> is how finely that loop is
+  diced for the pattern (one slice every ½, 1, 2, or 4 steps). Long loop +
+  fine resolution = many small slices = busy glitch; short loop + coarse
+  resolution = a few big chunks. Changing Res re-slices the same audio —
+  it never changes what was captured.</div>
+</section>
+
+<!-- ============================ 05 WORKFLOW ============================ -->
+<section id="workflow">
+  <div class="snum">05 · Workflow</div>
+  <h2 class="sh">Capture → roll → punch</h2>
+  <div class="cols">
+    <div>
+      <p><b>Capture (retro).</b> Play something. Press Capture (pad or the
+      hardware Capture button). The last Loop-Length of audio becomes the
+      loop instantly — Smack was already listening. The ring
+      <i>keeps recording while the loop plays</i>, so pressing Capture again
+      grabs whatever you played since.</p>
+      <p><b>Arm (forward).</b> Press Arm; recording starts on the grid and
+      loops automatically when Loop-Length is reached. The pad burns bright
+      red while armed/recording.</p>
+      <p><b>A/B.</b> Tap to flip between the clean loop (A) and the pattern
+      (B). On oversmack, <i>hold</i> the pad for a momentary punch — it flips
+      while held and snaps back on release. Flips are quantized per the QNT
+      knob: Instant, next Slice, or next Loop boundary.</p>
+    </div>
+    <div>
+      <p><b>Re-Roll.</b> Deals a new pattern from the current seed stream.
+      Same knobs, new dice. The SEED knob browses patterns by number instead —
+      seed 1234 is always the same pattern for the same loop settings, so you
+      can write your favorites down.</p>
+      <p><b>Steps.</b> The 16 step buttons show the pattern — one color per
+      effect family, white playhead chasing through. In the chain UI a step
+      press <b>mutes</b> that slice's effect (press again to restore the roll).
+      On oversmack a step press <b>selects</b> the slice for editing with the
+      palette. Loops with more than 16 slices page: jog wheel (oversmack) or
+      pad 72 (chain).</p>
+      <p><b>Clear.</b> Drops the loop and returns to idle. The ring keeps
+      recording; nothing else is touched.</p>
+    </div>
+  </div>
+  <div class="note"><b>Deterministic by design.</b> The pattern — effects,
+  their parameters, and slice order — is locked to the seed. It repeats
+  bit-identically every loop pass until you re-roll, change the seed, or
+  change a density. Randomness you can rehearse.</div>
+</section>
+
+<!-- ============================ 06 EFFECTS ============================ -->
+<section id="effects">
+  <div class="snum">06 · The palette</div>
+  <h2 class="sh">22 effects + clean</h2>
+  <p>Each rolled slice gets one of these, with a rolled parameter. Colors
+  below are the actual LED colors on the step buttons. The lists under each
+  card are the parameter options you can dial in per slice from the pads or
+  the web editor.</p>
+  <div class="famkey">
+    <span><i style="background:#ff4d4d"></i>stutter</span>
+    <span><i style="background:#4da6ff"></i>reverse</span>
+    <span><i style="background:#b366ff"></i>pitch/speed</span>
+    <span><i style="background:#ff7733"></i>tape</span>
+    <span><i style="background:#b0b0b0"></i>shape</span>
+    <span><i style="background:#33cc66"></i>filter</span>
+    <span><i style="background:#33cccc"></i>space</span>
+    <span><i style="background:#66ff33"></i>destruction</span>
+    <span><i style="background:#f0f0f0"></i>texture</span>
+  </div>
+  <div class="fxgrid" id="fxGrid"></div>
+</section>
+
+<!-- ============================ 07 PINNING ============================ -->
+<section id="pinning">
+  <div class="snum">07 · Pinning &amp; punch</div>
+  <h2 class="sh">Bend the dice</h2>
+  <div class="cols">
+    <div>
+      <p>On <b>oversmack</b>, the upper three pad rows are the effect palette,
+      grouped by family and lit in family colors. With a slice selected on the
+      steps:</p>
+      <p><b>Tap</b> a palette pad → assign that effect to the slice.<br>
+      <b>Re-tap the same effect</b> → lock it exactly as it currently sounds
+      (keeps the rolled parameter).<br>
+      <b>Hold ≥ ½ s</b> → pin it. <span class="hl">Pins survive Re-Roll</span> —
+      build a skeleton of moments you love, then re-roll everything around
+      them.<br>
+      <b>Unlock</b> (top-right pad) → hand the slice back to the dice.</p>
+      <p>Pinning never disturbs its neighbors: unlocked slices roll identically
+      with or without pins, so a pattern you save today restores exactly
+      tomorrow.</p>
+    </div>
+    <div>
+      <p><b>Global punch.</b> Hold a palette pad with <i>no</i> slice selected
+      and that one effect takes over the whole loop, in original order, for as
+      long as you hold — <span class="hl">pad pressure bends its
+      parameter</span> while you lean in. Release, and the pattern comes back
+      untouched. Instant fills: hold Buzz, lean, release.</p>
+      <p><b>Mute vs clean.</b> In the chain UI, a step press mutes a slice's
+      effect (temporary, roll preserved). On oversmack, assigning
+      <b>Clean</b> from the palette does the equivalent — and Unlock restores
+      the roll.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 08 WEB EDITOR ============================ -->
+<section id="editor">
+  <div class="snum">08 · Web editor</div>
+  <h2 class="sh">The loop, in a browser</h2>
+  <div class="cols">
+    <div>
+      <p>smack-in and oversmack ship with a full browser editor, served by
+      schwung-manager from the Move itself — open <b>move.local:7700</b> →
+      <i>Remote UI</i>. smack-in appears in its slot; oversmack under the
+      <i>Tool</i> tab. Live sync both ways: pad moves show up in the browser,
+      browser edits hit the pads instantly.</p>
+      <p><b>Per-slice tweaking.</b> Click any slice, pick any effect, and set
+      its parameter from a menu of musical options (the same lists as above) —
+      finer control than the pad palette, same engine.</p>
+    </div>
+    <div>
+      <p><b>Effect presets.</b> Save a favorite effect + parameter combo
+      ("Buzz — Massive") and stamp it onto slices with a click.</p>
+      <p><b>Layouts.</b> Save the <i>entire pattern</i> — seed, densities,
+      resolution, pins — as a named layout. Applying one re-rolls the current
+      loop into that exact pattern; the audio is untouched. Export/import as
+      text to share.</p>
+      <div class="note"><b>Version note.</b> The Tool tab and live sync need a
+      schwung release newer than v0.11.4. On older releases the smack-in slot
+      editor still works — reload the page to see pad-side changes.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 09 DUAL MONO ============================ -->
+<section id="dualmono">
+  <div class="snum">09 · Dual mono</div>
+  <h2 class="sh">Two synths, one Smack</h2>
+  <div class="cols">
+    <div>
+      <p>Running two mono synths into Move's stereo line-in? Flip
+      <b>Channels</b> to Dual Mono (pad 74, or the Shift knob layer) and Smack
+      treats left and right as two independent signals — each with its
+      <span class="hl">own effect pattern, own slice order, own pins</span> —
+      then places them in the stereo field with Pan L / Pan R (equal-power,
+      LFO-targetable from Master FX).</p>
+    </div>
+    <div>
+      <p><b>Lane select</b> (pad 75) picks which lane the steps and palette
+      edit — cyan for left, orange-red for right. Hold it and turn knobs 1–2
+      to set the pans. Both lanes share one seed stream, so dual-mono patterns
+      are just as reproducible as stereo ones, and the A side always plays the
+      raw stereo input untouched.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 10 EXTRAS ============================ -->
+<section id="extras">
+  <div class="snum">10 · Extras &amp; guardrails</div>
+  <h2 class="sh">The small print that isn't</h2>
+  <div class="tscroll"><table>
+    <tr><th>Feature</th><th>What it does</th></tr>
+    <tr><td>BPM detect</td><td><kbd>Shift</kbd>+<kbd>Capture</kbd> analyses the last 8 s of input and sets the free-run tempo (60–180, octave candidates biased toward the project tempo; title bar shows <code>@BPM</code>). Only used when no MIDI clock is present — real clock always wins. Pads and drones with no clear pulse politely report "no clear tempo" instead of guessing.</td></tr>
+    <tr><td>Feedback guard</td><td>smack-in / oversmack monitor their input. If Move's speaker is on with no line-in cable (mic → speaker = squeal), Smack auto-mutes input monitoring — the ring keeps recording and loop playback stays audible. The Monitor pad (73) shows green/red and overrides manually.</td></tr>
+    <tr><td>Transport follow</td><td>Move's stop pauses the loop, play restarts it (switchable to Free on the Shift knob layer).</td></tr>
+    <tr><td>Presets</td><td>Full settings snapshot via schwung's module-preset system — loop settings, densities, seed, pins, channel mode all restore. (Audio is not saved; capture is the performance.)</td></tr>
+    <tr><td>Accessibility</td><td>With schwung's screen reader on, the UIs announce pads, knob values, slice selection, and loop state in plain words. Master FX knob pages announce via the host.</td></tr>
+    <tr><td>Punch pressure</td><td>Global punch responds to pad aftertouch — pressure sweeps the held effect's parameter (Pitch punches bend ±24 st).</td></tr>
+  </table></div>
+</section>
+
+<!-- ============================ 11 SPEC ============================ -->
+<section id="spec">
+  <div class="snum">11 · Spec sheet</div>
+  <h2 class="sh">Numbers, for the curious</h2>
+  <div class="spec">
+    <div><div class="sk">Ring buffer</div><div class="sv">70 s continuous, records even during playback</div></div>
+    <div><div class="sk">Loop length</div><div class="sv">1 step – 16 bars, 4/4, 16th-note steps</div></div>
+    <div><div class="sk">Slice resolution</div><div class="sv">½ / 1 / 2 / 4 steps per slice</div></div>
+    <div><div class="sk">Clock</div><div class="sv">MIDI clock 24 ppqn; free-run fallback at project tempo</div></div>
+    <div><div class="sk">Effects</div><div class="sv">22 + clean, seeded roll, per-slice parameters</div></div>
+    <div><div class="sk">Seeds</div><div class="sv">1–9999, fully deterministic patterns</div></div>
+    <div><div class="sk">Pitch</div><div class="sv">±24 st varispeed (linear interp — lo-fi is the charm)</div></div>
+    <div><div class="sk">Channels</div><div class="sv">Stereo or dual-mono with independent lanes</div></div>
+    <div><div class="sk">Capture align</div><div class="sv">retro grabs align to the last half-step boundary</div></div>
+    <div><div class="sk">Source</div><div class="sv"><a href="https://github.com/timncox/schwung-smack">github.com/timncox/schwung-smack</a></div></div>
+    <div><div class="sk">Framework</div><div class="sv"><a href="https://github.com/charlesvestal/schwung">schwung</a> by Charles Vestal</div></div>
+    <div><div class="sk">License</div><div class="sv">MIT · heavily written by coding agents, human-supervised</div></div>
+  </div>
+</section>
+
+<footer>
+  <div class="big">Re-roll until it slaps.</div>
+  <div>SMACK · smack v0.9.1 · smack-in v0.9.1 · oversmack v0.6.1<br>
+  Built on <a href="https://github.com/charlesvestal/schwung">schwung</a> for the Ableton Move ·
+  effect vocabulary inspired by Sugar Bytes Looperator ·
+  workflow inspired by how Honeysmack runs modular through an Octatrack. All hail Honeysmack.<br>
+  This manual is generated from the module source — pad numbers, colors, and option lists are the real ones.</div>
+</footer>
+
+</div><!-- /wrap -->
+
+<script>
+"use strict";
+/* ============ effect metadata (mirrors smack_core.c / web_ui.html) ============ */
+const FX = [
+ {n:"Clean",   c:"#555555", fam:"—",        d:"No effect — the slice exactly as recorded. Also a palette choice: assign it to silence a rolled effect.", o:null},
+ {n:"Retrig",  c:"#ff4d4d", fam:"stutter",  d:"Restarts the slice at a subdivision for classic stutter rolls.", o:["1/2","1/4","1/8","1/16","1/32","1/64"]},
+ {n:"Reverse", c:"#4da6ff", fam:"reverse",  d:"Plays the whole slice backwards.", o:null},
+ {n:"Pitch",   c:"#b366ff", fam:"pitch",    d:"Varispeed repitch — up to ±24 semitones (range set by the PIT knob).", o:["−24 … +24 st"]},
+ {n:"Speed",   c:"#b366ff", fam:"pitch",    d:"Plays the slice at a fixed speed ratio; pitch follows, tape-style.", o:["Half","Double","Fifth up (×1.5)","Fourth down (×¾)"]},
+ {n:"Gate",    c:"#ff1a1a", fam:"stutter",  d:"Rhythmic on/off chop across the slice.", o:["8 chops","4 chops","16 chops","Swing 8"]},
+ {n:"Buzz",    c:"#ff1a1a", fam:"stutter",  d:"Freezes a tiny window and buzzes it — sci-fi zipper glitch.", o:["Tight","Narrow","Mid","Wide","Huge","Massive"]},
+ {n:"Crush",   c:"#66ff33", fam:"destruction", d:"Sample-and-hold decimation. Higher divisors = chunkier, nastier.", o:["Hold ÷2 … ÷24"]},
+ {n:"Repeat",  c:"#ff4d4d", fam:"stutter",  d:"Plays the head of the slice, then repeats it from a split point.", o:["After 1/2","After 1/4","After 3/4","After 1/8","After 1/3","After 2/3","After 1/16"]},
+ {n:"RevAfter",c:"#4da6ff", fam:"reverse",  d:"Runs forward, then flips into reverse mid-slice.", o:["At 1/2","At 2/3","At 3/4","At 1/4","At 1/8","At 7/8","Tail flip"]},
+ {n:"TapeStop",c:"#ff7733", fam:"tape",     d:"Tape brakes to a halt inside the slice.", o:["Full slice","Fast","Sag","Slam"]},
+ {n:"TapeStart",c:"#ff7733",fam:"tape",     d:"The opposite — spins up from stopped to full speed.", o:null},
+ {n:"Scratch", c:"#ff7733", fam:"tape",     d:"Vinyl scratch wobble back and forth across the slice.", o:["1–8 cycles"]},
+ {n:"Envelope",c:"#b0b0b0", fam:"shape",    d:"Volume shapes carved into the slice.", o:["Fade in","Fade out","Wobble","Late half","Swell mid","Shiver","Chop 4","Duck mid"]},
+ {n:"Pan",     c:"#b0b0b0", fam:"shape",    d:"Stereo placement tricks per slice.", o:["Hard left","Hard right","Ping-pong","Ping-pong ×8","Sweep L→R","Sweep R→L"]},
+ {n:"Filter",  c:"#33cc66", fam:"filter",   d:"Low/high-pass sweeps across the slice, plain or resonant.", o:["LP down","LP up","HP up","HP down","LP down rez","LP up rez","HP up rez","HP down rez"]},
+ {n:"Vowel",   c:"#33cc66", fam:"filter",   d:"Morphing formant filter — the loop talks.", o:["A→I","O→I","A→U","E→O","I→A","E→U","U→O","A→E"]},
+ {n:"TonalDly",c:"#33cccc", fam:"space",    d:"Short tuned delay whose pitch glides through the slice.", o:["Rise","Fall","Wobble","Stepped","Slow rise","Slow fall","Fast wobble","Stairs 8"]},
+ {n:"Freeze",  c:"#f0f0f0", fam:"texture",  d:"Granular freeze — sprays grains from one point in the slice.", o:["Spray 1–4","Wide spray 1–4"]},
+ {n:"Delay",   c:"#33cccc", fam:"space",    d:"Tempo-synced echo stamped onto the slice.", o:["16th","8th","Dotted","Ping-pong","32nd","Triplet 8th","64th buzz","Ping-pong 8th"]},
+ {n:"Distort", c:"#66ff33", fam:"destruction", d:"Four flavors of clip and fold, each with a hot variant.", o:["Soft clip","Hard clip","Foldback","Gnash","Soft hot","Hard hot","Fold hot","Gnash hot"]},
+ {n:"Phaser",  c:"#b3e600", fam:"modulation", d:"Sweeping or parked notches through the slice.", o:["Sweep up","Sweep down","Wobble","Fast wobble","Deep slow","Notch mid","Notch low","Notch high"]},
+ {n:"Reverb",  c:"#33cccc", fam:"space",    d:"A gated reverb burst per slice, tiny room to endless wash.", o:["Small","Mid","Large","Huge","Vast","Bloom","Wash","Endless"]},
+];
+
+/* ============ masthead demo: the actual roll, in miniature ============ */
+(function(){
+  const N=16, box=document.getElementById("dslices"), ro=document.getElementById("dro");
+  const seedEl=document.getElementById("dseed");
+  let seed=1, showB=true, muted=new Set();
+  function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)|0;return((t^t>>>14)>>>0)/4294967296}}
+  function roll(){
+    const rng=mulberry32(seed*2654435761>>>0);
+    const cells=[];
+    for(let i=0;i<N;i++){
+      const h=25+rng()*70;
+      const hit=rng()<0.65;
+      const f=hit?1+Math.floor(rng()*22):0;
+      cells.push({h,f});
+    }
+    box.innerHTML="";
+    cells.forEach((c,i)=>{
+      const d=document.createElement("div");
+      d.className="slice"+(muted.has(i)?" mut":"");
+      const fx=showB?c.f:0;
+      d.style.height=(showB?c.h:Math.max(20,c.h*0.6))+"%";
+      d.style.color=FX[fx].c; d.style.background=FX[fx].c;
+      d.onmouseenter=()=>{ro.innerHTML="slice "+(i+1)+" — <b>"+FX[fx].n+"</b>"+(fx?" ("+FX[fx].fam+")":"")};
+      d.onclick=()=>{muted.has(i)?muted.delete(i):muted.add(i);d.classList.toggle("mut");
+        ro.innerHTML="slice "+(i+1)+(muted.has(i)?" <b>muted</b> — press again on the device to restore the roll":" restored")};
+      box.appendChild(d);
+    });
+    seedEl.textContent=String(seed).padStart(4,"0");
+  }
+  document.getElementById("dreroll").onclick=()=>{seed=1+Math.floor(Math.random()*9999);muted.clear();roll()};
+  document.getElementById("dab").onclick=e=>{showB=!showB;e.target.textContent=showB?"A / B":"B / A";
+    ro.innerHTML=showB?"side <b>B</b> — the pattern":"side <b>A</b> — the clean loop";roll()};
+  roll();
+})();
+
+/* ============ surface map ============ */
+(function(){
+  const stepsRow=document.getElementById("stepsRow"), grid=document.getElementById("padGrid");
+  const roT=document.getElementById("roT"), roD=document.getElementById("roD");
+  /* palette layout: pad offset from 76 (rows bottom-up) -> fx code — mirrors ui_overtake.js */
+  const PALETTE=[0,1,8,6,5,10,11,12, 2,9,3,4,18,13,14,7, 15,16,21,17,19,22,20];
+  const BOTTOM={
+    over:{68:["CAPTURE","Retro-grab: the last Loop-Length of audio you already played becomes the loop, grid-aligned. LED: green."],
+          69:["ARM","Record forward from the next grid point; auto-loops at Loop-Length. LED: bright red while armed/recording."],
+          70:["A / B","Tap: flip clean loop ↔ pattern (quantized per QNT). Hold: momentary punch — flips while held, snaps back on release."],
+          71:["RE-ROLL","Deal a new seeded pattern. Pins survive. LED: blue."],
+          72:["CLEAR","Drop the loop, back to idle. Ring keeps recording."],
+          73:["MONITOR","Input monitoring on/off; doubles as the feedback-guard override. Green = monitoring, red = muted."],
+          74:["STEREO / DUAL","Toggle stereo ↔ dual-mono channel mode."],
+          75:["LANE","Dual mono: tap = edit Left or Right lane (cyan/orange). Hold + knobs 1–2 = Pan L / Pan R."]},
+    chain:{68:["CAPTURE","Retro-grab: loop the last Loop-Length you already played. Also on the hardware Capture button."],
+          69:["ARM","Record forward from the next grid point; auto-loops at Loop-Length."],
+          70:["A / B","Flip clean loop ↔ pattern, quantized per the QNT knob."],
+          71:["RE-ROLL","Deal a new seeded pattern. Pins survive."],
+          72:["PAGE","Cycle the 16 step buttons through loops with more than 16 slices."],
+          73:["MONITOR","smack-in only: input monitoring + feedback-guard override."],
+          74:["STEREO / DUAL","Toggle stereo ↔ dual-mono channel mode."],
+          75:["LANE","Dual mono: tap = edit lane; hold + knobs 1–2 = pans."],
+          76:["CLEAR","Drop the loop, back to idle."]}};
+  let mode="over";
+  /* demo step pattern (fixed, pretty) */
+  const stepFx=[1,0,8,0, 2,6,0,15, 0,10,3,0, 19,0,22,7];
+  for(let i=0;i<16;i++){
+    const s=document.createElement("div");s.className="stp";
+    const b=document.createElement("i");b.style.setProperty("--c",FX[stepFx[i]].c);
+    s.appendChild(b);
+    s.onclick=()=>{roT.textContent="STEP "+(i+1)+" — "+FX[stepFx[i]].n;
+      roD.textContent=mode==="over"
+        ?"Steps show the pattern; press to select this slice for palette editing (press again to deselect). White = playhead."
+        :"Steps show the pattern; press to mute this slice's effect, press again to restore the seeded roll. White = playhead."};
+    stepsRow.appendChild(s);
+  }
+  /* playhead chase */
+  let ph=0;setInterval(()=>{const k=stepsRow.children;k[ph].classList.remove("ph");ph=(ph+1)%16;k[ph].classList.add("ph")},220);
+
+  function build(){
+    grid.innerHTML="";
+    /* rows top-down: 92-99, 84-91, 76-83, 68-75 */
+    for(let r=3;r>=0;r--){
+      for(let c=0;c<8;c++){
+        const padNo=68+r*8+c;
+        const d=document.createElement("div");d.className="pad";
+        const no=document.createElement("span");no.className="no";no.textContent=padNo;
+        const lb=document.createElement("span");lb.className="lb";
+        const led=document.createElement("span");led.className="led";
+        let title="",desc="",color=null,off=false;
+        if(r===0){ /* bottom row */
+          const m=BOTTOM[mode][padNo];
+          if(m){[title,desc]=m;color={68:"#33cc66",69:"#ff1a1a",70:"#e8e2d5",71:"#4da6ff",72:mode==="over"?"#ff7733":"#b0b0b0",73:"#33cc66",74:"#b0b0b0",75:"#33cccc",76:"#ff7733"}[padNo];}
+          else off=true;
+        } else if(mode==="over"){
+          if(padNo===99){title="UNLOCK";desc="Restore the seeded effect on the selected slice — hand it back to the dice.";color="#6688ff";}
+          else{const code=PALETTE[padNo-76];title=FX[code].n.toUpperCase();color=FX[code].c;
+            desc=FX[code].d+" Tap = assign to the selected slice · re-tap = lock as-is · hold = pin (survives Re-Roll) · hold with no slice selected = punch the whole loop (pressure bends the parameter).";}
+        } else off=true;
+        if(off){d.classList.add("off");lb.textContent="";}
+        else{lb.textContent=title;d.style.setProperty("--pc",color);
+          d.onclick=()=>{grid.querySelectorAll(".pad").forEach(p=>p.classList.remove("sel"));d.classList.add("sel");
+            roT.textContent="PAD "+padNo+" — "+title;roD.textContent=desc;};}
+        d.appendChild(no);d.appendChild(lb);if(!off)d.appendChild(led);
+        grid.appendChild(d);
+      }
+    }
+  }
+  const tO=document.getElementById("tabOver"),tC=document.getElementById("tabChain");
+  tO.onclick=()=>{mode="over";tO.classList.add("on");tC.classList.remove("on");build();
+    roT.textContent="— OVERSMACK —";roD.textContent="Steps select slices; three palette rows pin effects; bottom row is transport. Play passes through to Move.";};
+  tC.onclick=()=>{mode="chain";tC.classList.add("on");tO.classList.remove("on");build();
+    roT.textContent="— CHAIN UI —";roD.textContent="Loads when you open Smack's component editor in a Signal Chain slot. Steps mute slices; pads 68–76 are the controls; palette editing lives on oversmack and in the web editor.";};
+  document.querySelectorAll(".hwbtn").forEach(b=>{b.onclick=()=>{
+    document.querySelectorAll(".hwbtn").forEach(x=>x.classList.remove("sel"));b.classList.add("sel");
+    roT.textContent=b.dataset.t;roD.textContent=b.dataset.d;};});
+  build();
+})();
+
+/* ============ effects grid ============ */
+(function(){
+  const g=document.getElementById("fxGrid");
+  FX.forEach((f,i)=>{
+    const d=document.createElement("div");d.className="fxcard";d.style.setProperty("--fc",f.c);
+    d.innerHTML='<div class="fh"><h4>'+f.n+'</h4><span class="fa">'+String(i).padStart(2,"0")+' · '+f.fam+'</span></div>'
+      +'<div class="fd">'+f.d+'</div>'
+      +(f.o?'<div class="fo"><b>OPTIONS</b> · '+f.o.join(" · ")+'</div>':'');
+    g.appendChild(d);
+  });
+})();
+
+/* ============ scroll reveal ============ */
+(function(){
+  const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add("vis");io.unobserve(e.target)}}),{threshold:.08});
+  document.querySelectorAll("section").forEach(s=>io.observe(s));
+})();
+</script>
+</body>
+</html>
