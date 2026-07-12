@@ -254,6 +254,27 @@ Dist hot (+4 drive), Phaser deep/static notches, Verb decay to 0.96.
 fp is int8 (±127) — every render case clamps/masks, never trusts
 range. Sim runs an extreme-min/max render sweep per effect.
 
+## Variant pads + 4 new effects (v0.11.0 / oversmack 0.8.0)
+
+- SMACK_FX_COUNT 23 → 27: PSHIFT (time-preserving granular pitch shift,
+  1024-frame grains, two-tap FREEZE-style crossfade, fxp = semitones),
+  RINGMOD (sine ring mod, 0-5 fixed 50-1760 Hz, 6/7 = 4-octave chirps
+  with exact integral phase), COMB (feedback comb via the SHARED
+  ln->dly line — joined the TONALDELAY/DELAY branch so the else-reset
+  doesn't clear it every frame; 0-3 static 55/110/220/440 Hz, 4/5
+  sweeps, 6/7 hot-feedback screamers), SCATTER (hash-shuffled grains
+  within the slice, seed+slice+grain deterministic, no rng state;
+  4-7 sparse dropouts). All four JOIN THE ROLL POOL — old seeds now
+  produce different patterns (Tim explicitly OK'd: no saved seeds).
+- Palette entries are now `f` or `f:p` (SMACK_PALETTE_SLOTS=23 pads
+  select from the 27-effect pool; duplicates + subsets legal; parser
+  still all-or-nothing). `punch_fx` and `set_slice_<i>` accept "f:p";
+  variant pads assign/pin/punch with their pinned parameter.
+- Web editor arrange mode: click a pad → renderPadCtl (effect <select>
+  swaps the pad's effect, option buttons/slider set its variant,
+  "Default param" clears); click a second pad to swap positions.
+  Pad buttons show "•" when a variant is pinned.
+
 ## Custom palette layout (v0.10.0 / oversmack 0.7.0)
 
 - `palette` param + `pal` state-blob key: position (pad offset 0-22) →

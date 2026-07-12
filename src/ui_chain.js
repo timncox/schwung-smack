@@ -81,7 +81,11 @@ const FX_COLORS = [
     Cyan,        /* DELAY */
     BrightGreen, /* DIST       — destruction family */
     YellowGreen, /* PHASER     — modulation: yellow-green */
-    Cyan         /* VERB       — space family */
+    Cyan,        /* VERB       — space family */
+    Purple,      /* PSHIFT     — pitch family */
+    YellowGreen, /* RINGMOD    — modulation family */
+    Green,       /* COMB       — filter family */
+    White        /* SCATTER    — texture family */
 ];
 
 const STATE_NAMES = ['IDLE', 'ARMED', 'REC', 'LOOP'];

@@ -216,10 +216,15 @@ struct smack {
     int   pan_l, pan_r;          /* 0 hard left .. 100 hard right */
     float pan_gain[2][2];        /* [lane][out ch], equal-power, precomputed */
 
-    /* Pad-palette layout: position (pad offset 0..22) -> fx code. Pure UI
-     * preference, but persisted through the engine so oversmack and the
-     * web editor share one arrangement and presets/autosave restore it. */
-    uint8_t palette[SMACK_FX_COUNT];
+    /* Pad-palette layout: position (pad offset 0..22) -> fx code, plus an
+     * optional per-pad parameter override ("Buzz — Massive" as a pad).
+     * Duplicates and subsets are legal — 23 pads select from the full
+     * effect pool. Pure UI preference, but persisted through the engine so
+     * oversmack and the web editor share one arrangement and presets
+     * restore it. */
+    uint8_t palette[SMACK_PALETTE_SLOTS];
+    int8_t  palette_fxp[SMACK_PALETTE_SLOTS];
+    uint8_t palette_hasp[SMACK_PALETTE_SLOTS];
 
     /* Pattern geometry (shared by both lanes: same loop, same grid) */
     int      n_slices;
@@ -326,6 +331,15 @@ static void roll_lane(smack_t *s, smack_lane_t *ln) {
             case SMACK_FX_DIST:     rp = (int8_t)rnd_below(&s->rng, 4); break;
             case SMACK_FX_PHASER:   rp = (int8_t)rnd_below(&s->rng, 4); break;
             case SMACK_FX_VERB:     rp = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_PSHIFT: { /* like PITCH: +/- within pitch range */
+                int semi = 1 + rnd_below(&s->rng, s->pitch_range);
+                if (xs32(&s->rng) & 1) semi = -semi;
+                rp = (int8_t)semi;
+                break;
+            }
+            case SMACK_FX_RINGMOD:  rp = (int8_t)rnd_below(&s->rng, 6); break;
+            case SMACK_FX_COMB:     rp = (int8_t)rnd_below(&s->rng, 4); break;
+            case SMACK_FX_SCATTER:  rp = (int8_t)rnd_below(&s->rng, 4); break;
             default:                rp = 0; break;
             }
         }
@@ -378,6 +392,9 @@ static int8_t default_fxp(int f) {
     case SMACK_FX_SPEED:    return 1;
     case SMACK_FX_BUZZ:     return 1;
     case SMACK_FX_CRUSH:    return 4;
+    case SMACK_FX_PSHIFT:   return 7;   /* fifth up, time intact */
+    case SMACK_FX_RINGMOD:  return 2;   /* 220 Hz */
+    case SMACK_FX_COMB:     return 1;   /* 110 Hz */
     default:                return 0;
     }
 }
@@ -388,7 +405,8 @@ static int8_t punch_map(int f, int pressure) {
     int lo = 0, hi = 0;
     switch (f) {
     case SMACK_FX_RETRIG:   lo = 1; hi = 6; break;
-    case SMACK_FX_PITCH:    lo = -24; hi = 24; break;
+    case SMACK_FX_PITCH:
+    case SMACK_FX_PSHIFT:   lo = -24; hi = 24; break;
     case SMACK_FX_SPEED:
     case SMACK_FX_TAPESTOP:
     case SMACK_FX_GATE:     lo = 0; hi = 3; break;
@@ -406,7 +424,10 @@ static int8_t punch_map(int f, int pressure) {
     case SMACK_FX_DELAY:
     case SMACK_FX_DIST:
     case SMACK_FX_PHASER:
-    case SMACK_FX_VERB:     lo = 0; hi = 7; break;
+    case SMACK_FX_VERB:
+    case SMACK_FX_RINGMOD:
+    case SMACK_FX_COMB:
+    case SMACK_FX_SCATTER:  lo = 0; hi = 7; break;
     default: return 0;
     }
     int span = hi - lo + 1;
@@ -472,8 +493,10 @@ static void finish_record(smack_t *s) {
 
 /* Factory palette order (rows bottom-up from pad 76), grouped by family:
  * clean + stutter + tape / reverse + pitch + texture + crush /
- * filters + space + destruction. Mirrored as the fallback in both UIs. */
-static const uint8_t k_default_palette[SMACK_FX_COUNT] = {
+ * filters + space + destruction. The v0.11.0 effects (PShift/RingMod/
+ * Comb/Scatter) are off the factory pads — swap them in via the editor.
+ * Mirrored as the fallback in both UIs. */
+static const uint8_t k_default_palette[SMACK_PALETTE_SLOTS] = {
     0, 1, 8, 6, 5, 10, 11, 12,
     2, 9, 3, 4, 18, 13, 14, 7,
     15, 16, 21, 17, 19, 22, 20
@@ -516,6 +539,7 @@ smack_t *smack_create(const host_api_v1_t *host) {
     s->pan_l = 0;                /* dual-mono defaults keep input sides */
     s->pan_r = 100;
     memcpy(s->palette, k_default_palette, sizeof(s->palette));
+    /* palette_fxp/hasp start zeroed (calloc): every pad = default param */
     update_pan_gains(s);
     return s;
 }
@@ -805,6 +829,45 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
             mix2 = (float)(local / H);              /* 0 -> old tap, 1 -> new */
             break;
         }
+        case SMACK_FX_PSHIFT: {
+            /* time-preserving pitch shift: grains re-anchor to real time
+             * every G frames and are read at the varispeed rate inside;
+             * two taps crossfade (FREEZE-style), so rhythm stays put while
+             * pitch moves. Lo-fi granular flutter is part of the charm. */
+            const double G = 1024.0;                /* ~23 ms grain */
+            int semi = fp < -24 ? -24 : (fp > 24 ? 24 : fp);
+            double rate = pow(2.0, (double)semi / 12.0);
+            int a = (int)(p / G);
+            double local = p - (double)a * G;
+            rp   = (double)a * G + local * rate;          /* new grain */
+            src2 = (double)(a - 1) * G + (local + G) * rate; /* old grain */
+            if (src2 < 0.0) src2 = 0.0;
+            mix2 = (float)(local / G);              /* 0 -> old, 1 -> new */
+            break;
+        }
+        case SMACK_FX_SCATTER: {
+            /* hash-shuffled grains within the slice — deterministic from
+             * seed + slice + grain, no rng state. 0 shuffle-8, 1 shuffle-4,
+             * 2 shuffle-16, 3 shuffle-8 + reversed grains; 4-7 = the same
+             * with sparse dropouts. */
+            int sv = fp < 0 ? 0 : (fp > 7 ? 7 : fp);
+            static const int ngt[4] = { 8, 4, 16, 8 };
+            int ng = ngt[sv & 3];
+            double gw = sf / (double)ng;
+            if (gw < 96.0) { gw = sf; ng = 1; }     /* tiny slices: bypass */
+            int gi = (int)(p / gw);
+            if (gi >= ng) gi = ng - 1;
+            double local = p - (double)gi * gw;
+            uint32_t h = ((uint32_t)(gi + 1) * 2246822519u)
+                       ^ ((uint32_t)(oslice + 1) * 2654435761u) ^ s->seed;
+            int sg = (int)(h % (uint32_t)ng);
+            int rev = ((sv & 3) == 3) && (h & 0x100u);
+            rp = (double)sg * gw + (rev ? (gw - 1.0 - local) : local);
+            if (sv >= 4 && ((h >> 9) & 3u) == 0u) g = 0.0f; /* dropouts */
+            double ge = local < (gw - local) ? local : (gw - local);
+            if (ge < 64.0) g *= (float)(ge / 64.0); /* per-grain edge fade */
+            break;
+        }
         default: break;
         }
         if (rp < 0.0) rp = 0.0;
@@ -891,14 +954,25 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
         ln->vow_slice = -1;
     }
 
-    if (f == SMACK_FX_TONALDELAY || f == SMACK_FX_DELAY) {
+    if (f == SMACK_FX_TONALDELAY || f == SMACK_FX_DELAY || f == SMACK_FX_COMB) {
         if (ln->dly_slice != oslice) { /* fresh line per slice entry */
             memset(ln->dly, 0, (size_t)SMACK_DLY_LEN * 2 * sizeof(float));
             ln->dly_w = 0;
             ln->dly_slice = oslice;
         }
         double d;
-        if (f == SMACK_FX_TONALDELAY) {
+        if (f == SMACK_FX_COMB) {
+            /* tuned feedback comb: delay = one pitch period. 0-3 static
+             * 55/110/220/440 Hz, 4 rise / 5 fall (period sweep), 6-7 =
+             * screamers (hot feedback) at 110/220. */
+            static const double per[4] = { 802.0, 401.0, 200.5, 100.25 };
+            int cv = fp < 0 ? 0 : (fp > 7 ? 7 : fp);
+            double t = p / sf;
+            if (cv == 4)      d = 802.0 - 674.0 * t;   /* pitch rises */
+            else if (cv == 5) d = 128.0 + 674.0 * t;   /* pitch falls */
+            else              d = per[cv >= 6 ? cv - 5 : cv & 3];
+            if (d < 64.0) d = 64.0;
+        } else if (f == SMACK_FX_TONALDELAY) {
             double t = p / sf;
             const double dmax = 3000.0, dmin = 700.0;
             switch (fp & 7) {
@@ -931,19 +1005,44 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
         float fr2 = (float)(rpos - floor(rpos));
         float dl = ln->dly[i0 * 2]     + fr2 * (ln->dly[i1 * 2]     - ln->dly[i0 * 2]);
         float dr = ln->dly[i0 * 2 + 1] + fr2 * (ln->dly[i1 * 2 + 1] - ln->dly[i0 * 2 + 1]);
+        float fbk = 0.5f;
+        if (f == SMACK_FX_COMB) fbk = ((fp & 7) >= 6) ? 0.80f : 0.65f;
         if (f == SMACK_FX_DELAY && ((fp & 7) == 3 || (fp & 7) == 7)) {
             ln->dly[ln->dly_w * 2]     = *l * 0.5f + dr * 0.45f; /* ping-pong */
             ln->dly[ln->dly_w * 2 + 1] = *r * 0.5f + dl * 0.45f;
         } else {
-            ln->dly[ln->dly_w * 2]     = *l * 0.55f + dl * 0.5f;
-            ln->dly[ln->dly_w * 2 + 1] = *r * 0.55f + dr * 0.5f;
+            ln->dly[ln->dly_w * 2]     = *l * 0.55f + dl * fbk;
+            ln->dly[ln->dly_w * 2 + 1] = *r * 0.55f + dr * fbk;
         }
         ln->dly_w = (ln->dly_w + 1) % SMACK_DLY_LEN;
-        float wetg = (f == SMACK_FX_DELAY) ? 0.75f : 0.85f;
-        *l = *l * 0.6f + dl * wetg;
-        *r = *r * 0.6f + dr * wetg;
+        float wetg = (f == SMACK_FX_DELAY) ? 0.75f
+                   : (f == SMACK_FX_COMB) ? 0.90f : 0.85f;
+        float dryg = (f == SMACK_FX_COMB) ? 0.45f : 0.6f;
+        *l = *l * dryg + dl * wetg;
+        *r = *r * dryg + dr * wetg;
     } else {
         ln->dly_slice = -1;
+    }
+
+    if (f == SMACK_FX_RINGMOD) {
+        /* sine ring mod. 0-5 fixed 50/110/220/440/880/1760 Hz; 6 = chirp
+         * up (60 -> 960 Hz over the slice), 7 = the same chirp downward.
+         * Chirp phase is the exact integral, so the sweep is click-free. */
+        int rv = fp < 0 ? 0 : (fp > 7 ? 7 : fp);
+        double phw;
+        if (rv <= 5) {
+            static const double rmf[6] = { 50.0, 110.0, 220.0, 440.0, 880.0, 1760.0 };
+            phw = 6.2831853 * rmf[rv] * p / (double)SMACK_SR;
+        } else {
+            double t = p / sf;
+            if (rv == 7) t = 1.0 - t;
+            const double k = 2.7725887;             /* ln(2^4): 4 octaves */
+            phw = 6.2831853 * 60.0 * (sf / (double)SMACK_SR)
+                * (exp(k * t) - 1.0) / k;
+        }
+        float m = sinf((float)phw);
+        *l *= m;
+        *r *= m;
     }
 
     if (f == SMACK_FX_DIST) {
@@ -1293,11 +1392,18 @@ static void set_lock(smack_t *s, smack_lane_t *ln, int i, int f) {
 /* Soft assign: change a slice's effect WITHOUT pinning it — the next
  * re-roll (or any pattern-shaping knob) replaces it. On a pinned slice
  * the pin follows the new effect. */
-static void set_soft(smack_t *s, smack_lane_t *ln, int i, int f) {
+/* set_slice_<i> value "f" or "f:p": soft-assign effect f (does not survive
+ * re-roll), optionally with an explicit parameter (variant palette pads). */
+static void set_soft(smack_t *s, smack_lane_t *ln, int i, const char *val) {
     (void)s;
+    char *end;
+    long f = strtol(val, &end, 10);
     if (f < 0) return;
-    f = clampi(f, 0, SMACK_FX_COUNT - 1);
-    if (ln->fx[i] != (uint8_t)f) ln->fxp[i] = default_fxp(f);
+    f = clampi((int)f, 0, SMACK_FX_COUNT - 1);
+    if (*end == ':')
+        ln->fxp[i] = (int8_t)clampi((int)strtol(end + 1, NULL, 10), -128, 127);
+    else if (ln->fx[i] != (uint8_t)f)
+        ln->fxp[i] = default_fxp((int)f);
     ln->fx[i] = (uint8_t)f;
 }
 
@@ -1337,32 +1443,50 @@ static int csv_lane(char *buf, int n, int buf_len, const char *key,
 /* Parse a locks string ("i:f:p,i:f:p,..."; bare i:f pairs from older
  * presets fall back to the canonical parameter). lk points at the JSON
  * key match or NULL; skip = strlen of the key prefix incl. quote. */
-/* Parse "n,n,..." (plain param value or inside the state blob, where it is
- * terminated by '"'). Applied only if it is a FULL permutation of
- * 0..SMACK_FX_COUNT-1, so a truncated blob or garbage never half-applies. */
+/* Parse "f,f:p,f,..." (plain param value or inside the state blob, where it
+ * is terminated by '"'). Each token is an fx code with an optional per-pad
+ * parameter override; duplicates and subsets are legal. Applied only if all
+ * SMACK_PALETTE_SLOTS tokens parse cleanly, so a truncated blob or garbage
+ * never half-applies. */
 static void parse_palette(smack_t *s, const char *p) {
     if (!p) return;
-    uint8_t tmp[SMACK_FX_COUNT];
-    int seen[SMACK_FX_COUNT] = {0};
+    uint8_t tf[SMACK_PALETTE_SLOTS];
+    int8_t  tp[SMACK_PALETTE_SLOTS];
+    uint8_t th[SMACK_PALETTE_SLOTS];
     int i = 0;
-    while (*p && *p != '"' && i < SMACK_FX_COUNT) {
+    while (*p && *p != '"' && i < SMACK_PALETTE_SLOTS) {
         char *end;
         long v = strtol(p, &end, 10);
-        if (end == p || v < 0 || v >= SMACK_FX_COUNT || seen[v]) return;
-        seen[v] = 1;
-        tmp[i++] = (uint8_t)v;
+        if (end == p || v < 0 || v >= SMACK_FX_COUNT) return;
+        tf[i] = (uint8_t)v;
+        th[i] = 0;
+        tp[i] = 0;
         p = end;
+        if (*p == ':') {
+            long pv = strtol(p + 1, &end, 10);
+            if (end == p + 1) return;
+            th[i] = 1;
+            tp[i] = (int8_t)clampi((int)pv, -128, 127);
+            p = end;
+        }
+        i++;
         if (*p == ',') p++; else break;
     }
-    if (i != SMACK_FX_COUNT) return;
-    memcpy(s->palette, tmp, sizeof(tmp));
+    if (i != SMACK_PALETTE_SLOTS) return;
+    memcpy(s->palette, tf, sizeof(tf));
+    memcpy(s->palette_fxp, tp, sizeof(tp));
+    memcpy(s->palette_hasp, th, sizeof(th));
 }
 
 static int palette_csv(const smack_t *s, char *buf, int buf_len) {
     int n = 0;
-    for (int i = 0; i < SMACK_FX_COUNT && n < buf_len - 4; i++)
+    for (int i = 0; i < SMACK_PALETTE_SLOTS && n < buf_len - 10; i++) {
         n += snprintf(buf + n, (size_t)(buf_len - n), "%s%d",
                       i ? "," : "", s->palette[i]);
+        if (s->palette_hasp[i])
+            n += snprintf(buf + n, (size_t)(buf_len - n), ":%d",
+                          s->palette_fxp[i]);
+    }
     return n;
 }
 
@@ -1493,12 +1617,17 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         }
         if (s->state == SMACK_LOOPING) roll_pattern(s);
     } else if (!strcmp(key, "punch_fx")) {
-        int f = atoi(val);
+        /* "f" = punch with the canonical param; "f:p" = a variant pad's
+         * punch, starting from its pinned parameter (pressure still bends) */
+        char *end;
+        long f = strtol(val, &end, 10);
         if (f < 0 || f >= SMACK_FX_COUNT) {
             s->punch_fx = -1;
         } else {
-            s->punch_fx = f;
-            s->punch_fxp = default_fxp(f);
+            s->punch_fx = (int)f;
+            s->punch_fxp = (*end == ':')
+                ? (int8_t)clampi((int)strtol(end + 1, NULL, 10), -128, 127)
+                : default_fxp((int)f);
         }
     } else if (!strcmp(key, "punch_pressure")) {
         if (s->punch_fx > 0)
@@ -1520,9 +1649,9 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
     } else if (!strncmp(key, "lock_slice_", 11)) {
         lock_from_str(s, &s->lane[0], clampi(atoi(key + 11), 0, SMACK_MAX_SLICES - 1), val);
     } else if (!strncmp(key, "set_slice_r_", 12)) {
-        set_soft(s, &s->lane[1], clampi(atoi(key + 12), 0, SMACK_MAX_SLICES - 1), atoi(val));
+        set_soft(s, &s->lane[1], clampi(atoi(key + 12), 0, SMACK_MAX_SLICES - 1), val);
     } else if (!strncmp(key, "set_slice_", 10)) {
-        set_soft(s, &s->lane[0], clampi(atoi(key + 10), 0, SMACK_MAX_SLICES - 1), atoi(val));
+        set_soft(s, &s->lane[0], clampi(atoi(key + 10), 0, SMACK_MAX_SLICES - 1), val);
     }
     /* Any recognized edit invalidates the browser editor's snapshot. The
      * punch pressure stream is the one exception — it arrives at aftertouch
@@ -1571,7 +1700,7 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
             ps = (int)(s->play_pos / s->slice_frames);
             if (ps >= s->n_slices) ps = s->n_slices - 1;
         }
-        char pal[SMACK_FX_COUNT * 4];
+        char pal[SMACK_PALETTE_SLOTS * 9]; /* worst case "26:-128," per pad */
         palette_csv(s, pal, (int)sizeof(pal));
         int n = snprintf(buf, (size_t)buf_len,
             "{\"loop_len\":%d,\"slice_res\":%d,\"fx_density\":%d,"

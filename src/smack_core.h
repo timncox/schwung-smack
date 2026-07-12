@@ -49,8 +49,18 @@ typedef enum {
     SMACK_FX_DIST,       /* waveshaper dirt (fxp: soft, hard, fold, gnash) */
     SMACK_FX_PHASER,     /* 4-stage allpass sweep (fxp: up, down, wobble, fast) */
     SMACK_FX_VERB,       /* gated Schroeder reverb burst (fxp: size/decay) */
+    /* v0.11.0 additions (appended so existing fx codes stay stable; these
+     * DO join the roll pool, which reshuffles what old seeds produce) */
+    SMACK_FX_PSHIFT,     /* time-preserving granular pitch shift (fxp semis) */
+    SMACK_FX_RINGMOD,    /* sine ring modulator (fxp freq / sweep) */
+    SMACK_FX_COMB,       /* tuned feedback comb (fxp tuning / sweep / scream) */
+    SMACK_FX_SCATTER,    /* hash-shuffled grains within the slice (fxp mode) */
     SMACK_FX_COUNT
 } smack_fx_t;
+
+/* The hardware palette is 23 pads (3 rows minus Unlock) — a SELECTION from
+ * the effect pool now that SMACK_FX_COUNT exceeds it. */
+#define SMACK_PALETTE_SLOTS 23
 
 typedef struct smack smack_t;
 

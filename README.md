@@ -23,12 +23,13 @@ pad, knob, and effect, with an interactive surface map.
   chase; press a step to mute that slice's effect.
 - **A/B**: punch between the clean loop (A) and the pattern (B), quantized
   to slice or loop boundaries.
-- **22 effects**: retrigger, reverse, pitch (±24 st varispeed), half/double
+- **26 effects**: retrigger, reverse, pitch (±24 st varispeed), half/double
   speed, gate, buzz, bitcrush, repeat-after-split, reverse-after-split,
   tape stop, tape start, vinyl scratch, envelope shapes, pan tricks, LP/HP
   filter sweeps, morphing vowel filter, tonal delay, granular freeze,
   tempo-synced delay (incl. ping-pong), distortion (soft/hard/fold/gnash),
-  phaser sweeps, and gated reverb bursts.
+  phaser sweeps, gated reverb bursts, time-preserving pitch shift,
+  ring mod, tuned feedback comb, and granular scatter.
 - **Dual mono**: treat the L and R inputs as two independent mono signals —
   each gets its own effect pattern and slice order, then Pan L / Pan R
   place them in the stereo field (two mono synths into Move's stereo
@@ -51,9 +52,10 @@ Three builds from one core:
 
 **Oversmack** takes over the entire Move surface (launch from the overtake
 menu, Shift+Vol+Jog-Click): steps show the pattern and select a slice, the
-upper three pad rows are an effect palette (tap to pin any of the 22
-effects — or Clean, or Unlock — to the selected slice; pins survive
-Re-Roll), the bottom pad row is transport, and the Play button passes
+upper three pad rows are an effect palette (tap to pin any effect — or
+Clean, or Unlock — to the selected slice; pins survive Re-Roll; the
+layout, including per-pad variants and duplicates, is rearrangeable in
+the web editor), the bottom pad row is transport, and the Play button passes
 through to Move so clock keeps running. Back hides the UI while the audio
 keeps processing.
 

@@ -9,8 +9,9 @@
  * Surface map:
  *   Steps 1-16            slice pattern (color per effect, white playhead);
  *                         press = select a slice for editing
- *   Pad rows 2-4 (76-99)  effect palette: pad 76 = Clean, 77-98 = the 22
- *                         effects, pad 99 (top-right) = Unlock (back to
+ *   Pad rows 2-4 (76-99)  effect palette (layout + per-pad variants come
+ *                         from the DSP's `palette` param, arranged in the
+ *                         web editor), pad 99 (top-right) = Unlock (back to
  *                         the seeded roll). Tap to assign to the selected
  *                         slice; re-tap the same effect to lock it as-is.
  *   Bottom row (68-75)    68 Capture / 69 Arm / 70 A-B / 71 Re-Roll /
@@ -72,11 +73,17 @@ const PALETTE_DEFAULT = [
     2, 9, 3, 4, 18, 13, 14, 7,      /* blues, purples, texture, crush */
     15, 16, 21, 17, 19, 22, 20      /* greens, cyans, dist */
 ];
-let paletteLayout = PALETTE_DEFAULT.slice();
+/* entries {f, p}: p = per-pad param override, null = canonical default */
+let paletteLayout = PALETTE_DEFAULT.map(f => ({ f, p: null }));
 let paletteCsv = '';
 function applyPaletteCsv(csv) {
-    const v = csv.split(',').map(Number);
-    if (v.length !== PALETTE_DEFAULT.length || v.some(isNaN)) return;
+    const v = csv.split(',').map(tok => {
+        const a = tok.split(':');
+        const f = parseInt(a[0], 10);
+        return isNaN(f) ? null
+            : { f, p: a.length > 1 ? parseInt(a[1], 10) : null };
+    });
+    if (v.length !== PALETTE_DEFAULT.length || v.some(e => e === null)) return;
     paletteLayout = v;
     paintPalette(false);
     needsRedraw = true;
@@ -109,21 +116,26 @@ const FX_COLORS = [
     Cyan,        /* DELAY */
     BrightGreen, /* DIST       — destruction family */
     YellowGreen, /* PHASER     — modulation: yellow-green */
-    Cyan         /* VERB       — space family */
+    Cyan,        /* VERB       — space family */
+    Purple,      /* PSHIFT     — pitch family */
+    YellowGreen, /* RINGMOD    — modulation family */
+    Green,       /* COMB       — filter family */
+    White        /* SCATTER    — texture family */
 ];
 
 const FX_NAMES = [
     'Clean', 'Retrig', 'Reverse', 'Pitch', 'Speed', 'Gate', 'Buzz',
     'Crush', 'Repeat', 'RevAfter', 'TapeStop', 'TapeStrt', 'Scratch',
     'Envelope', 'Pan', 'Filter', 'Vowel', 'TonalDly', 'Freeze', 'Delay',
-    'Distort', 'Phaser', 'Reverb'
+    'Distort', 'Phaser', 'Reverb', 'PShift', 'RingMod', 'Comb', 'Scatter'
 ];
 
 const FX_SPEECH = [
     'clean', 'retrigger', 'reverse', 'pitch', 'speed', 'gate', 'buzz',
     'bitcrush', 'repeat', 'reverse after', 'tape stop', 'tape start',
     'scratch', 'envelope', 'pan', 'filter', 'vowel', 'tonal delay',
-    'freeze', 'delay', 'distortion', 'phaser', 'reverb'
+    'freeze', 'delay', 'distortion', 'phaser', 'reverb',
+    'pitch shift', 'ring mod', 'comb filter', 'scatter'
 ];
 
 const STATE_NAMES = ['IDLE', 'ARMED', 'REC', 'LOOP'];
@@ -443,7 +455,7 @@ function paintTransport(force) {
 
 function paintPalette(force) {
     for (let i = 0; i < paletteLayout.length; i++)
-        setLED(PAD_PALETTE_FIRST + i, FX_COLORS[paletteLayout[i]], force);
+        setLED(PAD_PALETTE_FIRST + i, FX_COLORS[paletteLayout[i].f], force);
     setLED(PAD_UNLOCK, 0x2D /* dim blue: unlock */, force);
 }
 
@@ -534,12 +546,13 @@ function drawUI() {
 
 /* ---- Actions ---- */
 
-function assignFx(code) {
+function assignFx(code, padP) {
     if (state !== 3 || selectedSlice < 0 || selectedSlice >= nSlices) {
         announce('Select a step first');
         return;
     }
-    host_module_set_param(softKey(selectedSlice), `${code}`);
+    const v = (padP !== null && padP !== undefined) ? `${code}:${padP}` : `${code}`;
+    host_module_set_param(softKey(selectedSlice), v);
     const where = chanMode ? `, ${laneSpeech()}` : '';
     announce(`Slice ${selectedSlice + 1}, ${FX_SPEECH[code]}${where}`);
     refreshSoon();
@@ -644,7 +657,8 @@ globalThis.tick = function() {
         host_module_set_param(
             (chanMode && editLane) ? `lock_slice_r_${paletteHeld.slice}`
                                    : `lock_slice_${paletteHeld.slice}`,
-            `${paletteHeld.code}`);
+            paletteHeld.p !== null ? `${paletteHeld.code}:${paletteHeld.p}`
+                                   : `${paletteHeld.code}`);
         announce(`Slice ${paletteHeld.slice + 1} pinned`);
         refreshSoon();
     }
@@ -880,19 +894,22 @@ globalThis.onMidiMessageInternal = function(data) {
          * plays this one effect until release; pressure bends it. */
         if (d1 === PAD_UNLOCK) { unlockSlice(); return; }
         if (d1 >= PAD_PALETTE_FIRST && d1 < PAD_PALETTE_FIRST + paletteLayout.length) {
-            const code = paletteLayout[d1 - PAD_PALETTE_FIRST];
+            const ent = paletteLayout[d1 - PAD_PALETTE_FIRST];
+            const code = ent.f;
+            const withP = (ent.p !== null && ent.p !== undefined);
             if (state === 3 && selectedSlice < 0) {
                 punchPad = d1;
                 punchLastPressure = -1;
-                host_module_set_param('punch_fx', `${code}`);
+                host_module_set_param('punch_fx', withP ? `${code}:${ent.p}` : `${code}`);
                 announce(`${FX_SPEECH[code]} punch`);
                 needsRedraw = true;
                 return;
             }
             const slice = selectedSlice;
-            assignFx(code);
+            assignFx(code, ent.p);
             if (state === 3 && slice >= 0 && slice < nSlices) {
-                paletteHeld = { pad: d1, code, slice, at: Date.now(), fired: false };
+                paletteHeld = { pad: d1, code, p: withP ? ent.p : null,
+                                slice, at: Date.now(), fired: false };
             }
             return;
         }

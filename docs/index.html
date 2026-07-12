@@ -268,9 +268,9 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
     <h2>Loop it. Slice it. Roll the dice.</h2>
   </div>
   <div class="chips">
-    <span class="chip">smack <b>v0.10.0</b> · audio_fx</span>
-    <span class="chip">smack-in <b>v0.10.0</b> · sound_generator</span>
-    <span class="chip">oversmack <b>v0.7.0</b> · overtake</span>
+    <span class="chip">smack <b>v0.11.0</b> · audio_fx</span>
+    <span class="chip">smack-in <b>v0.11.0</b> · sound_generator</span>
+    <span class="chip">oversmack <b>v0.8.0</b> · overtake</span>
     <span class="chip">requires <b>schwung</b></span>
   </div>
   <p class="lede">Smack grabs a quantized loop of whatever you're playing,
@@ -321,7 +321,7 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
   <div class="flow">
     <div class="fstep"><span class="n">STEP 1</span><h4>Capture</h4><p>Grab the last N bars retroactively, or arm and record forward. Clock-synced, half-step aligned.</p></div>
     <div class="fstep"><span class="n">STEP 2</span><h4>Slice</h4><p>Grid slicing at ½-step to 4-step resolution. Up to 16 slices per page on the step buttons.</p></div>
-    <div class="fstep"><span class="n">STEP 3</span><h4>Roll</h4><p>Seeded randomness assigns one of 22 effects per slice and shuffles play order, at your densities.</p></div>
+    <div class="fstep"><span class="n">STEP 3</span><h4>Roll</h4><p>Seeded randomness assigns one of 26 effects per slice and shuffles play order, at your densities.</p></div>
     <div class="fstep"><span class="n">STEP 4</span><h4>A / B</h4><p>Punch between clean loop and pattern — instant, slice-, or loop-quantized. Re-roll until it slaps.</p></div>
   </div>
 </section>
@@ -475,7 +475,7 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
 <!-- ============================ 06 EFFECTS ============================ -->
 <section id="effects">
   <div class="snum">06 · The palette</div>
-  <h2 class="sh">22 effects + clean</h2>
+  <h2 class="sh">26 effects + clean</h2>
   <p>Each rolled slice gets one of these, with a rolled parameter. Colors
   below are the actual LED colors on the step buttons. The lists under each
   card are the parameter options you can dial in per slice from the pads or
@@ -503,8 +503,11 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
       <p>On <b>oversmack</b>, the upper three pad rows are the effect palette,
       grouped by family and lit in family colors. The arrangement is yours to
       change — <span class="hl">Arrange pads</span> in the web editor swaps
-      any two pads, the hardware follows instantly, and the layout persists
-      in presets. With a slice selected on the steps:</p>
+      pads, replaces a pad's effect entirely (duplicates welcome — two Delay
+      pads at different times), and pins a <span class="hl">variant</span> to
+      a pad ("Buzz — Massive" as a pad of its own). Variant pads assign, pin,
+      and punch with that exact setting. The hardware follows instantly and
+      the layout persists in presets. With a slice selected on the steps:</p>
       <p><b>Tap</b> a palette pad → assign that effect to the slice.<br>
       <b>Re-tap the same effect</b> → lock it exactly as it currently sounds
       (keeps the rolled parameter).<br>
@@ -548,9 +551,11 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
     <div>
       <p><b>Effect presets.</b> Save a favorite effect + parameter combo
       ("Buzz — Massive") and stamp it onto slices with a click.</p>
-      <p><b>Arrange pads.</b> Reorganize the effect palette: click two pads
-      to swap them. The Move's pad LEDs re-light as you go, and the layout
-      is saved with presets. Factory layout is one click away.</p>
+      <p><b>Arrange pads.</b> Reorganize the effect palette: click a pad to
+      edit it — pick any effect (duplicates OK) and any variant — or click a
+      second pad to swap positions. The Move's pad LEDs re-light as you go,
+      and the layout is saved with presets. Factory layout is one click
+      away.</p>
       <p><b>Layouts.</b> Save the <i>entire pattern</i> — seed, densities,
       resolution, pins — as a named layout. Applying one re-rolls the current
       loop into that exact pattern; the audio is untouched. Export/import as
@@ -609,7 +614,7 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
     <div><div class="sk">Loop length</div><div class="sv">1 step – 16 bars, 4/4, 16th-note steps</div></div>
     <div><div class="sk">Slice resolution</div><div class="sv">½ / 1 / 2 / 4 steps per slice</div></div>
     <div><div class="sk">Clock</div><div class="sv">MIDI clock 24 ppqn; free-run fallback at project tempo</div></div>
-    <div><div class="sk">Effects</div><div class="sv">22 + clean, seeded roll, per-slice parameters</div></div>
+    <div><div class="sk">Effects</div><div class="sv">26 + clean, seeded roll, per-slice parameters</div></div>
     <div><div class="sk">Seeds</div><div class="sv">1–9999, fully deterministic patterns</div></div>
     <div><div class="sk">Pitch</div><div class="sv">±24 st varispeed (linear interp — lo-fi is the charm)</div></div>
     <div><div class="sk">Channels</div><div class="sv">Stereo or dual-mono with independent lanes</div></div>
@@ -622,7 +627,7 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
 
 <footer>
   <div class="big">Re-roll until it slaps.</div>
-  <div>SMACK · smack v0.10.0 · smack-in v0.10.0 · oversmack v0.7.0<br>
+  <div>SMACK · smack v0.11.0 · smack-in v0.11.0 · oversmack v0.8.0<br>
   Built on <a href="https://github.com/charlesvestal/schwung">schwung</a> for the Ableton Move ·
   effect vocabulary inspired by Sugar Bytes Looperator ·
   workflow inspired by how Honeysmack runs modular through an Octatrack. All hail Honeysmack.<br>
@@ -658,6 +663,10 @@ const FX = [
  {n:"Distort", c:"#66ff33", fam:"destruction", d:"Four flavors of clip and fold, each with a hot variant.", o:["Soft clip","Hard clip","Foldback","Gnash","Soft hot","Hard hot","Fold hot","Gnash hot"]},
  {n:"Phaser",  c:"#b3e600", fam:"modulation", d:"Sweeping or parked notches through the slice.", o:["Sweep up","Sweep down","Wobble","Fast wobble","Deep slow","Notch mid","Notch low","Notch high"]},
  {n:"Reverb",  c:"#33cccc", fam:"space",    d:"A gated reverb burst per slice, tiny room to endless wash.", o:["Small","Mid","Large","Huge","Vast","Bloom","Wash","Endless"]},
+ {n:"PShift",  c:"#b366ff", fam:"pitch",    d:"Time-preserving granular pitch shift — the rhythm stays put while the pitch moves. Lo-fi flutter included.", o:["−24 … +24 st"]},
+ {n:"RingMod", c:"#b3e600", fam:"modulation", d:"Sine ring modulator — metallic sidebands from subtle shimmer to alien carrier sweeps.", o:["50 Hz","110 Hz","220 Hz","440 Hz","880 Hz","1.76 kHz","Sweep up","Sweep down"]},
+ {n:"Comb",    c:"#33cc66", fam:"filter",   d:"Tuned feedback comb — rings the slice at a pitch, sweeps it, or screams.", o:["55 Hz","110 Hz","220 Hz","440 Hz","Rise","Fall","Scream 110","Scream 220"]},
+ {n:"Scatter", c:"#f0f0f0", fam:"texture",  d:"Chops the slice into grains and shuffles them — micro-chaos inside one slice, deterministic per seed.", o:["Shuffle 8","Shuffle 4","Shuffle 16","Rev shuffle","Sparse 8","Sparse 4","Sparse 16","Sparse rev"]},
 ];
 
 /* ============ masthead demo: the actual roll, in miniature ============ */
@@ -672,7 +681,7 @@ const FX = [
     for(let i=0;i<N;i++){
       const h=25+rng()*70;
       const hit=rng()<0.65;
-      const f=hit?1+Math.floor(rng()*22):0;
+      const f=hit?1+Math.floor(rng()*26):0;
       cells.push({h,f});
     }
     box.innerHTML="";
