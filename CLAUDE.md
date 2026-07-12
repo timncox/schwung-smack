@@ -254,6 +254,22 @@ Dist hot (+4 drive), Phaser deep/static notches, Verb decay to 0.96.
 fp is int8 (±127) — every render case clamps/masks, never trusts
 range. Sim runs an extreme-min/max render sweep per effect.
 
+## Custom palette layout (v0.10.0 / oversmack 0.7.0)
+
+- `palette` param + `pal` state-blob key: position (pad offset 0-22) →
+  fx code, engine-persisted so oversmack + the web editor share one
+  arrangement and presets restore it. parse_palette accepts ONLY a full
+  23-code permutation (truncated blobs / dupes / out-of-range never
+  half-apply); old presets without `pal` keep the current layout.
+- Web editor "Arrange pads": click two pads to swap (sends full CSV),
+  "Factory layout" resets; UNLK (pad 99) is fixed and disabled while
+  arranging. Reads M.pal (blob key), writes `palette` (param key) —
+  same asymmetry as locks / lock_slice_<i>.
+- ui_overtake polls `palette` in fetchAll (%12 tick) → repaints palette
+  LEDs when it changes. PALETTE_PAD_OF_CODE was dead code, removed.
+- The engine never reads the palette — pure UI preference stored in
+  engine state. Manual site documents it (pinning + web-editor sections).
+
 ## Next steps
 
 - On-device: verify chain UI (LED colors on steps, pad consumption,

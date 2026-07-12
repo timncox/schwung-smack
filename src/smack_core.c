@@ -216,6 +216,11 @@ struct smack {
     int   pan_l, pan_r;          /* 0 hard left .. 100 hard right */
     float pan_gain[2][2];        /* [lane][out ch], equal-power, precomputed */
 
+    /* Pad-palette layout: position (pad offset 0..22) -> fx code. Pure UI
+     * preference, but persisted through the engine so oversmack and the
+     * web editor share one arrangement and presets/autosave restore it. */
+    uint8_t palette[SMACK_FX_COUNT];
+
     /* Pattern geometry (shared by both lanes: same loop, same grid) */
     int      n_slices;
     double   slice_frames;
@@ -465,6 +470,15 @@ static void finish_record(smack_t *s) {
 /*  Lifecycle                                                          */
 /* ------------------------------------------------------------------ */
 
+/* Factory palette order (rows bottom-up from pad 76), grouped by family:
+ * clean + stutter + tape / reverse + pitch + texture + crush /
+ * filters + space + destruction. Mirrored as the fallback in both UIs. */
+static const uint8_t k_default_palette[SMACK_FX_COUNT] = {
+    0, 1, 8, 6, 5, 10, 11, 12,
+    2, 9, 3, 4, 18, 13, 14, 7,
+    15, 16, 21, 17, 19, 22, 20
+};
+
 smack_t *smack_create(const host_api_v1_t *host) {
     smack_t *s = calloc(1, sizeof(smack_t));
     if (!s) return NULL;
@@ -501,6 +515,7 @@ smack_t *smack_create(const host_api_v1_t *host) {
     s->chan_mode = 0;            /* stereo */
     s->pan_l = 0;                /* dual-mono defaults keep input sides */
     s->pan_r = 100;
+    memcpy(s->palette, k_default_palette, sizeof(s->palette));
     update_pan_gains(s);
     return s;
 }
@@ -1322,6 +1337,35 @@ static int csv_lane(char *buf, int n, int buf_len, const char *key,
 /* Parse a locks string ("i:f:p,i:f:p,..."; bare i:f pairs from older
  * presets fall back to the canonical parameter). lk points at the JSON
  * key match or NULL; skip = strlen of the key prefix incl. quote. */
+/* Parse "n,n,..." (plain param value or inside the state blob, where it is
+ * terminated by '"'). Applied only if it is a FULL permutation of
+ * 0..SMACK_FX_COUNT-1, so a truncated blob or garbage never half-applies. */
+static void parse_palette(smack_t *s, const char *p) {
+    if (!p) return;
+    uint8_t tmp[SMACK_FX_COUNT];
+    int seen[SMACK_FX_COUNT] = {0};
+    int i = 0;
+    while (*p && *p != '"' && i < SMACK_FX_COUNT) {
+        char *end;
+        long v = strtol(p, &end, 10);
+        if (end == p || v < 0 || v >= SMACK_FX_COUNT || seen[v]) return;
+        seen[v] = 1;
+        tmp[i++] = (uint8_t)v;
+        p = end;
+        if (*p == ',') p++; else break;
+    }
+    if (i != SMACK_FX_COUNT) return;
+    memcpy(s->palette, tmp, sizeof(tmp));
+}
+
+static int palette_csv(const smack_t *s, char *buf, int buf_len) {
+    int n = 0;
+    for (int i = 0; i < SMACK_FX_COUNT && n < buf_len - 4; i++)
+        n += snprintf(buf + n, (size_t)(buf_len - n), "%s%d",
+                      i ? "," : "", s->palette[i]);
+    return n;
+}
+
 static void parse_locks(smack_lane_t *ln, const char *lk, int skip) {
     if (!lk) return;
     lk += skip;
@@ -1413,6 +1457,8 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
     } else if (!strcmp(key, "pan_r")) {
         s->pan_r = clampi(atoi(val), 0, 100);
         update_pan_gains(s);
+    } else if (!strcmp(key, "palette")) {
+        parse_palette(s, val);
     } else if (!strcmp(key, "monitor")) {
         s->monitor = atoi(val) ? 1 : 0;
     } else if (!strcmp(key, "hw_input")) {
@@ -1441,6 +1487,10 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         memset(s->lane[1].locked, 0, sizeof(s->lane[1].locked));
         parse_locks(&s->lane[0], strstr(val, "\"locks\":\""), 9);
         parse_locks(&s->lane[1], strstr(val, "\"locks_r\":\""), 11);
+        {   /* absent in old presets -> keep the current arrangement */
+            const char *pp = strstr(val, "\"pal\":\"");
+            if (pp) parse_palette(s, pp + 7);
+        }
         if (s->state == SMACK_LOOPING) roll_pattern(s);
     } else if (!strcmp(key, "punch_fx")) {
         int f = atoi(val);
@@ -1508,6 +1558,8 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
         return snprintf(buf, (size_t)buf_len, "0");
     if (!strcmp(key, "transport"))
         return snprintf(buf, (size_t)buf_len, "%d", s->follow_transport ? 0 : 1);
+    if (!strcmp(key, "palette"))
+        return palette_csv(s, buf, buf_len);
     if (!strcmp(key, "state")) {
         /* full settings snapshot — powers slot autosave AND module presets
          * (save/recall from the shadow UI) AND the Remote-UI browser editor
@@ -1519,18 +1571,20 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
             ps = (int)(s->play_pos / s->slice_frames);
             if (ps >= s->n_slices) ps = s->n_slices - 1;
         }
+        char pal[SMACK_FX_COUNT * 4];
+        palette_csv(s, pal, (int)sizeof(pal));
         int n = snprintf(buf, (size_t)buf_len,
             "{\"loop_len\":%d,\"slice_res\":%d,\"fx_density\":%d,"
             "\"order_density\":%d,\"pitch_range\":%d,\"wet\":%d,\"ab\":%d,"
             "\"quantize\":%d,\"seed\":%u,\"nonce\":%u,\"transport\":%d,"
-            "\"chan\":%d,\"pan_l\":%d,\"pan_r\":%d,"
+            "\"chan\":%d,\"pan_l\":%d,\"pan_r\":%d,\"pal\":\"%s\","
             "\"run\":%d,\"nsl\":%d,\"mon\":%d,\"ps\":%d,\"det\":%d,\"pfx\":%d,"
             "\"bpmo\":%d,\"locks\":\"",
             s->loop_len_idx, s->slice_res_idx, (int)(s->fx_density * 100.0f),
             (int)(s->order_density * 100.0f), s->pitch_range,
             (int)(s->wet * 100.0f), s->ab, s->quantize_mode, s->seed,
             s->roll_nonce, s->follow_transport ? 0 : 1,
-            s->chan_mode, s->pan_l, s->pan_r,
+            s->chan_mode, s->pan_l, s->pan_r, pal,
             (int)s->state, s->n_slices, s->monitor, ps,
             s->det_active ? -1 : (int)(s->det_bpm + 0.5f), s->punch_fx,
             (int)(s->bpm_override + 0.5f));

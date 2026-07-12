@@ -64,17 +64,23 @@ const PAD_LANE    = 75;   /* dual mono: tap = lane L/R; hold + knob1/2 = pans */
  * Top-right pad 99 = unlock (restore the seeded effect). */
 const PAD_PALETTE_FIRST = 76;
 const PAD_UNLOCK        = 99;
-/* pad offset (0-22, rows bottom-up from pad 76) -> fx code */
-const PALETTE_LAYOUT = [
+/* pad offset (0-22, rows bottom-up from pad 76) -> fx code. The factory
+ * order below is the fallback; the live arrangement comes from the DSP's
+ * `palette` param (rearranged in the web editor, persisted in presets). */
+const PALETTE_DEFAULT = [
     0, 1, 8, 6, 5, 10, 11, 12,      /* clean, stutter reds, tape oranges */
     2, 9, 3, 4, 18, 13, 14, 7,      /* blues, purples, texture, crush */
     15, 16, 21, 17, 19, 22, 20      /* greens, cyans, dist */
 ];
-const PALETTE_PAD_OF_CODE = (() => {
-    const m = {};
-    for (let i = 0; i < PALETTE_LAYOUT.length; i++) m[PALETTE_LAYOUT[i]] = PAD_PALETTE_FIRST + i;
-    return m;
-})();
+let paletteLayout = PALETTE_DEFAULT.slice();
+let paletteCsv = '';
+function applyPaletteCsv(csv) {
+    const v = csv.split(',').map(Number);
+    if (v.length !== PALETTE_DEFAULT.length || v.some(isNaN)) return;
+    paletteLayout = v;
+    paintPalette(false);
+    needsRedraw = true;
+}
 
 const STEP_FIRST = 16;
 const STEP_COUNT = 16;
@@ -340,6 +346,8 @@ function fetchAll() {
     panR = parseInt(gp('pan_r') || '100');
     monitorOn = (gp('monitor') || '1') !== '0';
     bpmOverride = parseFloat(gp('bpm_override')) || 0;
+    const pv = gp('palette');
+    if (pv !== null && pv !== paletteCsv) { paletteCsv = pv; applyPaletteCsv(pv); }
     fetchKnob2();
     return true;
 }
@@ -434,8 +442,8 @@ function paintTransport(force) {
 }
 
 function paintPalette(force) {
-    for (let i = 0; i < PALETTE_LAYOUT.length; i++)
-        setLED(PAD_PALETTE_FIRST + i, FX_COLORS[PALETTE_LAYOUT[i]], force);
+    for (let i = 0; i < paletteLayout.length; i++)
+        setLED(PAD_PALETTE_FIRST + i, FX_COLORS[paletteLayout[i]], force);
     setLED(PAD_UNLOCK, 0x2D /* dim blue: unlock */, force);
 }
 
@@ -871,8 +879,8 @@ globalThis.onMidiMessageInternal = function(data) {
          * pin. With NO selection: momentary global punch — the whole loop
          * plays this one effect until release; pressure bends it. */
         if (d1 === PAD_UNLOCK) { unlockSlice(); return; }
-        if (d1 >= PAD_PALETTE_FIRST && d1 < PAD_PALETTE_FIRST + PALETTE_LAYOUT.length) {
-            const code = PALETTE_LAYOUT[d1 - PAD_PALETTE_FIRST];
+        if (d1 >= PAD_PALETTE_FIRST && d1 < PAD_PALETTE_FIRST + paletteLayout.length) {
+            const code = paletteLayout[d1 - PAD_PALETTE_FIRST];
             if (state === 3 && selectedSlice < 0) {
                 punchPad = d1;
                 punchLastPressure = -1;

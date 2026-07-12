@@ -179,6 +179,11 @@ then this page syncs live.</div>
     <div class="panel">
       <h2>Slice <span id="selno">—</span></h2>
       <div class="pal" id="pal"></div>
+      <div class="row" style="margin-top:6px">
+        <button id="bArr">Arrange pads</button>
+        <button id="bArrReset" style="display:none">Factory layout</button>
+        <span class="note" id="arrhint"></span>
+      </div>
       <div id="pctl"></div>
       <div class="row" style="margin-top:8px">
         <button id="bPin">Pin</button>
@@ -246,10 +251,29 @@ const FX = [
   {n:"Phaser",  a:"PHA", c:"#b3e600", p:{opts:["Sweep up","Sweep down","Wobble","Fast wobble","Deep slow","Notch mid","Notch low","Notch high"]}},
   {n:"Reverb",  a:"VRB", c:"#33cccc", p:{opts:["Small","Mid","Large","Huge","Vast","Bloom","Wash","Endless"]}},
 ];
-/* hardware pad palette order (rows bottom-up), mirrors ui_overtake.js.
- * Rendered top-down like the Move: top pad row first, Unlock at top-right. */
-const PALETTE = [0,1,8,6,5,10,11,12, 2,9,3,4,18,13,14,7, 15,16,21,17,19,22,20];
-const PAL_ROWS = [PALETTE.slice(16, 23), PALETTE.slice(8, 16), PALETTE.slice(0, 8)];
+/* hardware pad palette order (rows bottom-up), factory default — the live
+ * arrangement comes from the DSP ("pal" in the state blob; written back via
+ * the "palette" param). Rendered top-down like the Move: top pad row first,
+ * Unlock at top-right. */
+const PALETTE_DEFAULT = [0,1,8,6,5,10,11,12, 2,9,3,4,18,13,14,7, 15,16,21,17,19,22,20];
+function curPalette() {
+  const v = (M.pal || "").split(",").map(Number);
+  return (v.length === PALETTE_DEFAULT.length && !v.some(isNaN)) ? v : PALETTE_DEFAULT.slice();
+}
+/* rows top-down like the Move surface; each entry {f, pos} keeps the
+ * palette position so arrange-mode swaps know what to exchange */
+function palRows() {
+  const p = curPalette();
+  return [16, 8, 0].map(function (base) {
+    return p.slice(base, base === 16 ? 23 : base + 8)
+            .map(function (f, ci) { return { f: f, pos: base + ci }; });
+  });
+}
+let arranging = false, arrSel = -1;   /* arrange mode: first pad picked */
+function sendPalette(v) {
+  send("palette", v.join(","));
+  M.pal = v.join(",");                /* optimistic — sync echoes it back */
+}
 const LLEN = ["1 step","2 steps","1 beat","2 beats","1 bar","2 bars","4 bars","8 bars","16 bars"];
 const SRES = ["1/2 step","1 step","2 steps","4 steps"];
 const RUNNAMES = ["IDLE","ARMED","REC","LOOP"];
@@ -423,17 +447,29 @@ function renderInspector() {
   pal.innerHTML = "";
   const pat = csv(laneKey("pat"));
   const curF = sel >= 0 ? (pat[sel] || 0) : (brush ? brush.f : -1);
-  PAL_ROWS.forEach(function (row, ri) {
+  palRows().forEach(function (row, ri) {
     const rdiv = document.createElement("div");
     rdiv.className = "palrow";
-    row.forEach(function (f) {
+    row.forEach(function (cell) {
+      const f = cell.f;
       const b = document.createElement("button");
       b.textContent = FX[f].a;
-      b.title = FX[f].n;
+      b.title = arranging ? "Pad " + (76 + cell.pos) + " — click two pads to swap" : FX[f].n;
       b.style.borderColor = FX[f].c;
       b.style.color = FX[f].c;
-      if (f === curF) { b.style.background = FX[f].c; b.style.color = "#111"; }
-      b.onclick = function () { chooseFx(f); };
+      if (!arranging && f === curF) { b.style.background = FX[f].c; b.style.color = "#111"; }
+      if (arranging && cell.pos === arrSel) { b.style.background = FX[f].c; b.style.color = "#111"; b.style.borderStyle = "dashed"; }
+      b.onclick = function () {
+        if (!arranging) { chooseFx(f); return; }
+        if (arrSel < 0) { arrSel = cell.pos; render(); return; }
+        if (arrSel !== cell.pos) {
+          const v = curPalette();
+          const t = v[arrSel]; v[arrSel] = v[cell.pos]; v[cell.pos] = t;
+          sendPalette(v);
+        }
+        arrSel = -1;
+        render();
+      };
       rdiv.appendChild(b);
     });
     if (ri === 0) {                       /* top-right pad 99 = unlock */
@@ -441,6 +477,7 @@ function renderInspector() {
       u.textContent = "UNLK";
       u.title = "Unlock — the seeded roll owns this slice again (pad 99)";
       u.style.borderStyle = "dashed";
+      u.disabled = arranging;             /* pad 99 is fixed */
       u.onclick = function () {
         if (sel >= 0) send((lane ? "lock_slice_r_" : "lock_slice_") + sel, "-1");
         brush = null;
@@ -518,6 +555,20 @@ function chooseP(f, p) {
   if (sel >= 0) stamp(sel, f, p); else render();
 }
 
+el("bArr").onclick = function () {
+  arranging = !arranging;
+  arrSel = -1;
+  el("bArr").textContent = arranging ? "Done arranging" : "Arrange pads";
+  el("bArrReset").style.display = arranging ? "" : "none";
+  el("arrhint").textContent = arranging
+    ? "click two pads to swap them — the device follows instantly" : "";
+  render();
+};
+el("bArrReset").onclick = function () {
+  sendPalette(PALETTE_DEFAULT.slice());
+  arrSel = -1;
+  render();
+};
 el("bPin").onclick = function () {
   if (sel < 0) return;
   const pat = csv(laneKey("pat")), fxp = csv(laneKey("fxp"));

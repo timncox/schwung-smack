@@ -591,6 +591,43 @@ int main(void) {
         assert(e_sil < e_saw / 50);             /* grabbed the NEW (silent) audio */
     }
 
+    /* pad-palette layout (v0.10.0): a persisted permutation shared by
+     * oversmack + the web editor; garbage never half-applies */
+    {
+        char snap[32768];
+        smack_get_param(S, "palette", buf, sizeof(buf));
+        assert(!strncmp(buf, "0,1,8,6,5,", 10));   /* factory order */
+
+        /* swap positions 0 and 1, keep the rest */
+        smack_set_param(S, "palette",
+            "1,0,8,6,5,10,11,12,2,9,3,4,18,13,14,7,15,16,21,17,19,22,20");
+        smack_get_param(S, "palette", buf, sizeof(buf));
+        assert(!strncmp(buf, "1,0,8,", 6));
+
+        /* rejected: short list, duplicate, out-of-range — layout keeps */
+        smack_set_param(S, "palette", "5,4");
+        smack_set_param(S, "palette",
+            "1,1,8,6,5,10,11,12,2,9,3,4,18,13,14,7,15,16,21,17,19,22,20");
+        smack_set_param(S, "palette",
+            "23,0,8,6,5,10,11,12,2,9,3,4,18,13,14,7,15,16,21,17,19,22,1");
+        smack_get_param(S, "palette", buf, sizeof(buf));
+        assert(!strncmp(buf, "1,0,8,", 6));
+
+        /* survives a preset (state blob) round-trip */
+        assert(smack_get_param(S, "state", snap, sizeof(snap)) > 0);
+        assert(strstr(snap, "\"pal\":\"1,0,8,"));
+        smack_set_param(S, "palette",
+            "0,1,8,6,5,10,11,12,2,9,3,4,18,13,14,7,15,16,21,17,19,22,20");
+        smack_set_param(S, "state", snap);
+        smack_get_param(S, "palette", buf, sizeof(buf));
+        assert(!strncmp(buf, "1,0,8,", 6));
+
+        /* old presets (no pal key) leave the arrangement alone */
+        smack_set_param(S, "state", "{\"seed\":42}");
+        smack_get_param(S, "palette", buf, sizeof(buf));
+        assert(!strncmp(buf, "1,0,8,", 6));
+    }
+
     printf("host_sim: all assertions passed\n");
     smack_destroy(S);
     return 0;

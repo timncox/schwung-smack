@@ -268,9 +268,9 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
     <h2>Loop it. Slice it. Roll the dice.</h2>
   </div>
   <div class="chips">
-    <span class="chip">smack <b>v0.9.1</b> · audio_fx</span>
-    <span class="chip">smack-in <b>v0.9.1</b> · sound_generator</span>
-    <span class="chip">oversmack <b>v0.6.1</b> · overtake</span>
+    <span class="chip">smack <b>v0.10.0</b> · audio_fx</span>
+    <span class="chip">smack-in <b>v0.10.0</b> · sound_generator</span>
+    <span class="chip">oversmack <b>v0.7.0</b> · overtake</span>
     <span class="chip">requires <b>schwung</b></span>
   </div>
   <p class="lede">Smack grabs a quantized loop of whatever you're playing,
@@ -501,8 +501,10 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
   <div class="cols">
     <div>
       <p>On <b>oversmack</b>, the upper three pad rows are the effect palette,
-      grouped by family and lit in family colors. With a slice selected on the
-      steps:</p>
+      grouped by family and lit in family colors. The arrangement is yours to
+      change — <span class="hl">Arrange pads</span> in the web editor swaps
+      any two pads, the hardware follows instantly, and the layout persists
+      in presets. With a slice selected on the steps:</p>
       <p><b>Tap</b> a palette pad → assign that effect to the slice.<br>
       <b>Re-tap the same effect</b> → lock it exactly as it currently sounds
       (keeps the rolled parameter).<br>
@@ -546,6 +548,9 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
     <div>
       <p><b>Effect presets.</b> Save a favorite effect + parameter combo
       ("Buzz — Massive") and stamp it onto slices with a click.</p>
+      <p><b>Arrange pads.</b> Reorganize the effect palette: click two pads
+      to swap them. The Move's pad LEDs re-light as you go, and the layout
+      is saved with presets. Factory layout is one click away.</p>
       <p><b>Layouts.</b> Save the <i>entire pattern</i> — seed, densities,
       resolution, pins — as a named layout. Applying one re-rolls the current
       loop into that exact pattern; the audio is untouched. Export/import as
@@ -617,7 +622,7 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
 
 <footer>
   <div class="big">Re-roll until it slaps.</div>
-  <div>SMACK · smack v0.9.1 · smack-in v0.9.1 · oversmack v0.6.1<br>
+  <div>SMACK · smack v0.10.0 · smack-in v0.10.0 · oversmack v0.7.0<br>
   Built on <a href="https://github.com/charlesvestal/schwung">schwung</a> for the Ableton Move ·
   effect vocabulary inspired by Sugar Bytes Looperator ·
   workflow inspired by how Honeysmack runs modular through an Octatrack. All hail Honeysmack.<br>
@@ -748,7 +753,7 @@ const FX = [
         } else if(mode==="over"){
           if(padNo===99){title="UNLOCK";desc="Restore the seeded effect on the selected slice — hand it back to the dice.";color="#6688ff";}
           else{const code=PALETTE[padNo-76];title=FX[code].n.toUpperCase();color=FX[code].c;
-            desc=FX[code].d+" Tap = assign to the selected slice · re-tap = lock as-is · hold = pin (survives Re-Roll) · hold with no slice selected = punch the whole loop (pressure bends the parameter).";}
+            desc=FX[code].d+" Tap = assign to the selected slice · re-tap = lock as-is · hold = pin (survives Re-Roll) · hold with no slice selected = punch the whole loop (pressure bends the parameter). Shown here in the factory layout — rearrange any pad from the web editor.";}
         } else off=true;
         if(off){d.classList.add("off");lb.textContent="";}
         else{lb.textContent=title;d.style.setProperty("--pc",color);
