@@ -59,7 +59,10 @@
   .cell {
     position: relative; border: 1px solid #333; border-radius: 4px;
     padding: 3px 2px 2px; min-height: 46px; cursor: pointer; text-align: center;
-    background: #191920;
+    background: #191920; overflow: hidden;
+  }
+  .cell .p, .cell .fx {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .cell .idx { position: absolute; top: 1px; left: 3px; font-size: 8px; color: #666; }
   .cell .lock { position: absolute; top: 1px; right: 3px; font-size: 8px; }
@@ -68,10 +71,13 @@
   .cell .ord { font-size: 8px; color: #888; }
   .cell.sel { outline: 2px solid #fff; }
   .cell.play { box-shadow: 0 0 0 2px var(--accent) inset; }
-  .pal { display: flex; flex-wrap: wrap; gap: 4px; }
+  .pal .palrow {
+    display: grid; grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 4px; margin-bottom: 4px;
+  }
   .pal button {
-    width: 64px; padding: 4px 2px; font-size: 10px; font-weight: 700;
-    border-width: 2px;
+    min-width: 0; padding: 4px 1px; font-size: 10px; font-weight: 700;
+    border-width: 2px; overflow: hidden; text-overflow: clip;
   }
   .optrow { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
   .row { display: flex; align-items: center; gap: 8px; margin: 5px 0; flex-wrap: wrap; }
@@ -419,14 +425,13 @@ function renderInspector() {
   const curF = sel >= 0 ? (pat[sel] || 0) : (brush ? brush.f : -1);
   PAL_ROWS.forEach(function (row, ri) {
     const rdiv = document.createElement("div");
-    rdiv.style.cssText = "display:flex;gap:4px;margin-bottom:4px";
+    rdiv.className = "palrow";
     row.forEach(function (f) {
       const b = document.createElement("button");
       b.textContent = FX[f].a;
       b.title = FX[f].n;
       b.style.borderColor = FX[f].c;
       b.style.color = FX[f].c;
-      b.style.cssText += ";width:64px;padding:4px 2px;font-size:10px;font-weight:700;border-width:2px";
       if (f === curF) { b.style.background = FX[f].c; b.style.color = "#111"; }
       b.onclick = function () { chooseFx(f); };
       rdiv.appendChild(b);
@@ -435,7 +440,7 @@ function renderInspector() {
       const u = document.createElement("button");
       u.textContent = "UNLK";
       u.title = "Unlock — the seeded roll owns this slice again (pad 99)";
-      u.style.cssText += "width:64px;padding:4px 2px;font-size:10px;font-weight:700;border-width:2px;border-style:dashed";
+      u.style.borderStyle = "dashed";
       u.onclick = function () {
         if (sel >= 0) send((lane ? "lock_slice_r_" : "lock_slice_") + sel, "-1");
         brush = null;
