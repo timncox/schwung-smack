@@ -1175,6 +1175,22 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
             out[n * 2]     = s->monitor ? clip16(inl) : 0;
             out[n * 2 + 1] = s->monitor ? clip16(inr) : 0;
         } else {
+            /* Keep the ring recording while the loop plays, so Capture
+             * re-grabs NEW audio instead of re-slicing frozen history.
+             * Safe until the write head would run into the playing loop
+             * region — then freeze (the original v1 behavior) rather than
+             * corrupt playback. 70 s ring minus the loop = the re-grab
+             * window; a fresh capture resets it. */
+            uint32_t gap = (s->loop_start + SMACK_RING_FRAMES - s->ring_w)
+                           % SMACK_RING_FRAMES;
+            if (gap > 2048) {
+                s->ring[s->ring_w * 2]     = in[n * 2];
+                s->ring[s->ring_w * 2 + 1] = in[n * 2 + 1];
+                s->ring_w = (s->ring_w + 1) % SMACK_RING_FRAMES;
+                s->written_total++;
+                s->ring_last_global = s->global_frames + (uint64_t)n;
+            }
+
             /* quantized A/B switch */
             if (s->ab_pending >= 0) {
                 int apply = 0;

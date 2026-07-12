@@ -566,6 +566,31 @@ int main(void) {
         assert(strstr(snap, "5:7:6"));             /* lock w/ param back */
     }
 
+    /* capture-while-looping grabs NEW audio (v0.9.0): the ring keeps
+     * recording during playback instead of freezing, so a re-grab
+     * re-slices what just played, not stale history */
+    {
+        smack_set_param(S, "clear", "1");
+        run_blocks(1400, NULL);                 /* fresh saw into the ring */
+        smack_set_param(S, "capture", "1");
+        assert(gp("run_state") == '3');
+        smack_set_param(S, "wet", "100");
+        smack_set_param(S, "quantize", "0");
+        smack_set_param(S, "ab", "0");          /* A side: clean loop only */
+        smack_set_param(S, "monitor", "0");     /* no dry bleed */
+        long e_saw = 0;
+        for (int k = 0; k < 40; k++) { run_blocks(5, out); e_saw += energy(out); }
+        assert(e_saw > 0);                      /* saw loop audible */
+
+        /* feed silence for well over a loop while LOOPING, then re-grab */
+        for (int k = 0; k < 1600; k++) run_blocks_lr(1, NULL, 0, 0);
+        smack_set_param(S, "capture", "1");
+        assert(gp("run_state") == '3');
+        long e_sil = 0;
+        for (int k = 0; k < 40; k++) { run_blocks_lr(5, out, 0, 0); e_sil += energy(out); }
+        assert(e_sil < e_saw / 50);             /* grabbed the NEW (silent) audio */
+    }
+
     printf("host_sim: all assertions passed\n");
     smack_destroy(S);
     return 0;
