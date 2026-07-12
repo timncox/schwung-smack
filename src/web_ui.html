@@ -156,6 +156,17 @@ then this page syncs live.</div>
         <input id="bpmo" type="number" min="0" max="200" step="0.1" style="width:80px" title="BPM override; 0 = project tempo">
         <span class="note">override (0 = off)</span></div>
     </div>
+
+    <div class="panel" style="margin-top:12px; display:none" id="slotpanel">
+      <h2>Slot module</h2>
+      <div class="row">
+        <select id="swapsel" style="min-width:160px"></select>
+        <button id="bSwap">Swap</button>
+        <button id="bReload" title="re-loads smack-in — picks up a freshly installed update">Reload smack-in</button>
+      </div>
+      <div class="note">Swapping replaces this slot's instrument (this editor closes).
+        Reload re-picks smack-in — use it right after updating the module.</div>
+    </div>
   </div>
 
   <div class="right">
@@ -306,6 +317,7 @@ function render() {
   if (M.nsl === undefined && M.seed === undefined) return;
   el("offline").style.display = "none";
   el("ui").style.display = "";
+  initSlotPanel();
 
   const run = num("run", 0);
   if (Date.now() - lastRuiPlay > 1500) {
@@ -542,6 +554,32 @@ el("dice").onclick = function () {
 
 LLEN.forEach(function (o, i) { el("llen").add(new Option(o, i)); });
 SRES.forEach(function (o, i) { el("sres").add(new Option(o, i)); });
+
+/* Slot-module swap (slot/iframe mode only). The chain host loads a slot's
+ * instrument via the shadow param "synth:module" = <id>, which the generic
+ * set_param path reaches on every manager version; the installed-module
+ * list comes from the manager's /api/modules (same-origin fetch). */
+let slotPanelInit = false;
+function initSlotPanel() {
+  if (slotPanelInit || PREFIX !== "synth:") return;
+  slotPanelInit = true;
+  el("slotpanel").style.display = "";
+  el("bReload").onclick = function () { send("module", "smack-in"); };
+  el("bSwap").onclick = function () {
+    const v = el("swapsel").value;
+    if (v) send("module", v);
+  };
+  fetch("/api/modules").then(function (r) { return r.json(); }).then(function (list) {
+    const gens = (list || []).filter(function (m) {
+      return m.installed && m.component_type === "sound_generator";
+    });
+    gens.forEach(function (m) { el("swapsel").add(new Option(m.name || m.id, m.id)); });
+    el("swapsel").value = "smack-in";
+  }).catch(function () {
+    el("swapsel").style.display = "none";
+    el("bSwap").style.display = "none";  /* offline: reload still works */
+  });
+}
 
 function paintPlayhead() {
   const cells = el("grid").children;
