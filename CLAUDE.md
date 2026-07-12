@@ -221,6 +221,27 @@ Len / Res / Wet / Pitch / Qnt / Seed.
   applying = one `state` SET (absent keys keep current values; audio
   untouched). Effect presets = (f,p) pairs. Both live in browser
   localStorage with export/import in the editor.
+- ⚠️ Released schwung (v0.11.4, 2026-06-25) predates ALL of this
+  manager-side: no Tool tab (oversmack editor unreachable), no
+  resubscribe/param-poll (editor shows a banner; reload to re-sync),
+  master-FX Remote UI values render "?". The smack-in slot iframe DOES
+  work there (verified on Tim's device). Everything lights up when
+  schwung ships > v0.11.4.
+
+## Extended effect options (v0.8.0)
+
+Seeded rolls keep the old ranges (same seed = same pattern,
+bit-identical — Freeze/Verb rolled values 0-3 special-cased), but the
+editable fxp space per effect is much deeper, reachable from the web
+editor and swept by punch pressure (pitch punch ±24): Retrig to 1/64,
+Crush 2-24, Buzz 6 windows, Scratch 8 cycles, Speed ×1.5/×¾, Gate
+4/8/16/swing, TapeStop sag/slam, Repeat/RevAfter 7 splits, Env 8
+shapes, Pan pingpong×8 + sweeps, Filter resonant (bq_set_q Q=4),
+Vowel 8 pairs, TonalDelay 8 curves, Delay 32nd/triplet/64th/
+pingpong-8th (quarter impossible: SMACK_DLY_LEN 8192 < step×4 @120),
+Dist hot (+4 drive), Phaser deep/static notches, Verb decay to 0.96.
+fp is int8 (±127) — every render case clamps/masks, never trusts
+range. Sim runs an extreme-min/max render sweep per effect.
 
 ## Next steps
 
