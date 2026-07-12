@@ -647,16 +647,13 @@ globalThis.tick = function() {
         }
     }
 
-    /* periodic state/pattern refresh (knob edits, quantized AB flips) */
+    /* periodic full refresh — device knob edits, quantized AB flips, AND
+     * changes arriving from the web editor: knob values must re-poll too,
+     * or the Move screen shows stale numbers after a browser-side change */
     if (tickCount % 12 === 0) {
         const oldState = state, oldAb = ab, oldPattern = pattern, oldPatternR = patternR;
-        state = parseInt(gp('run_state') || '0');
-        ab = parseInt(gp('ab') || '1');
-        pattern = gp('pattern') || '';
-        patternR = chanMode ? (gp('pattern_r') || '') : '';
-        lockedMask = gp('locked') || '';
-        lockedMaskR = chanMode ? (gp('locked_r') || '') : '';
-        nSlices = parseInt(gp('n_slices') || '0');
+        const oldKnobs = knobValues.join(','), oldMon = monitorOn;
+        fetchAll();
         if (state !== 3) { selectedSlice = -1; stepPage = 0; }
         if (stepPage >= stepPages()) stepPage = stepPages() - 1;
         /* speak async transitions (armed -> recording -> looping); A/B is
@@ -669,6 +666,8 @@ globalThis.tick = function() {
             paintSteps(false);
             needsRedraw = true;
         }
+        if (knobValues.join(',') !== oldKnobs) needsRedraw = true;
+        if (monitorOn !== oldMon) { paintTransport(false); needsRedraw = true; }
     }
 
     if (needsRedraw) drawUI();
