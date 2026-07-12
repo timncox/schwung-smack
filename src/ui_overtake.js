@@ -185,6 +185,14 @@ const AB_HOLD_MS = 350;
 let abHeld = null;         /* { at, prev } */
 let paletteHeld = null;    /* { pad, code, slice, at, fired } */
 
+/* Global punch: palette pad held with NO slice selected forces that one
+ * effect over the whole loop; aftertouch bends its parameter. These were
+ * accidentally never declared — in a strict-mode module every read threw
+ * ReferenceError, which the old host swallowed but schwung main treats as
+ * fatal (exits the tool on any pad release). */
+let punchPad = -1;             /* pad note currently punching, -1 = none */
+let punchLastPressure = -1;    /* last aftertouch sent (throttle: Δ >= 3) */
+
 /* Feedback guard: the host's slot guard never sees overtake modules, so we
  * mirror it here — speakers on + no line-in cable = the internal mic would
  * feed the speakers. Mute the DSP's input monitoring (ring keeps recording,
