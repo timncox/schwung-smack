@@ -254,6 +254,32 @@ Dist hot (+4 drive), Phaser deep/static notches, Verb decay to 0.96.
 fp is int8 (±127) — every render case clamps/masks, never trusts
 range. Sim runs an extreme-min/max render sweep per effect.
 
+## Per-slice depth + mix (v0.12.0 / oversmack 0.9.0)
+
+- Every slice now carries fxp2 (per-effect depth 0-100, -1 = engine
+  default) and fxmix (0-100 wet blend vs the CLEAN slice in pattern
+  order, -1 = full wet). Rolls NEVER set them (edit-only; seeds
+  unchanged from 0.11.0). Full token form everywhere: "f[:p[:p2[:m]]]"
+  — lock_slice / set_slice / punch_fx / palette pads all accept it
+  (parse_fx_token; clamp_pct −1-sentinel). Locks serialize i:f:p or
+  i:f:p:p2:m; blob adds fx2/mix csvs (display); palette tokens carry
+  4 fields; punch gets punch_fxp2/punch_mix.
+- Depth meanings: Retrig/Repeat decay, Pitch glide, Gate floor, Buzz
+  fade, Crush smash (variable bit shift 1-8), Scratch throw, Pan
+  width, Filter rez (Q .7-8), Vowel sharpness, TonalDly/Delay/Comb
+  feedback (.15-.87, overrides variants), Freeze/PShift grain size,
+  Dist drive (1-15, overrides hot), Phaser depth, Verb tail, RingMod
+  tune trim (±1 oct), Scatter chaos %. No depth: Reverse/Speed/
+  RevAfter/TapeStop/TapeStart/Env (Mix covers them).
+- Render refactor: edge/loop fades moved from g into gedge so the dry
+  tap of the mix blend gets fades but not effect gains; blend happens
+  after CRUSH quantize; dry tap = same source slice unwarped
+  (src_dry), so Mix = effect intensity, order preserved.
+- Web editor: Depth + Mix sliders (× = back to default) on slice,
+  brush, presets, AND palette pads (renderPadCtl); labels from FX
+  meta `x:` field. Sim gotcha that cost 20 min: energy assertions
+  MUST set monitor=0 first or the live saw input drowns the loop.
+
 ## Variant pads + 4 new effects (v0.11.0 / oversmack 0.8.0)
 
 - SMACK_FX_COUNT 23 → 27: PSHIFT (time-preserving granular pitch shift,

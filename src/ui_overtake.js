@@ -73,15 +73,15 @@ const PALETTE_DEFAULT = [
     2, 9, 3, 4, 18, 13, 14, 7,      /* blues, purples, texture, crush */
     15, 16, 21, 17, 19, 22, 20      /* greens, cyans, dist */
 ];
-/* entries {f, p}: p = per-pad param override, null = canonical default */
-let paletteLayout = PALETTE_DEFAULT.map(f => ({ f, p: null }));
+/* entries {f, tok}: tok is the raw "f[:p[:p2[:m]]]" token — the pad UI
+ * passes it straight through to set_slice/lock_slice/punch_fx, so pads
+ * carry variant + depth + mix without this file understanding them */
+let paletteLayout = PALETTE_DEFAULT.map(f => ({ f, tok: `${f}` }));
 let paletteCsv = '';
 function applyPaletteCsv(csv) {
     const v = csv.split(',').map(tok => {
-        const a = tok.split(':');
-        const f = parseInt(a[0], 10);
-        return isNaN(f) ? null
-            : { f, p: a.length > 1 ? parseInt(a[1], 10) : null };
+        const f = parseInt(tok, 10);
+        return isNaN(f) ? null : { f, tok };
     });
     if (v.length !== PALETTE_DEFAULT.length || v.some(e => e === null)) return;
     paletteLayout = v;
@@ -546,13 +546,12 @@ function drawUI() {
 
 /* ---- Actions ---- */
 
-function assignFx(code, padP) {
+function assignFx(code, tok) {
     if (state !== 3 || selectedSlice < 0 || selectedSlice >= nSlices) {
         announce('Select a step first');
         return;
     }
-    const v = (padP !== null && padP !== undefined) ? `${code}:${padP}` : `${code}`;
-    host_module_set_param(softKey(selectedSlice), v);
+    host_module_set_param(softKey(selectedSlice), tok || `${code}`);
     const where = chanMode ? `, ${laneSpeech()}` : '';
     announce(`Slice ${selectedSlice + 1}, ${FX_SPEECH[code]}${where}`);
     refreshSoon();
@@ -657,8 +656,7 @@ globalThis.tick = function() {
         host_module_set_param(
             (chanMode && editLane) ? `lock_slice_r_${paletteHeld.slice}`
                                    : `lock_slice_${paletteHeld.slice}`,
-            paletteHeld.p !== null ? `${paletteHeld.code}:${paletteHeld.p}`
-                                   : `${paletteHeld.code}`);
+            paletteHeld.tok);
         announce(`Slice ${paletteHeld.slice + 1} pinned`);
         refreshSoon();
     }
@@ -896,19 +894,18 @@ globalThis.onMidiMessageInternal = function(data) {
         if (d1 >= PAD_PALETTE_FIRST && d1 < PAD_PALETTE_FIRST + paletteLayout.length) {
             const ent = paletteLayout[d1 - PAD_PALETTE_FIRST];
             const code = ent.f;
-            const withP = (ent.p !== null && ent.p !== undefined);
             if (state === 3 && selectedSlice < 0) {
                 punchPad = d1;
                 punchLastPressure = -1;
-                host_module_set_param('punch_fx', withP ? `${code}:${ent.p}` : `${code}`);
+                host_module_set_param('punch_fx', ent.tok);
                 announce(`${FX_SPEECH[code]} punch`);
                 needsRedraw = true;
                 return;
             }
             const slice = selectedSlice;
-            assignFx(code, ent.p);
+            assignFx(code, ent.tok);
             if (state === 3 && slice >= 0 && slice < nSlices) {
-                paletteHeld = { pad: d1, code, p: withP ? ent.p : null,
+                paletteHeld = { pad: d1, code, tok: ent.tok,
                                 slice, at: Date.now(), fired: false };
             }
             return;

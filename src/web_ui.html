@@ -228,32 +228,32 @@ then this page syncs live.</div>
 /* ---- effect metadata (mirrors smack_core.c) ------------------------- */
 const FX = [
   {n:"Clean",   a:"CLN", c:"#555555"},
-  {n:"Retrig",  a:"RTG", c:"#ff4d4d", p:{opts:[null,"1/2","1/4","1/8","1/16","1/32","1/64"],min:1}},
+  {n:"Retrig",  a:"RTG", c:"#ff4d4d", p:{opts:[null,"1/2","1/4","1/8","1/16","1/32","1/64"],min:1}, x:"Decay"},
   {n:"Reverse", a:"REV", c:"#4da6ff"},
-  {n:"Pitch",   a:"PIT", c:"#b366ff", p:{min:-24,max:24,label:"Semitones"}},
+  {n:"Pitch",   a:"PIT", c:"#b366ff", p:{min:-24,max:24,label:"Semitones"}, x:"Glide"},
   {n:"Speed",   a:"SPD", c:"#b366ff", p:{opts:["Half","Double","Fifth up (×1.5)","Fourth down (×¾)"]}},
-  {n:"Gate",    a:"GAT", c:"#ff1a1a", p:{opts:["8 chops","4 chops","16 chops","Swing 8"]}},
-  {n:"Buzz",    a:"BZZ", c:"#ff1a1a", p:{opts:["Tight","Narrow","Mid","Wide","Huge","Massive"]}},
-  {n:"Crush",   a:"CRU", c:"#66ff33", p:{min:2,max:24,label:"Hold ÷"}},
-  {n:"Repeat",  a:"RPT", c:"#ff4d4d", p:{opts:[null,"After 1/2","After 1/4","After 3/4","After 1/8","After 1/3","After 2/3","After 1/16"],min:1}},
+  {n:"Gate",    a:"GAT", c:"#ff1a1a", p:{opts:["8 chops","4 chops","16 chops","Swing 8"]}, x:"Depth"},
+  {n:"Buzz",    a:"BZZ", c:"#ff1a1a", p:{opts:["Tight","Narrow","Mid","Wide","Huge","Massive"]}, x:"Fade"},
+  {n:"Crush",   a:"CRU", c:"#66ff33", p:{min:2,max:24,label:"Hold ÷"}, x:"Smash"},
+  {n:"Repeat",  a:"RPT", c:"#ff4d4d", p:{opts:[null,"After 1/2","After 1/4","After 3/4","After 1/8","After 1/3","After 2/3","After 1/16"],min:1}, x:"Decay"},
   {n:"RevAfter",a:"RVA", c:"#4da6ff", p:{opts:[null,"At 1/2","At 2/3","At 3/4","At 1/4","At 1/8","At 7/8","Tail flip"],min:1}},
   {n:"TapeStop",a:"TST", c:"#ff7733", p:{opts:["Full slice","Fast","Sag","Slam"]}},
   {n:"TapeStart",a:"TSA",c:"#ff7733"},
-  {n:"Scratch", a:"SCR", c:"#ff7733", p:{min:1,max:8,label:"Cycles"}},
+  {n:"Scratch", a:"SCR", c:"#ff7733", p:{min:1,max:8,label:"Cycles"}, x:"Throw"},
   {n:"Envelope",a:"ENV", c:"#b0b0b0", p:{opts:["Fade in","Fade out","Wobble","Late half","Swell mid","Shiver","Chop 4","Duck mid"]}},
-  {n:"Pan",     a:"PAN", c:"#b0b0b0", p:{opts:["Hard left","Hard right","Ping-pong","Ping-pong ×8","Sweep L→R","Sweep R→L"]}},
-  {n:"Filter",  a:"FLT", c:"#33cc66", p:{opts:["LP down","LP up","HP up","HP down","LP down rez","LP up rez","HP up rez","HP down rez"]}},
-  {n:"Vowel",   a:"VWL", c:"#33cc66", p:{opts:["A→I","O→I","A→U","E→O","I→A","E→U","U→O","A→E"]}},
-  {n:"TonalDly",a:"TDL", c:"#33cccc", p:{opts:["Rise","Fall","Wobble","Stepped","Slow rise","Slow fall","Fast wobble","Stairs 8"]}},
-  {n:"Freeze",  a:"FRZ", c:"#f0f0f0", p:{opts:["Spray 1","Spray 2","Spray 3","Spray 4","Wide spray 1","Wide spray 2","Wide spray 3","Wide spray 4"]}},
-  {n:"Delay",   a:"DLY", c:"#33cccc", p:{opts:["16th","8th","Dotted","Ping-pong","32nd","Triplet 8th","64th buzz","Ping-pong 8th"]}},
-  {n:"Distort", a:"DST", c:"#66ff33", p:{opts:["Soft clip","Hard clip","Foldback","Gnash","Soft hot","Hard hot","Fold hot","Gnash hot"]}},
-  {n:"Phaser",  a:"PHA", c:"#b3e600", p:{opts:["Sweep up","Sweep down","Wobble","Fast wobble","Deep slow","Notch mid","Notch low","Notch high"]}},
-  {n:"Reverb",  a:"VRB", c:"#33cccc", p:{opts:["Small","Mid","Large","Huge","Vast","Bloom","Wash","Endless"]}},
-  {n:"PShift",  a:"PSH", c:"#b366ff", p:{min:-24,max:24,label:"Semitones (time intact)"}},
-  {n:"RingMod", a:"RMO", c:"#b3e600", p:{opts:["50 Hz","110 Hz","220 Hz","440 Hz","880 Hz","1.76 kHz","Sweep up","Sweep down"]}},
-  {n:"Comb",    a:"CMB", c:"#33cc66", p:{opts:["55 Hz","110 Hz","220 Hz","440 Hz","Rise","Fall","Scream 110","Scream 220"]}},
-  {n:"Scatter", a:"SCT", c:"#f0f0f0", p:{opts:["Shuffle 8","Shuffle 4","Shuffle 16","Rev shuffle","Sparse 8","Sparse 4","Sparse 16","Sparse rev"]}},
+  {n:"Pan",     a:"PAN", c:"#b0b0b0", p:{opts:["Hard left","Hard right","Ping-pong","Ping-pong ×8","Sweep L→R","Sweep R→L"]}, x:"Width"},
+  {n:"Filter",  a:"FLT", c:"#33cc66", p:{opts:["LP down","LP up","HP up","HP down","LP down rez","LP up rez","HP up rez","HP down rez"]}, x:"Resonance"},
+  {n:"Vowel",   a:"VWL", c:"#33cc66", p:{opts:["A→I","O→I","A→U","E→O","I→A","E→U","U→O","A→E"]}, x:"Sharpness"},
+  {n:"TonalDly",a:"TDL", c:"#33cccc", p:{opts:["Rise","Fall","Wobble","Stepped","Slow rise","Slow fall","Fast wobble","Stairs 8"]}, x:"Feedback"},
+  {n:"Freeze",  a:"FRZ", c:"#f0f0f0", p:{opts:["Spray 1","Spray 2","Spray 3","Spray 4","Wide spray 1","Wide spray 2","Wide spray 3","Wide spray 4"]}, x:"Grain size"},
+  {n:"Delay",   a:"DLY", c:"#33cccc", p:{opts:["16th","8th","Dotted","Ping-pong","32nd","Triplet 8th","64th buzz","Ping-pong 8th"]}, x:"Feedback"},
+  {n:"Distort", a:"DST", c:"#66ff33", p:{opts:["Soft clip","Hard clip","Foldback","Gnash","Soft hot","Hard hot","Fold hot","Gnash hot"]}, x:"Drive"},
+  {n:"Phaser",  a:"PHA", c:"#b3e600", p:{opts:["Sweep up","Sweep down","Wobble","Fast wobble","Deep slow","Notch mid","Notch low","Notch high"]}, x:"Depth"},
+  {n:"Reverb",  a:"VRB", c:"#33cccc", p:{opts:["Small","Mid","Large","Huge","Vast","Bloom","Wash","Endless"]}, x:"Tail"},
+  {n:"PShift",  a:"PSH", c:"#b366ff", p:{min:-24,max:24,label:"Semitones (time intact)"}, x:"Grain size"},
+  {n:"RingMod", a:"RMO", c:"#b3e600", p:{opts:["50 Hz","110 Hz","220 Hz","440 Hz","880 Hz","1.76 kHz","Sweep up","Sweep down"]}, x:"Tune trim"},
+  {n:"Comb",    a:"CMB", c:"#33cc66", p:{opts:["55 Hz","110 Hz","220 Hz","440 Hz","Rise","Fall","Scream 110","Scream 220"]}, x:"Feedback"},
+  {n:"Scatter", a:"SCT", c:"#f0f0f0", p:{opts:["Shuffle 8","Shuffle 4","Shuffle 16","Rev shuffle","Sparse 8","Sparse 4","Sparse 16","Sparse rev"]}, x:"Chaos"},
 ];
 /* hardware pad palette order (rows bottom-up), factory default — the live
  * arrangement comes from the DSP ("pal" in the state blob; written back via
@@ -266,10 +266,13 @@ function curPalette() {
   const v = (M.pal || "").split(",").map(function (tok) {
     const a = tok.split(":");
     const f = parseInt(a[0], 10);
-    return isNaN(f) ? null : { f: f, p: a.length > 1 ? parseInt(a[1], 10) : null };
+    return isNaN(f) ? null : { f: f,
+      p:  a.length > 1 ? parseInt(a[1], 10) : null,
+      p2: a.length > 2 ? parseInt(a[2], 10) : -1,
+      m:  a.length > 3 ? parseInt(a[3], 10) : -1 };
   });
   if (v.length === PALETTE_DEFAULT.length && v.indexOf(null) < 0) return v;
-  return PALETTE_DEFAULT.map(function (f) { return { f: f, p: null }; });
+  return PALETTE_DEFAULT.map(function (f) { return { f: f, p: null, p2: -1, m: -1 }; });
 }
 /* rows top-down like the Move surface; each entry keeps its palette
  * position so arrange-mode swaps know what to exchange */
@@ -277,13 +280,19 @@ function palRows() {
   const p = curPalette();
   return [16, 8, 0].map(function (base) {
     return p.slice(base, base === 16 ? 23 : base + 8)
-            .map(function (e, ci) { return { f: e.f, p: e.p, pos: base + ci }; });
+            .map(function (e, ci) { return { f: e.f, p: e.p, p2: e.p2, m: e.m, pos: base + ci }; });
   });
 }
 let arranging = false, arrSel = -1;   /* arrange mode: selected pad */
 function sendPalette(v) {
   const csvv = v.map(function (e) {
-    return e.p !== null && e.p !== undefined ? e.f + ":" + e.p : "" + e.f;
+    const hasDepth = (e.p2 !== undefined && e.p2 >= 0) || (e.m !== undefined && e.m >= 0);
+    let p = e.p;
+    if (hasDepth && (p === null || p === undefined)) p = dflt(e.f);
+    if (p === null || p === undefined) return "" + e.f;
+    let t = e.f + ":" + p;
+    if (hasDepth) t += ":" + (e.p2 >= 0 ? e.p2 : -1) + ":" + (e.m >= 0 ? e.m : -1);
+    return t;
   }).join(",");
   send("palette", csvv);
   M.pal = csvv;                       /* optimistic — sync echoes it back */
@@ -307,7 +316,9 @@ function locksOf(k) {            /* "i:f:p,..." -> Map(i -> {f,p}) */
   const m = new Map();
   (M[k] || "").split(",").forEach(t => {
     const a = t.split(":").map(Number);
-    if (a.length >= 2 && !isNaN(a[0])) m.set(a[0], {f: a[1], p: a[2] || 0});
+    if (a.length >= 2 && !isNaN(a[0]))
+      m.set(a[0], {f: a[1], p: a[2] || 0,
+                   p2: a.length > 3 ? a[3] : -1, m: a.length > 4 ? a[4] : -1});
   });
   return m;
 }
@@ -467,7 +478,7 @@ function renderInspector() {
     row.forEach(function (cell) {
       const f = cell.f;
       const b = document.createElement("button");
-      b.textContent = FX[f].a + (cell.p !== null ? "•" : "");
+      b.textContent = FX[f].a + ((cell.p !== null || cell.p2 >= 0 || cell.m >= 0) ? "•" : "");
       b.title = arranging
         ? "Pad " + (76 + cell.pos) + " — click to edit, click a second pad to swap"
         : FX[f].n + (cell.p !== null ? " — " + pdisp(f, cell.p) : "");
@@ -476,7 +487,7 @@ function renderInspector() {
       if (!arranging && f === curF) { b.style.background = FX[f].c; b.style.color = "#111"; }
       if (arranging && cell.pos === arrSel) { b.style.background = FX[f].c; b.style.color = "#111"; b.style.borderStyle = "dashed"; }
       b.onclick = function () {
-        if (!arranging) { chooseFx(f, cell.p); return; }
+        if (!arranging) { chooseFx(f, cell.p, cell.p2, cell.m); return; }
         if (arrSel < 0) { arrSel = cell.pos; render(); return; }
         if (arrSel !== cell.pos) {
           const v = curPalette();
@@ -518,7 +529,9 @@ function renderPadCtl(pos) {
   const lbl = document.createElement("div");
   lbl.className = "row";
   lbl.innerHTML = '<span class="k">Pad ' + (76 + pos) + " — " + meta.n +
-    (cur.p !== null ? " · " + pdisp(cur.f, cur.p) : " · default") + "</span>";
+    (cur.p !== null ? " · " + pdisp(cur.f, cur.p) : " · default") +
+    (cur.p2 >= 0 ? " · " + (meta.x || "depth") + " " + cur.p2 : "") +
+    (cur.m >= 0 ? " · mix " + cur.m : "") + "</span>";
   box.appendChild(lbl);
   const row = document.createElement("div");
   row.className = "row";
@@ -530,7 +543,7 @@ function renderPadCtl(pos) {
     selEl.appendChild(o);
   });
   selEl.onchange = function () {
-    palv[pos] = { f: parseInt(selEl.value, 10), p: null };
+    palv[pos] = { f: parseInt(selEl.value, 10), p: null, p2: -1, m: -1 };
     sendPalette(palv);
     render();
   };
@@ -538,7 +551,7 @@ function renderPadCtl(pos) {
   const clr = document.createElement("button");
   clr.textContent = "Default param";
   clr.onclick = function () {
-    palv[pos] = { f: cur.f, p: null };
+    palv[pos] = { f: cur.f, p: null, p2: -1, m: -1 };
     sendPalette(palv);
     render();
   };
@@ -581,6 +594,20 @@ function renderPadCtl(pos) {
       box.appendChild(v);
     }
   }
+  if (cur.f > 0) {
+    function setPad(k2, nv) {
+      const e2 = { f: cur.f, p: cur.p, p2: cur.p2, m: cur.m };
+      e2[k2] = nv;
+      palv[pos] = e2;
+      sendPalette(palv);
+      render();
+    }
+    if (FX[cur.f].x)
+      box.appendChild(depthRow(FX[cur.f].x, cur.p2 >= 0 ? cur.p2 : -1, "default",
+        function (nv) { setPad("p2", nv); }));
+    box.appendChild(depthRow("Mix", cur.m >= 0 ? cur.m : -1, "wet",
+      function (nv) { setPad("m", nv); }));
+  }
   const hint = document.createElement("div");
   hint.className = "note";
   hint.textContent = "Variant pads assign, pin, and punch with this exact setting. Click another pad to swap positions.";
@@ -598,7 +625,8 @@ function renderParamCtl(f) {
   lbl.innerHTML = '<span class="k">' + meta.n + "</span>";
   box.appendChild(lbl);
   if (!meta.p) {
-    lbl.innerHTML += '<span class="note">no parameter</span>';
+    lbl.innerHTML += '<span class="note">no variant</span>';
+    appendDepthCtl(box, f);
     return;
   }
   if (meta.p.opts) {
@@ -626,6 +654,40 @@ function renderParamCtl(f) {
     box.appendChild(r);
     box.appendChild(v);
   }
+  appendDepthCtl(box, f);
+}
+
+/* Depth (per-effect) + Mix (universal) sliders, -1 = engine default.
+ * getD/setD supply current values and apply changes (slice vs pad). */
+function depthRow(label, cur, dfltLabel, setFn) {
+  const row = document.createElement("div");
+  row.className = "row";
+  const k = document.createElement("span");
+  k.className = "k";
+  k.textContent = label;
+  const r = document.createElement("input");
+  r.type = "range"; r.min = 0; r.max = 100; r.step = 1;
+  r.value = cur >= 0 ? cur : (label === "Mix" ? 100 : 50);
+  r.style.flex = "1";
+  const v = document.createElement("span");
+  v.className = "note";
+  v.textContent = cur >= 0 ? cur : dfltLabel;
+  r.oninput = function () { v.textContent = r.value; };
+  r.onchange = function () { setFn(parseInt(r.value, 10)); };
+  const x = document.createElement("button");
+  x.textContent = "×";
+  x.title = "back to engine default";
+  x.onclick = function () { setFn(-1); };
+  row.appendChild(k); row.appendChild(r); row.appendChild(v); row.appendChild(x);
+  return row;
+}
+
+function appendDepthCtl(box, f) {
+  if (f <= 0 || !FX[f]) return;
+  const d = slDepth();
+  if (FX[f].x)
+    box.appendChild(depthRow(FX[f].x, d.p2, "default", function (nv) { chooseD(f, nv); }));
+  box.appendChild(depthRow("Mix", d.m, "wet", function (nv) { chooseM(f, nv); }));
 }
 
 function dflt(f) {               /* mirrors default_fxp() in the core */
@@ -633,23 +695,55 @@ function dflt(f) {               /* mirrors default_fxp() in the core */
 }
 
 /* ---- edits ------------------------------------------------------------ */
-function stamp(i, f, p) {        /* pin effect f with param p on slice i */
-  send((lane ? "lock_slice_r_" : "lock_slice_") + i, f + ":" + p);
+function stamp(i, f, p, p2, m) { /* pin f with param/depth/mix on slice i */
+  if (p2 === undefined || p2 === null) p2 = -1;
+  if (m === undefined || m === null) m = -1;
+  send((lane ? "lock_slice_r_" : "lock_slice_") + i, f + ":" + p + ":" + p2 + ":" + m);
   const locks = locksOf(laneKey("locks"));
-  locks.set(i, {f: f, p: p});    /* optimistic: poll confirms shortly */
-  M[laneKey("locks")] = Array.from(locks, function (e) { return e[0] + ":" + e[1].f + ":" + e[1].p; }).join(",");
+  locks.set(i, {f: f, p: p, p2: p2, m: m}); /* optimistic: poll confirms */
+  M[laneKey("locks")] = Array.from(locks, function (e) {
+    return e[0] + ":" + e[1].f + ":" + e[1].p + ":" + (e[1].p2 === undefined ? -1 : e[1].p2) + ":" + (e[1].m === undefined ? -1 : e[1].m);
+  }).join(",");
   const pat = csv(laneKey("pat")), fxp = csv(laneKey("fxp"));
-  pat[i] = f; fxp[i] = p;
+  const fx2 = csv(laneKey("fx2")), mixv = csv(laneKey("mix"));
+  pat[i] = f; fxp[i] = p; fx2[i] = p2; mixv[i] = m;
   M[laneKey("pat")] = pat.join(","); M[laneKey("fxp")] = fxp.join(",");
+  M[laneKey("fx2")] = fx2.join(","); M[laneKey("mix")] = mixv.join(",");
   render();
 }
-function chooseFx(f, padP) {     /* padP: a variant pad's param override */
-  brush = {f: f, p: padP !== null && padP !== undefined ? padP : dflt(f)};
-  if (sel >= 0) stamp(sel, f, brush.p); else render();
+function chooseFx(f, padP, padP2, padM) { /* pad overrides: param/depth/mix */
+  brush = {f: f, p: padP !== null && padP !== undefined ? padP : dflt(f),
+           p2: padP2 === undefined || padP2 === null ? -1 : padP2,
+           m: padM === undefined || padM === null ? -1 : padM};
+  if (sel >= 0) stamp(sel, f, brush.p, brush.p2, brush.m); else render();
+}
+function slDepth() {             /* current slice/brush depth + mix */
+  if (sel >= 0) {
+    const fx2 = csv(laneKey("fx2")), mixv = csv(laneKey("mix"));
+    return { p2: fx2.length > sel ? fx2[sel] : -1,
+             m: mixv.length > sel ? mixv[sel] : -1 };
+  }
+  return { p2: brush ? (brush.p2 === undefined ? -1 : brush.p2) : -1,
+           m: brush ? (brush.m === undefined ? -1 : brush.m) : -1 };
 }
 function chooseP(f, p) {
-  brush = {f: f, p: p};
-  if (sel >= 0) stamp(sel, f, p); else render();
+  const d = slDepth();
+  brush = {f: f, p: p, p2: d.p2, m: d.m};
+  if (sel >= 0) stamp(sel, f, p, d.p2, d.m); else render();
+}
+function chooseD(f, p2) {        /* set depth, keep param + mix */
+  const fxp = csv(laneKey("fxp"));
+  const p = sel >= 0 ? (fxp[sel] || 0) : (brush ? brush.p : dflt(f));
+  const d = slDepth();
+  brush = {f: f, p: p, p2: p2, m: d.m};
+  if (sel >= 0) stamp(sel, f, p, p2, d.m); else render();
+}
+function chooseM(f, m) {         /* set mix, keep param + depth */
+  const fxp = csv(laneKey("fxp"));
+  const p = sel >= 0 ? (fxp[sel] || 0) : (brush ? brush.p : dflt(f));
+  const d = slDepth();
+  brush = {f: f, p: p, p2: d.p2, m: m};
+  if (sel >= 0) stamp(sel, f, p, d.p2, m); else render();
 }
 
 el("bArr").onclick = function () {
@@ -662,20 +756,23 @@ el("bArr").onclick = function () {
   render();
 };
 el("bArrReset").onclick = function () {
-  sendPalette(PALETTE_DEFAULT.map(function (f) { return { f: f, p: null }; }));
+  sendPalette(PALETTE_DEFAULT.map(function (f) { return { f: f, p: null, p2: -1, m: -1 }; }));
   arrSel = -1;
   render();
 };
 el("bPin").onclick = function () {
   if (sel < 0) return;
   const pat = csv(laneKey("pat")), fxp = csv(laneKey("fxp"));
-  stamp(sel, pat[sel] || 0, fxp[sel] || 0);   /* pin as-is */
+  const fx2 = csv(laneKey("fx2")), mixv = csv(laneKey("mix"));
+  stamp(sel, pat[sel] || 0, fxp[sel] || 0,
+        fx2.length > sel ? fx2[sel] : -1,
+        mixv.length > sel ? mixv[sel] : -1);  /* pin as-is incl. depth */
 };
 el("bUnpin").onclick = function () {
   if (sel < 0) return;
   send((lane ? "lock_slice_r_" : "lock_slice_") + sel, "-1");
 };
-el("bClean").onclick = function () { if (sel >= 0) stamp(sel, 0, 0); };
+el("bClean").onclick = function () { if (sel >= 0) stamp(sel, 0, 0, -1, -1); };
 
 el("laneA").onclick = function () { lane = 0; sel = -1; render(); };
 el("laneB").onclick = function () { lane = 1; sel = -1; render(); };
@@ -770,7 +867,9 @@ el("pSave").onclick = function () {
   if (!brush) return;
   const name = el("pname").value.trim() || (FX[brush.f].n + " " + pdisp(brush.f, brush.p));
   const ps = load("smack_fx_presets");
-  ps.push({name: name, f: brush.f, p: brush.p});
+  ps.push({name: name, f: brush.f, p: brush.p,
+           p2: brush.p2 === undefined ? -1 : brush.p2,
+           m: brush.m === undefined ? -1 : brush.m});
   store("smack_fx_presets", ps);
   el("pname").value = "";
   renderPresets();
@@ -785,9 +884,11 @@ function renderPresets() {
     b.style.borderColor = FX[pr.f].c; b.style.color = FX[pr.f].c;
     if (brush && brush.f === pr.f && brush.p === pr.p) b.classList.add("on");
     b.onclick = function () {
-      brush = {f: pr.f, p: pr.p};
+      brush = {f: pr.f, p: pr.p,
+               p2: pr.p2 === undefined ? -1 : pr.p2,
+               m: pr.m === undefined ? -1 : pr.m};
       el("paint").checked = true;
-      if (sel >= 0) stamp(sel, pr.f, pr.p); else render();
+      if (sel >= 0) stamp(sel, pr.f, pr.p, brush.p2, brush.m); else render();
     };
     const x = document.createElement("button"); x.className = "x"; x.textContent = "×";
     x.onclick = function () {

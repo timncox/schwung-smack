@@ -2,7 +2,7 @@
   "id": "oversmack",
   "name": "Oversmack",
   "abbrev": "OVS",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Full-surface Smack: input loop glitcher (mic/line/USB-C) with the whole pad grid as a step-FX editor",
   "dsp": "dsp.so",
   "ui": "ui.js",

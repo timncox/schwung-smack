@@ -486,7 +486,7 @@ int main(void) {
             { 0, 6, 0,  24, 3, 3, 5, 24, 7, 7, 3, 0, 8, 7, 5, 7, 7, 7, 7, 7, 7, 7, 7,
                24, 7, 7, 7 };
         for (int f = 1; f < SMACK_FX_COUNT; f++) {
-            char v[16];
+            char v[24];
             snprintf(v, sizeof(v), "%d:%d", f, pmax[f]);
             smack_set_param(S, "lock_slice_0", v);
             run_blocks(80, out);
@@ -495,8 +495,83 @@ int main(void) {
             smack_set_param(S, "lock_slice_0", v);
             run_blocks(80, out);
             assert(gp("run_state") == '3');
+            /* v0.12.0 depth + mix extremes render cleanly too */
+            snprintf(v, sizeof(v), "%d:%d:100:50", f, pmax[f]);
+            smack_set_param(S, "lock_slice_0", v);
+            run_blocks(80, out);
+            assert(gp("run_state") == '3');
+            snprintf(v, sizeof(v), "%d:%d:0:1", f, pmin[f]);
+            smack_set_param(S, "lock_slice_0", v);
+            run_blocks(80, out);
+            assert(gp("run_state") == '3');
         }
         smack_set_param(S, "lock_slice_0", "-1");
+    }
+
+    /* per-slice depth + mix (v0.12.0): extended lock tokens serialize as
+     * i:f:p:p2:m, restore, and mix 0 really means "the clean slice" */
+    {
+        char snap[65536];
+        smack_set_param(S, "lock_slice_3", "15:2:65:40"); /* filter, rez, 40% */
+        assert(smack_get_param(S, "state", snap, sizeof(snap)) > 0);
+        assert(strstr(snap, "3:15:2:65:40"));
+        assert(strstr(snap, "\"fx2\":\""));
+        assert(strstr(snap, "\"mix\":\""));
+
+        /* restore round-trip keeps depth + mix */
+        smack_set_param(S, "lock_slice_3", "-1");
+        smack_set_param(S, "state", snap);
+        assert(smack_get_param(S, "state", snap, sizeof(snap)) > 0);
+        assert(strstr(snap, "3:15:2:65:40"));
+        smack_set_param(S, "lock_slice_3", "-1");
+
+        /* mix gate: ENV fade-out at full wet loses energy vs mix 0 */
+        smack_set_param(S, "monitor", "0");   /* mute the live saw bleed */
+        smack_set_param(S, "wet", "100");
+        smack_set_param(S, "quantize", "0");
+        smack_set_param(S, "ab", "1");            /* pattern side */
+        smack_set_param(S, "order_density", "0");
+        smack_set_param(S, "reroll", "trigger");
+        smack_get_param(S, "n_slices", buf, sizeof(buf));
+        int nsl = atoi(buf);
+        char lk[24];
+        for (int i = 0; i < nsl; i++) {
+            char k[24];
+            snprintf(k, sizeof(k), "lock_slice_%d", i);
+            snprintf(lk, sizeof(lk), "13:1:-1:0");    /* fade-out, mix 0 */
+            smack_set_param(S, k, lk);
+        }
+        long e_dry = 0, e_wet = 0;
+        for (int k = 0; k < 40; k++) { run_blocks(5, out); e_dry += energy(out); }
+        for (int i = 0; i < nsl; i++) {
+            char k[24];
+            snprintf(k, sizeof(k), "lock_slice_%d", i);
+            smack_set_param(S, k, "13:1:-1:100");     /* fade-out, full wet */
+        }
+        for (int k = 0; k < 40; k++) { run_blocks(5, out); e_wet += energy(out); }
+        assert(e_dry > 0);
+        assert(e_wet < (e_dry * 3) / 4);  /* the envelope actually bites */
+        smack_set_param(S, "unlock_all", "1");
+        smack_set_param(S, "monitor", "1");   /* back to default */
+
+        /* punch with a full token: variant + depth + mix */
+        smack_set_param(S, "punch_fx", "6:5:80:40");
+        smack_get_param(S, "punch_fx", buf, sizeof(buf));
+        assert(atoi(buf) == 6);
+        run_blocks(40, out);
+        assert(gp("run_state") == '3');
+        smack_set_param(S, "punch_fx", "-1");
+
+        /* palette pads carry depth + mix: 4-field tokens round-trip */
+        char pbuf[512];
+        smack_set_param(S, "palette",
+            "0,19:7:80:50,19:0,6:5,5,10,11,12,2,9,3,4,18,13,14,7,15,16,21,17,24,26,20");
+        smack_get_param(S, "palette", pbuf, sizeof(pbuf));
+        assert(strstr(pbuf, "19:7:80:50"));
+        assert(smack_get_param(S, "state", snap, sizeof(snap)) > 0);
+        assert(strstr(snap, "19:7:80:50"));
+        smack_set_param(S, "palette",   /* factory again for later tests */
+            "0,1,8,6,5,10,11,12,2,9,3,4,18,13,14,7,15,16,21,17,19,22,20");
     }
 
     /* state GET must never overflow a small caller buffer — snprintf

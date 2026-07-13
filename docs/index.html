@@ -268,9 +268,9 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
     <h2>Loop it. Slice it. Roll the dice.</h2>
   </div>
   <div class="chips">
-    <span class="chip">smack <b>v0.11.0</b> · audio_fx</span>
-    <span class="chip">smack-in <b>v0.11.0</b> · sound_generator</span>
-    <span class="chip">oversmack <b>v0.8.0</b> · overtake</span>
+    <span class="chip">smack <b>v0.12.0</b> · audio_fx</span>
+    <span class="chip">smack-in <b>v0.12.0</b> · sound_generator</span>
+    <span class="chip">oversmack <b>v0.9.0</b> · overtake</span>
     <span class="chip">requires <b>schwung</b></span>
   </div>
   <p class="lede">Smack grabs a quantized loop of whatever you're playing,
@@ -478,8 +478,13 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
   <h2 class="sh">26 effects + clean</h2>
   <p>Each rolled slice gets one of these, with a rolled parameter. Colors
   below are the actual LED colors on the step buttons. The lists under each
-  card are the parameter options you can dial in per slice from the pads or
-  the web editor.</p>
+  card are the variant options you can dial in per slice from the pads or
+  the web editor — and in the web editor every effect also has a
+  <span class="hl">Depth</span> slider (its own meaning per effect: feedback
+  on the delays, resonance on the filters, drive on Distort, grain size on
+  Freeze/PShift, decay on the stutters…) plus a universal per-slice
+  <span class="hl">Mix</span> that blends the effected slice against the
+  clean one. The dice never touch Depth or Mix — they're yours.</p>
   <div class="famkey">
     <span><i style="background:#ff4d4d"></i>stutter</span>
     <span><i style="background:#4da6ff"></i>reverse</span>
@@ -547,6 +552,12 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
       <p><b>Per-slice tweaking.</b> Click any slice, pick any effect, and set
       its parameter from a menu of musical options (the same lists as above) —
       finer control than the pad palette, same engine.</p>
+      <p><b>Depth &amp; Mix.</b> Every slice gets two more dials: a per-effect
+      Depth (delay feedback, filter resonance, distortion drive, retrig decay,
+      pitch glide, scatter chaos…) and a Mix that blends the effect with the
+      clean slice — parallel crush, subtle stutters, 20%-wet reverbs. Both
+      save into pins, presets, layouts, and even palette pads: a pad can be
+      "Delay — Ping-pong, feedback 80, mix 50".</p>
     </div>
     <div>
       <p><b>Effect presets.</b> Save a favorite effect + parameter combo
@@ -614,7 +625,7 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
     <div><div class="sk">Loop length</div><div class="sv">1 step – 16 bars, 4/4, 16th-note steps</div></div>
     <div><div class="sk">Slice resolution</div><div class="sv">½ / 1 / 2 / 4 steps per slice</div></div>
     <div><div class="sk">Clock</div><div class="sv">MIDI clock 24 ppqn; free-run fallback at project tempo</div></div>
-    <div><div class="sk">Effects</div><div class="sv">26 + clean, seeded roll, per-slice parameters</div></div>
+    <div><div class="sk">Effects</div><div class="sv">26 + clean; per-slice variant, depth &amp; mix</div></div>
     <div><div class="sk">Seeds</div><div class="sv">1–9999, fully deterministic patterns</div></div>
     <div><div class="sk">Pitch</div><div class="sv">±24 st varispeed (linear interp — lo-fi is the charm)</div></div>
     <div><div class="sk">Channels</div><div class="sv">Stereo or dual-mono with independent lanes</div></div>
@@ -627,7 +638,7 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
 
 <footer>
   <div class="big">Re-roll until it slaps.</div>
-  <div>SMACK · smack v0.11.0 · smack-in v0.11.0 · oversmack v0.8.0<br>
+  <div>SMACK · smack v0.12.0 · smack-in v0.12.0 · oversmack v0.9.0<br>
   Built on <a href="https://github.com/charlesvestal/schwung">schwung</a> for the Ableton Move ·
   effect vocabulary inspired by Sugar Bytes Looperator ·
   workflow inspired by how Honeysmack runs modular through an Octatrack. All hail Honeysmack.<br>
