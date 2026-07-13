@@ -732,6 +732,106 @@ int main(void) {
         assert(atoi(pc + 1) == 20 && atoi(fc + 1) == 7);
     }
 
+    /* pad-play (v0.13.0): MIDI notes trigger pattern cells, quantized to
+     * pad_rate boundaries, repeating while held; release returns to the
+     * loop. note % n_slices maps; velocity scales; last-note priority. */
+    {
+        char pb[16];
+        smack_set_param(S, "clear", "1");
+        smack_set_param(S, "bpm_override", "0"); /* clock ticks govern again */
+        run_blocks(1400, NULL);
+        smack_set_param(S, "capture", "1");    /* 1 bar, 16 slices @120 */
+        assert(gp("run_state") == '3');
+        smack_set_param(S, "monitor", "0");    /* energy = loop output only */
+        smack_set_param(S, "wet", "100");
+        smack_set_param(S, "ab", "0");         /* A side when not triggering */
+        smack_set_param(S, "pad_play", "1");
+        smack_set_param(S, "pad_rate", "2");   /* 1/4 = beat = 22050 frames */
+
+        run_blocks(20, NULL);                  /* mid-beat, well off boundary */
+        uint8_t non[3] = { 0x90, 60, 100 };    /* note 60 -> cell 60%16 = 12 */
+        smack_on_midi(S, non, 3, 3);
+        run_blocks(5, NULL);
+        smack_get_param(S, "pad_state", pb, sizeof(pb));
+        assert(pb[0] == '0');                  /* quantized: no instant fire */
+
+        int waited = -1;                       /* fires at the beat boundary */
+        for (int i = 0; i < 400; i++) {
+            run_blocks(1, NULL);
+            smack_get_param(S, "pad_state", pb, sizeof(pb));
+            if (pb[0] == '1') { waited = i; break; }
+        }
+        assert(waited > 100);                  /* ~a beat away, not instant */
+        assert(strcmp(pb, "1:12") == 0);       /* note % n_slices */
+        run_blocks(2, out);
+        assert(energy(out) > 0);               /* cell audible, vel-scaled */
+
+        run_blocks(48, out);                   /* past the slice (43 blocks): */
+        assert(energy(out) == 0);              /* between repeats = silence */
+        run_blocks(130, out);                  /* next beat: repeat refires */
+        smack_get_param(S, "pad_state", pb, sizeof(pb));
+        assert(strcmp(pb, "1:12") == 0);
+        assert(energy(out) > 0);
+
+        uint8_t n65[3] = { 0x90, 65, 90 };     /* stack: 65 -> cell 1 on top */
+        smack_on_midi(S, n65, 3, 3);
+        for (int i = 0; i < 200; i++) {        /* next boundary switches cell */
+            run_blocks(1, NULL);
+            smack_get_param(S, "pad_state", pb, sizeof(pb));
+            if (strcmp(pb, "1:1") == 0) break;
+        }
+        assert(strcmp(pb, "1:1") == 0);
+        uint8_t off65[3] = { 0x80, 65, 0 };    /* release top: 60 still held */
+        smack_on_midi(S, off65, 3, 3);
+        smack_get_param(S, "pad_state", pb, sizeof(pb));
+        assert(pb[0] == '1');
+        for (int i = 0; i < 200; i++) {        /* falls back to note 60 */
+            run_blocks(1, NULL);
+            smack_get_param(S, "pad_state", pb, sizeof(pb));
+            if (strcmp(pb, "1:12") == 0) break;
+        }
+        assert(strcmp(pb, "1:12") == 0);
+
+        uint8_t off60[3] = { 0x80, 60, 0 };    /* full release -> loop back */
+        smack_on_midi(S, off60, 3, 3);
+        smack_get_param(S, "pad_state", pb, sizeof(pb));
+        assert(pb[0] == '0');
+        run_blocks(3, out);
+        assert(energy(out) > 0);               /* clean loop resumed */
+
+        /* pad_note param path (UI/web trigger) bypasses the pad_play gate */
+        smack_set_param(S, "pad_play", "0");
+        smack_set_param(S, "pad_note", "77:100");  /* 77%16 = cell 13 */
+        for (int i = 0; i < 400; i++) {
+            run_blocks(1, NULL);
+            smack_get_param(S, "pad_state", pb, sizeof(pb));
+            if (pb[0] == '1') break;
+        }
+        assert(strcmp(pb, "1:13") == 0);
+        smack_set_param(S, "pad_note", "77:0");
+        smack_get_param(S, "pad_state", pb, sizeof(pb));
+        assert(pb[0] == '0');
+
+        /* real notes ignored while pad_play off */
+        smack_on_midi(S, non, 3, 3);
+        run_blocks(200, NULL);
+        smack_get_param(S, "pad_state", pb, sizeof(pb));
+        assert(pb[0] == '0');
+
+        /* settings ride the state blob; live note state never does */
+        smack_set_param(S, "pad_play", "1");
+        smack_set_param(S, "pad_rate", "4");
+        char snap[32768];
+        assert(smack_get_param(S, "state", snap, sizeof(snap)) > 0);
+        assert(strstr(snap, "\"pp\":1"));
+        assert(strstr(snap, "\"pr\":4"));
+        smack_set_param(S, "state", "{\"pp\":0,\"pr\":2}");
+        smack_get_param(S, "pad_play", pb, sizeof(pb));
+        assert(pb[0] == '0');
+        smack_get_param(S, "pad_rate", pb, sizeof(pb));
+        assert(pb[0] == '2');
+    }
+
     printf("host_sim: all assertions passed\n");
     smack_destroy(S);
     return 0;

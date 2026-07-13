@@ -336,16 +336,43 @@ range. Sim runs an extreme-min/max render sweep per effect.
 - The engine never reads the palette — pure UI preference stored in
   engine state. Manual site documents it (pinning + web-editor sections).
 
+## Pad play — notes trigger slices (v0.13.0 / oversmack 0.10.0)
+
+- MIDI note-on/off now reach the engine: with `pad_play` on, a note
+  triggers pattern cell (note % n_slices), QUANTIZED to the next
+  `pad_rate` boundary (1/16, 1/8, 1/4 dflt, 1/2, 1 bar — loop-grid
+  domain, derived from slice_frames so post-capture tempo drift can't
+  skew it) and RETRIGGERS there while held. Velocity → sqrt gain;
+  between repeats (slice shorter than rate) the pad owns the output:
+  silence, not the loop. Release = back to the still-advancing loop
+  timeline instantly. Last-note priority, 10-deep held stack;
+  note-offs always drain it (toggling pad_play can't stick a note);
+  0xFA/0xFB clears it (transport stuck-note safety).
+- Render: trig forces the pattern side with oslice/p overridden (cell +
+  repeat-local pos) and exactly ONE render_lane call per frame while
+  trig — routing it through the normal w-blend would double-advance
+  per-effect runtimes (filters/delays) when 0<wet<1.
+- `pad_note` param ("n:v" fire / "n:0" release) bypasses the pad_play
+  gate for UIs; excluded from edit_rev like punch_pressure.
+  `pad_state` reads "active:step". Blob keys pp/pr (settings only).
+- Defaults: engine 0. smack_gen create() sets pad_play=1 — in a slot
+  editor the firmware pads play notes into the synth, and smack-in IS
+  the synth, so the stock grid becomes slice-repeat pads with zero UI.
+  ui_overtake init forces 0 (overtake pads are editors; whether note
+  MIDI even reaches the DSP there is unverified). smack audio_fx:
+  default 0 — notes-to-fx-slot delivery UNVERIFIED on hardware.
+
 ## Next steps
 
 - On-device: verify chain UI (LED colors on steps, pad consumption,
   playhead chase rate) — untested on hardware. Same for oversmack (LED
   queue pacing, palette pads, suspend/resume repaint, play passthrough,
   and whether standalone DSP output sums into Move's mix at sane gain).
+- Pad play (v0.13.0) on-device: which note numbers Move's grid emits
+  per scale/octave (mod mapping absorbs any base), velocity delivery,
+  and whether notes reach audio_fx slots / the overtake DSP.
 - Dual-mono mode: BUILT (v0.5.0, 2026-07-11) — see "Dual mono" section
   below. On-device verification pending like the rest.
-- Momentary A/B punch (hold pad = temporary flip, release = back) — needs
-  press-duration tracking in ui_chain.js.
 - v2 FX: time-preserving pitchshift.
 ## Release process (three repos, one source)
 

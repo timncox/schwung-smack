@@ -580,6 +580,11 @@ function adjustPan(which, delta) {
 
 globalThis.init = function() {
     dspReady = fetchAll();
+    /* Overtake pads are EDITORS (mute/pin/palette) — turn the engine's
+     * MIDI-note slice triggering off so any note stream that reaches the
+     * DSP alongside our pad handling can't double-trigger cells. Slot-mode
+     * smack-in (no custom pad UI) is where pad_play earns its keep. */
+    if (dspReady) host_module_set_param('pad_play', '0');
     playSlice = -1;
     selectedSlice = -1;
     paintAll(true);

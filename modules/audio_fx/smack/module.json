@@ -2,7 +2,7 @@
   "id": "smack",
   "name": "Smack",
   "abbrev": "SMK",
-  "version": "0.12.3",
+  "version": "0.13.0",
   "description": "Quantized live-loop capture with probabilistic per-slice glitch FX and slice reordering",
   "dsp": "smack.so",
   "ui_chain": "ui_chain.js",
@@ -187,6 +187,29 @@
                 "Loop"
               ],
               "default": 1
+            },
+            {
+              "key": "pad_play",
+              "name": "Pad Play",
+              "type": "enum",
+              "options": [
+                "Off",
+                "On"
+              ],
+              "default": 0
+            },
+            {
+              "key": "pad_rate",
+              "name": "Pad Rate",
+              "type": "enum",
+              "options": [
+                "1/16",
+                "1/8",
+                "1/4",
+                "1/2",
+                "1 Bar"
+              ],
+              "default": 2
             },
             {
               "key": "seed",

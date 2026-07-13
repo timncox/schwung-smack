@@ -161,6 +161,13 @@ then this page syncs live.</div>
         <button id="bDet">Detect BPM</button>
         <input id="bpmo" type="number" min="0" max="200" step="0.1" style="width:80px" title="BPM override; 0 = project tempo">
         <span class="note">override (0 = off)</span></div>
+      <div class="row"><span class="k">Pad play</span><select id="pplay">
+          <option value="0">Off</option><option value="1">On</option></select>
+        <span class="k" style="width:auto">Rate</span><select id="prate">
+          <option value="0">1/16</option><option value="1">1/8</option>
+          <option value="2">1/4</option><option value="3">1/2</option>
+          <option value="4">1 Bar</option></select>
+        <span class="note">Move's pads (notes) repeat a slice while held</span></div>
     </div>
 
     <div class="panel" style="margin-top:12px; display:none" id="slotpanel">
@@ -410,6 +417,8 @@ function render() {
   setIf("panr", "value", num("pan_r", 100));
   setIf("tspt", "value", num("transport", 0));
   setIf("bpmo", "value", num("bpmo", 0) || "");
+  setIf("pplay", "value", num("pp", 0));
+  setIf("prate", "value", num("pr", 2));
 
   const dual = num("chan", 0) === 1;
   el("lanerow").style.display = dual ? "" : "none";
@@ -818,6 +827,8 @@ wire("chan", "channel_mode");
 wire("panl", "pan_l");
 wire("panr", "pan_r");
 wire("tspt", "transport");
+wire("pplay", "pad_play");
+wire("prate", "pad_rate");
 wire("bpmo", "bpm_override");
 el("dice").onclick = function () {
   const v = Math.floor(Math.random() * 99999);

@@ -268,9 +268,9 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
     <h2>Loop it. Slice it. Roll the dice.</h2>
   </div>
   <div class="chips">
-    <span class="chip">smack <b>v0.12.0</b> · audio_fx</span>
-    <span class="chip">smack-in <b>v0.12.0</b> · sound_generator</span>
-    <span class="chip">oversmack <b>v0.9.0</b> · overtake</span>
+    <span class="chip">smack <b>v0.13.0</b> · audio_fx</span>
+    <span class="chip">smack-in <b>v0.13.0</b> · sound_generator</span>
+    <span class="chip">oversmack <b>v0.10.0</b> · overtake</span>
     <span class="chip">requires <b>schwung</b></span>
   </div>
   <p class="lede">Smack grabs a quantized loop of whatever you're playing,
@@ -546,6 +546,15 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
       effect (temporary, roll preserved). On oversmack, assigning
       <b>Clean</b> from the palette does the equivalent — and Unlock restores
       the roll.</p>
+      <p><b>Pad play (smack-in).</b> In a slot's component editor the Move
+      grid stays a note grid — so smack-in listens: with
+      <span class="hl">Pad Play</span> on (the default), every pad triggers a
+      pattern cell (note % slices) on the next <span class="hl">Pad
+      Rate</span> boundary — the beat, by default — and
+      <span class="hl">repeats it while held</span>, velocity as volume,
+      newest pad winning. Release, and the loop is exactly where it would
+      have been. MPC-style slice juggling with zero setup, on the stock pad
+      grid.</p>
     </div>
   </div>
 </section>
@@ -625,6 +634,7 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
     <tr><td>Presets</td><td>Full settings snapshot via schwung's module-preset system — loop settings, densities, seed, pins, channel mode all restore. (Audio is not saved; capture is the performance.)</td></tr>
     <tr><td>Accessibility</td><td>With schwung's screen reader on, the UIs announce pads, knob values, slice selection, and loop state in plain words. Master FX knob pages announce via the host.</td></tr>
     <tr><td>Punch pressure</td><td>Global punch responds to pad aftertouch — pressure sweeps the held effect's parameter (Pitch punches bend ±24 st).</td></tr>
+    <tr><td>Pad play</td><td>smack-in maps incoming MIDI notes to pattern cells — in a slot editor the stock pad grid becomes beat-quantized slice-repeat pads (note % slices, velocity as volume, rate 1/16–1 bar). Release returns to the still-running loop.</td></tr>
   </table></div>
 </section>
 
@@ -650,7 +660,7 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
 
 <footer>
   <div class="big">Re-roll until it slaps.</div>
-  <div>SMACK · smack v0.12.0 · smack-in v0.12.0 · oversmack v0.9.0<br>
+  <div>SMACK · smack v0.13.0 · smack-in v0.13.0 · oversmack v0.10.0<br>
   Built on <a href="https://github.com/charlesvestal/schwung">schwung</a> for the Ableton Move ·
   effect vocabulary inspired by Sugar Bytes Looperator ·
   workflow inspired by how Honeysmack runs modular through an Octatrack. All hail Honeysmack.<br>

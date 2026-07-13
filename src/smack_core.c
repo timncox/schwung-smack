@@ -24,6 +24,10 @@ static const int loop_len_hs_table[] = { 2, 4, 8, 16, 32, 64, 128, 256, 512 };
 static const int slice_hs_table[] = { 1, 2, 4, 8 };
 #define SLICE_RES_COUNT 4
 
+/* Pad-play repeat rates, in half-steps (8 hs = 1 beat in 4/4). */
+static const int pad_rate_hs[] = { 2, 4, 8, 16, 32 }; /* 1/16 1/8 1/4 1/2 bar */
+#define PAD_RATE_COUNT 5
+
 /* Retrig decay per repeat (0.85^k), k clamped to 15. */
 static const float retrig_decay[16] = {
     1.0000f, 0.8500f, 0.7225f, 0.6141f, 0.5220f, 0.4437f, 0.3771f, 0.3206f,
@@ -231,6 +235,22 @@ struct smack {
     uint8_t palette_hasp[SMACK_PALETTE_SLOTS];
     int8_t  palette_fxp2[SMACK_PALETTE_SLOTS]; /* -1 = default depth */
     int8_t  palette_mix[SMACK_PALETTE_SLOTS];  /* -1 = full wet */
+
+    /* Pad-play: incoming MIDI notes trigger pattern cells (note % n_slices),
+     * quantized to pad_rate boundaries and retriggered there while held;
+     * release returns to the still-advancing loop timeline. pad_play gates
+     * real MIDI notes only — the pad_note param always works. Live note
+     * state is never preset-saved; the pad_play/pad_rate settings are. */
+    int      pad_play;
+    int      pad_rate_idx;       /* index into pad_rate_hs[] */
+    uint8_t  pad_note_stk[10];   /* held notes, most recent last */
+    uint8_t  pad_vel_stk[10];
+    int      pad_held;
+    int      trig_active;        /* a cell is held and has fired */
+    int      trig_step;          /* pattern cell being repeated */
+    double   trig_pos;           /* frames since the last boundary fire */
+    float    trig_gain;          /* velocity gain, sqrt taper */
+    int      trig_render;        /* per-frame: this frame renders the cell */
 
     /* Pattern geometry (shared by both lanes: same loop, same grid) */
     int      n_slices;
@@ -546,6 +566,9 @@ smack_t *smack_create(const host_api_v1_t *host) {
     s->chan_mode = 0;            /* stereo */
     s->pan_l = 0;                /* dual-mono defaults keep input sides */
     s->pan_r = 100;
+    s->pad_rate_idx = 2;         /* pad-play repeats on the beat */
+    /* pad_play stays 0 here; the gen wrapper turns it on (slot-editor pads
+     * play notes into smack-in) while the chain fx build stays inert. */
     memcpy(s->palette, k_default_palette, sizeof(s->palette));
     /* palette_fxp/hasp start zeroed (calloc): every pad = default param */
     memset(s->palette_fxp2, -1, sizeof(s->palette_fxp2));
@@ -586,6 +609,41 @@ void smack_destroy(smack_t *s) {
 /*  MIDI (clock + transport)                                           */
 /* ------------------------------------------------------------------ */
 
+/* Held-note stack, most-recent-last. Re-pressing a note moves it to the
+ * top; the top note is what fires at each rate boundary. */
+static void pad_stack_remove(smack_t *s, int note) {
+    for (int i = 0; i < s->pad_held; i++) {
+        if (s->pad_note_stk[i] == (uint8_t)note) {
+            for (int j = i + 1; j < s->pad_held; j++) {
+                s->pad_note_stk[j - 1] = s->pad_note_stk[j];
+                s->pad_vel_stk[j - 1]  = s->pad_vel_stk[j];
+            }
+            s->pad_held--;
+            i--;
+        }
+    }
+}
+
+static void pad_note_on(smack_t *s, int note, int vel) {
+    if (s->state != SMACK_LOOPING) return;
+    pad_stack_remove(s, note);
+    if (s->pad_held >= (int)sizeof(s->pad_note_stk)) { /* drop the oldest */
+        for (int j = 1; j < s->pad_held; j++) {
+            s->pad_note_stk[j - 1] = s->pad_note_stk[j];
+            s->pad_vel_stk[j - 1]  = s->pad_vel_stk[j];
+        }
+        s->pad_held--;
+    }
+    s->pad_note_stk[s->pad_held] = (uint8_t)note;
+    s->pad_vel_stk[s->pad_held]  = (uint8_t)vel;
+    s->pad_held++;
+}
+
+static void pad_note_off(smack_t *s, int note) {
+    pad_stack_remove(s, note);
+    if (s->pad_held == 0) s->trig_active = 0; /* release = back to the loop */
+}
+
 void smack_on_midi(smack_t *s, const uint8_t *msg, int len, int source) {
     (void)source;
     if (!s || len < 1) return;
@@ -595,6 +653,8 @@ void smack_on_midi(smack_t *s, const uint8_t *msg, int len, int source) {
         s->tick_total = 0;
         s->clock_running = 1;
         s->last_halfstep_global = s->global_frames;
+        s->pad_held = 0;          /* stuck-note safety across transport */
+        s->trig_active = 0;
         if (s->transport_paused) { /* resume the loop from its top */
             s->transport_paused = 0;
             s->play_pos = 0.0;
@@ -621,7 +681,19 @@ void smack_on_midi(smack_t *s, const uint8_t *msg, int len, int source) {
         }
         break;
     }
-    default: break;
+    default: {
+        /* Channel voice: pads in a slot editor play notes into the synth —
+         * with pad_play on, those notes trigger pattern cells. Note-offs
+         * always drain the stack so toggling pad_play can't stick a note. */
+        int st = msg[0] & 0xF0;
+        if (st == 0x90 && len >= 3) {
+            if (msg[2] > 0) { if (s->pad_play) pad_note_on(s, msg[1], msg[2]); }
+            else pad_note_off(s, msg[1]);
+        } else if (st == 0x80 && len >= 3) {
+            pad_note_off(s, msg[1]);
+        }
+        break;
+    }
     }
 }
 
@@ -668,6 +740,12 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
     int oslice = (sf > 0.0) ? (int)(s->play_pos / sf) : 0;
     if (oslice >= s->n_slices) oslice = s->n_slices - 1;
     double p = s->play_pos - (double)oslice * sf;
+    if (s->trig_render) { /* pad-play: force the held cell, repeat-local pos */
+        oslice = s->trig_step;
+        if (oslice >= s->n_slices) oslice = s->n_slices > 0 ? s->n_slices - 1 : 0;
+        p = s->trig_pos;
+        if (p > sf - 1.0) p = sf - 1.0;
+    }
     float g = 1.0f, gl = 1.0f, gr = 1.0f;
     float gedge = 1.0f;   /* slice-edge + loop fades, shared by wet AND dry */
     int f = SMACK_FX_NONE, fp = 0;
@@ -681,7 +759,8 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
     else if (s->punch_fx > 0) use_pattern = 1;  /* punching an effect */
 
     if (!use_pattern) {
-        src = s->play_pos;                      /* clean, original order */
+        /* clean, original order (pad-play still repeats its cell here) */
+        src = s->trig_render ? ((double)oslice * sf + p) : s->play_pos;
     } else {
         int sslice = ln->order[oslice];
         f  = ln->fx[oslice];
@@ -1346,6 +1425,15 @@ static void det_step(smack_t *s) {
     }
 }
 
+/* Pad-play repeat period in loop-domain frames, derived from the pattern
+ * grid (slice_frames is fixed at roll time, so this stays consistent with
+ * what the steps show even if the tempo drifts after capture). */
+static double pad_rate_frames(const smack_t *s) {
+    if (s->slice_frames <= 0.0) return 0.0;
+    double hsf = s->slice_frames / (double)slice_hs_table[s->slice_res_idx];
+    return hsf * (double)pad_rate_hs[s->pad_rate_idx];
+}
+
 void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
     if (!s) return;
 
@@ -1400,8 +1488,40 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
                 if (apply) { s->ab = s->ab_pending; s->ab_pending = -1; s->edit_rev++; }
             }
 
+            /* pad-play: (re)fire the top held cell on each rate boundary.
+             * play_pos advances by exactly 1.0 per frame, so each boundary
+             * window [k*rf, k*rf+1) contains exactly one frame. */
+            if (s->pad_held > 0) {
+                double rf = pad_rate_frames(s);
+                if (rf >= 1.0 && fmod(s->play_pos, rf) < 1.0) {
+                    s->trig_active = 1;
+                    s->trig_step   = s->pad_note_stk[s->pad_held - 1]
+                                     % (s->n_slices > 0 ? s->n_slices : 1);
+                    s->trig_gain   = sqrtf((float)s->pad_vel_stk[s->pad_held - 1] / 127.0f);
+                    s->trig_pos    = 0.0;
+                }
+            }
+            s->trig_render = (s->trig_active && s->trig_pos < s->slice_frames) ? 1 : 0;
+
             float ll, rr;
-            if (s->hw_input) {
+            if (s->trig_render) {
+                /* pad-play owns the output while a cell is held: render the
+                 * cell through the pattern path (velocity-scaled), exactly
+                 * once per frame so per-effect runtimes advance normally. */
+                if (!s->chan_mode) {
+                    render_lane(s, &s->lane[0], -1, 1, &ll, &rr);
+                } else {
+                    float l0, r0, l1, r1;
+                    render_lane(s, &s->lane[0], 0, 1, &l0, &r0);
+                    render_lane(s, &s->lane[1], 1, 1, &l1, &r1);
+                    ll = l0 * s->pan_gain[0][0] + l1 * s->pan_gain[1][0];
+                    rr = r0 * s->pan_gain[0][1] + r1 * s->pan_gain[1][1];
+                }
+                ll *= s->trig_gain;
+                rr *= s->trig_gain;
+            } else if (s->trig_active) {
+                ll = rr = 0.0f; /* between repeats: silence, not the loop */
+            } else if (s->hw_input) {
                 /* Input builds: three layers. The loop is ALWAYS audible;
                  * `wet` blends its clean tap against the pattern render
                  * (0 = unaffected loop, 100 = fully effected); the A side
@@ -1425,9 +1545,6 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
                 }
                 ll = cl * (1.0f - w) + pl * w;
                 rr = cr * (1.0f - w) + pr * w;
-                float dry = s->monitor ? 1.0f : 0.0f;
-                out[n * 2]     = clip16(ll + inl * dry);
-                out[n * 2 + 1] = clip16(rr + inr * dry);
             } else {
                 /* Chain/master FX build: classic insert behavior — wet
                  * crossfades the loop against the upstream (dry) signal. */
@@ -1440,6 +1557,12 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
                     ll = l0 * s->pan_gain[0][0] + l1 * s->pan_gain[1][0];
                     rr = r0 * s->pan_gain[0][1] + r1 * s->pan_gain[1][1];
                 }
+            }
+            if (s->hw_input) {
+                float dry = s->monitor ? 1.0f : 0.0f;
+                out[n * 2]     = clip16(ll + inl * dry);
+                out[n * 2 + 1] = clip16(rr + inr * dry);
+            } else {
                 float dry = s->monitor ? (1.0f - s->wet) : 0.0f;
                 out[n * 2]     = clip16(ll * s->wet + inl * dry);
                 out[n * 2 + 1] = clip16(rr * s->wet + inr * dry);
@@ -1447,6 +1570,7 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
 
             s->play_pos += 1.0;
             if (s->play_pos >= (double)s->loop_len) s->play_pos = 0.0;
+            if (s->trig_active) s->trig_pos += 1.0;
         }
     }
     s->global_frames += (uint64_t)frames;
@@ -1729,6 +1853,21 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         update_pan_gains(s);
     } else if (!strcmp(key, "palette")) {
         parse_palette(s, val);
+    } else if (!strcmp(key, "pad_play")) {
+        s->pad_play = atoi(val) ? 1 : 0;
+        if (!s->pad_play) { s->pad_held = 0; s->trig_active = 0; }
+    } else if (!strcmp(key, "pad_rate")) {
+        s->pad_rate_idx = clampi(atoi(val), 0, PAD_RATE_COUNT - 1);
+    } else if (!strcmp(key, "pad_note")) {
+        /* UI/web trigger: "note:vel" fires, vel 0 releases. Bypasses the
+         * pad_play gate — this only arrives from deliberate UI gestures. */
+        int note = atoi(val);
+        const char *c = strchr(val, ':');
+        int vel = c ? atoi(c + 1) : 0;
+        if (note >= 0 && note < 128) {
+            if (vel > 0) pad_note_on(s, note, clampi(vel, 1, 127));
+            else pad_note_off(s, note);
+        }
     } else if (!strcmp(key, "monitor")) {
         s->monitor = atoi(val) ? 1 : 0;
     } else if (!strcmp(key, "hw_input")) {
@@ -1752,6 +1891,8 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         s->chan_mode = json_int(val, "chan", s->chan_mode) ? 1 : 0;
         s->pan_l = clampi(json_int(val, "pan_l", s->pan_l), 0, 100);
         s->pan_r = clampi(json_int(val, "pan_r", s->pan_r), 0, 100);
+        s->pad_play = json_int(val, "pp", s->pad_play) ? 1 : 0;
+        s->pad_rate_idx = clampi(json_int(val, "pr", s->pad_rate_idx), 0, PAD_RATE_COUNT - 1);
         update_pan_gains(s);
         memset(s->lane[0].locked, 0, sizeof(s->lane[0].locked));
         memset(s->lane[1].locked, 0, sizeof(s->lane[1].locked));
@@ -1804,9 +1945,10 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         set_soft(s, &s->lane[0], clampi(atoi(key + 10), 0, SMACK_MAX_SLICES - 1), val);
     }
     /* Any recognized edit invalidates the browser editor's snapshot. The
-     * punch pressure stream is the one exception — it arrives at aftertouch
-     * rate and would turn every Remote-UI poll into a full state refetch. */
-    if (strcmp(key, "punch_pressure")) s->edit_rev++;
+     * punch pressure and pad-play note streams are the exceptions — they
+     * arrive at performance rate and would turn every Remote-UI poll into
+     * a full state refetch. */
+    if (strcmp(key, "punch_pressure") && strcmp(key, "pad_note")) s->edit_rev++;
 }
 
 int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
@@ -1856,14 +1998,16 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
             "{\"loop_len\":%d,\"slice_res\":%d,\"fx_density\":%d,"
             "\"order_density\":%d,\"pitch_range\":%d,\"wet\":%d,\"ab\":%d,"
             "\"quantize\":%d,\"seed\":%u,\"nonce\":%u,\"transport\":%d,"
-            "\"chan\":%d,\"pan_l\":%d,\"pan_r\":%d,\"pal\":\"%s\","
+            "\"chan\":%d,\"pan_l\":%d,\"pan_r\":%d,\"pp\":%d,\"pr\":%d,"
+            "\"pal\":\"%s\","
             "\"run\":%d,\"nsl\":%d,\"mon\":%d,\"ps\":%d,\"det\":%d,\"pfx\":%d,"
             "\"bpmo\":%d,\"locks\":\"",
             s->loop_len_idx, s->slice_res_idx, (int)(s->fx_density * 100.0f),
             (int)(s->order_density * 100.0f), s->pitch_range,
             (int)(s->wet * 100.0f), s->ab, s->quantize_mode, s->seed,
             s->roll_nonce, s->follow_transport ? 0 : 1,
-            s->chan_mode, s->pan_l, s->pan_r, pal,
+            s->chan_mode, s->pan_l, s->pan_r, s->pad_play, s->pad_rate_idx,
+            pal,
             (int)s->state, s->n_slices, s->monitor, ps,
             s->det_active ? -1 : (int)(s->det_bpm + 0.5f), s->punch_fx,
             (int)(s->bpm_override + 0.5f));
@@ -1941,6 +2085,15 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
     }
     if (!strcmp(key, "channel_mode"))
         return snprintf(buf, (size_t)buf_len, "%d", s->chan_mode);
+    if (!strcmp(key, "pad_play"))
+        return snprintf(buf, (size_t)buf_len, "%d", s->pad_play);
+    if (!strcmp(key, "pad_rate"))
+        return snprintf(buf, (size_t)buf_len, "%d", s->pad_rate_idx);
+    if (!strcmp(key, "pad_note")) /* trigger-style: never re-fires on restore */
+        return snprintf(buf, (size_t)buf_len, "0");
+    if (!strcmp(key, "pad_state")) /* "active:step" — sim + UI highlight */
+        return snprintf(buf, (size_t)buf_len, "%d:%d",
+                        s->trig_active, s->trig_active ? s->trig_step : -1);
     if (!strcmp(key, "monitor"))
         return snprintf(buf, (size_t)buf_len, "%d", s->monitor);
     if (!strcmp(key, "hw_input"))

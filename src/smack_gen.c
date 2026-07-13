@@ -23,6 +23,10 @@ static void *gen_create(const char *module_dir, const char *json_defaults) {
      * chain UI that the mic-feedback guard applies (the audio_fx build
      * processes upstream chain audio and must never auto-mute) */
     if (s) smack_set_param(s, "hw_input", "1");
+    /* slot-editor pads play notes into the synth slot — default those notes
+     * to triggering pattern cells (autosave/preset "pp" overrides this).
+     * The oversmack UI sets pad_play 0 at init: overtake pads are editors. */
+    if (s) smack_set_param(s, "pad_play", "1");
     return s;
 }
 
