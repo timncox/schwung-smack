@@ -1,0 +1,985 @@
+- generic [active] [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - link "Schwung Manager" [ref=e5] [cursor=pointer]:
+        - /url: /modules
+      - navigation "Main navigation" [ref=e6]:
+        - list [ref=e7]:
+          - listitem [ref=e8]:
+            - link "Modules" [ref=e9] [cursor=pointer]:
+              - /url: /modules
+          - listitem [ref=e10]:
+            - link "Files" [ref=e11] [cursor=pointer]:
+              - /url: /files
+          - listitem [ref=e12]:
+            - link "Config" [ref=e13] [cursor=pointer]:
+              - /url: /config
+          - listitem [ref=e14]:
+            - link "System" [ref=e15] [cursor=pointer]:
+              - /url: /system
+          - listitem [ref=e16]:
+            - link "Help" [ref=e17] [cursor=pointer]:
+              - /url: /help
+          - listitem [ref=e18]:
+            - link "Remote UI" [ref=e19] [cursor=pointer]:
+              - /url: /remote-ui
+          - listitem [ref=e20]:
+            - link "Screen Mirroring" [ref=e21] [cursor=pointer]:
+              - /url: /mirror
+  - main [ref=e22]:
+    - generic [ref=e23]:
+      - heading "Modules" [level=1] [ref=e24]
+      - paragraph [ref=e25]: Browse and manage Schwung modules from the catalog.
+    - region "Schwung Host" [ref=e26]:
+      - generic [ref=e27]:
+        - heading "Schwung Host" [level=2] [ref=e28]
+        - paragraph [ref=e29]:
+          - text: "Installed:"
+          - link "v0.11.4" [ref=e30] [cursor=pointer]:
+            - /url: https://github.com/charlesvestal/schwung/releases/tag/v0.11.4
+      - link "System" [ref=e32] [cursor=pointer]:
+        - /url: /system
+    - toolbar "Module filters and sorting" [ref=e33]:
+      - generic [ref=e34]:
+        - group "Filter by category" [ref=e35]:
+          - button "All" [pressed] [ref=e36] [cursor=pointer]
+          - button "Sound Generators" [ref=e37] [cursor=pointer]
+          - button "Audio FX" [ref=e38] [cursor=pointer]
+          - button "MIDI FX" [ref=e39] [cursor=pointer]
+          - button "Overtake" [ref=e40] [cursor=pointer]
+          - button "Tools" [ref=e41] [cursor=pointer]
+        - generic [ref=e42]:
+          - generic [ref=e43]: Sort modules
+          - combobox "Sort modules" [ref=e44] [cursor=pointer]:
+            - option "A-Z" [selected]
+            - option "Category"
+            - option "Author"
+            - option "Newest"
+            - option "Last Updated"
+          - group "View mode" [ref=e45]:
+            - button "▦" [ref=e46] [cursor=pointer]
+            - button "☰" [pressed] [ref=e47] [cursor=pointer]
+      - generic [ref=e48]: Showing 113 modules
+    - generic [ref=e49]:
+      - heading "Installed" [level=2] [ref=e50]
+      - table "Installed modules" [ref=e52]:
+        - rowgroup [ref=e53]:
+          - row [ref=e54]:
+            - columnheader "Name" [ref=e55]
+            - columnheader "Category" [ref=e56]
+            - columnheader "Author" [ref=e57]
+            - columnheader "Actions" [ref=e58]
+        - rowgroup [ref=e59]:
+          - row [ref=e60] [cursor=pointer]:
+            - cell [ref=e61]:
+              - text: "303"
+              - link "v0.3.0" [ref=e62]:
+                - /url: https://github.com/charlesvestal/schwung-303/releases/tag/v0.3.0
+            - cell "Sound Generator" [ref=e63]
+            - 'cell "Robin Schmidt / midilab / davemollen (port: charlesvestal)" [ref=e65]'
+            - cell [ref=e66]
+          - row [ref=e67] [cursor=pointer]:
+            - cell [ref=e68]:
+              - text: AI Assistant
+              - link "v0.2.0" [ref=e69]:
+                - /url: https://github.com/eightfour-dev/schwung-ai-assistant/releases/tag/v0.2.0
+            - cell "Tool" [ref=e70]
+            - cell "eightfour" [ref=e72]
+            - cell [ref=e73]
+          - row [ref=e74] [cursor=pointer]:
+            - cell [ref=e75]:
+              - text: AI Manual
+              - link "v0.3.0" [ref=e76]:
+                - /url: https://github.com/eightfour-dev/schwung-ai-manual/releases/tag/v0.3.0
+            - cell "Tool" [ref=e77]
+            - cell "eightfour" [ref=e79]
+            - cell [ref=e80]
+          - row [ref=e81] [cursor=pointer]:
+            - cell [ref=e82]:
+              - text: AirPlay
+              - link "v0.1.5" [ref=e83]:
+                - /url: https://github.com/charlesvestal/schwung-airplay/releases/tag/v0.1.5
+            - cell "Sound Generator" [ref=e84]
+            - cell "charlesvestal" [ref=e86]
+            - cell [ref=e87]
+          - row [ref=e88] [cursor=pointer]:
+            - cell [ref=e89]:
+              - text: Airwindows
+              - link "v0.4.1" [ref=e90]:
+                - /url: https://github.com/charlesvestal/schwung-airwindows/releases/tag/v0.4.1
+            - cell "Audio FX" [ref=e91]
+            - cell "charlesvestal, Chris Johnson (Airwindows)" [ref=e93]
+            - cell [ref=e94]
+          - row [ref=e95] [cursor=pointer]:
+            - cell [ref=e96]:
+              - text: Alpha Juno 2 Ctrl
+              - link "v1.0.0" [ref=e97]:
+                - /url: https://github.com/madeinspace/move-juno-controller/releases/tag/v1.0.0
+            - cell "Overtake" [ref=e98]
+            - cell "madeinspace" [ref=e100]
+            - cell [ref=e101]
+          - row [ref=e102] [cursor=pointer]:
+            - cell [ref=e103]:
+              - text: Ambiotica
+              - link "v0.2.2" [ref=e104]:
+                - /url: https://github.com/charlesvestal/schwung-ambiotica/releases/tag/v0.2.2
+            - cell "Audio FX" [ref=e105]
+            - cell "charlesvestal" [ref=e107]
+            - cell [ref=e108]:
+              - button "Update" [ref=e110]
+          - row [ref=e111] [cursor=pointer]:
+            - cell [ref=e112]:
+              - text: Aphex
+              - link "v0.1.0" [ref=e113]:
+                - /url: https://github.com/filliformes/aphex-move/releases/tag/v0.1.0
+            - cell "Sound Generator" [ref=e114]
+            - cell "filliformes" [ref=e116]
+            - cell [ref=e117]
+          - row [ref=e118] [cursor=pointer]:
+            - cell [ref=e119]:
+              - text: Arpeggiator
+              - link "v0.3.0" [ref=e120]:
+                - /url: https://github.com/charlesvestal/schwung/releases/tag/v0.3.0
+            - cell "MIDI FX" [ref=e121]
+            - cell "Unknown" [ref=e123]
+            - cell [ref=e124]
+          - row [ref=e125] [cursor=pointer]:
+            - cell [ref=e126]:
+              - text: AutoSample
+              - link "v0.1.0" [ref=e127]:
+                - /url: https://github.com/charlesvestal/schwung-autosample/releases/tag/v0.1.0
+            - cell "Tool" [ref=e128]
+            - cell "charlesvestal" [ref=e130]
+            - cell [ref=e131]
+          - row [ref=e132] [cursor=pointer]:
+            - cell [ref=e133]:
+              - text: BB Gen
+              - link "v0.4.0" [ref=e134]:
+                - /url: https://github.com/mestela/schwung-breakbeat/releases/tag/v0.4.0
+            - cell "Sound Generator" [ref=e135]
+            - cell "mestela" [ref=e137]
+            - cell [ref=e138]
+          - row [ref=e139] [cursor=pointer]:
+            - cell [ref=e140]:
+              - text: Belt
+              - link "v0.1.0" [ref=e141]:
+                - /url: https://github.com/charlesvestal/schwung/releases/tag/v0.1.0
+            - cell "Audio FX" [ref=e142]
+            - cell "timncox" [ref=e144]
+            - cell [ref=e145]
+          - row [ref=e146] [cursor=pointer]:
+            - cell [ref=e147]:
+              - text: Belt In
+              - link "v0.1.0" [ref=e148]:
+                - /url: https://github.com/charlesvestal/schwung/releases/tag/v0.1.0
+            - cell "Sound Generator" [ref=e149]
+            - cell "timncox" [ref=e151]
+            - cell [ref=e152]
+          - row [ref=e153] [cursor=pointer]:
+            - cell [ref=e154]:
+              - text: Boris Granular
+              - link "v0.3.1" [ref=e155]:
+                - /url: https://github.com/filliformes/boris-move/releases/tag/v0.3.1
+            - cell "Audio FX" [ref=e156]
+            - 'cell "Alessandro Gaiba (port: filliformes)" [ref=e158]'
+            - cell [ref=e159]
+          - row [ref=e160] [cursor=pointer]:
+            - cell [ref=e161]:
+              - text: Braids
+              - link "v0.2.5" [ref=e162]:
+                - /url: https://github.com/charlesvestal/schwung-braids/releases/tag/v0.2.5
+            - cell "Sound Generator" [ref=e163]
+            - 'cell "Emilie Gillet (port: charlesvestal)" [ref=e165]'
+            - cell [ref=e166]
+          - row [ref=e167] [cursor=pointer]:
+            - cell [ref=e168]:
+              - text: Branchage
+              - link "v0.4.1" [ref=e169]:
+                - /url: https://github.com/broduoliviercontact-web/Schwung-Midi-Fx-branchages-Multi-Random-generator/releases/tag/v0.4.1
+            - cell "MIDI FX" [ref=e170]
+            - cell "Mutable Instruments ideas / port for Schwung Move" [ref=e172]
+            - cell [ref=e173]
+          - row [ref=e174] [cursor=pointer]:
+            - cell [ref=e175]:
+              - text: Chiptune
+              - link "v0.1.2" [ref=e176]:
+                - /url: https://github.com/charlesvestal/schwung-chiptune/releases/tag/v0.1.2
+            - cell "Sound Generator" [ref=e177]
+            - 'cell "blargg (port: charlesvestal)" [ref=e179]'
+            - cell [ref=e180]
+          - row [ref=e181] [cursor=pointer]:
+            - cell [ref=e182]:
+              - text: Chord
+              - link "v0.5.0" [ref=e183]:
+                - /url: https://github.com/charlesvestal/schwung/releases/tag/v0.5.0
+            - cell "MIDI FX" [ref=e184]
+            - cell "Unknown" [ref=e186]
+            - cell [ref=e187]
+          - row [ref=e188] [cursor=pointer]:
+            - cell [ref=e189]:
+              - text: ChordDex
+              - link "v1.6.0" [ref=e190]:
+                - /url: https://github.com/dony01001/ChordDex/releases/tag/v1.6.0
+            - cell "Tool" [ref=e191]
+            - cell "dony01001" [ref=e193]
+            - cell [ref=e194]
+          - row [ref=e195] [cursor=pointer]:
+            - cell [ref=e196]:
+              - text: Chordism
+              - link "v0.3.11" [ref=e197]:
+                - /url: https://github.com/charlesvestal/schwung-chordism/releases/tag/v0.3.11
+            - cell "Sound Generator" [ref=e198]
+            - cell "charlesvestal" [ref=e200]
+            - cell [ref=e201]
+          - row [ref=e202] [cursor=pointer]:
+            - cell [ref=e203]:
+              - text: CHOWTape
+              - link "v0.1.0" [ref=e204]:
+                - /url: https://github.com/charlesvestal/schwung-chowtape/releases/tag/v0.1.0
+            - cell "Audio FX" [ref=e205]
+            - 'cell "Jatin Chowdhury (port: charlesvestal)" [ref=e207]'
+            - cell [ref=e208]
+          - row [ref=e209] [cursor=pointer]:
+            - cell [ref=e210]:
+              - text: CloudSeed
+              - link "v0.3.7" [ref=e211]:
+                - /url: https://github.com/charlesvestal/schwung-cloudseed/releases/tag/v0.3.7
+            - cell "Audio FX" [ref=e212]
+            - 'cell "Ghost Note Audio (port: charlesvestal)" [ref=e214]'
+            - cell [ref=e215]
+          - row [ref=e216] [cursor=pointer]:
+            - cell [ref=e217]:
+              - text: Custom MIDI Control
+              - link "v0.5.0" [ref=e218]:
+                - /url: https://github.com/chaolue/move-anything-control/releases/tag/v0.5.0
+            - cell "Overtake" [ref=e219]
+            - cell "chaolue" [ref=e221]
+            - cell [ref=e222]
+          - row [ref=e223] [cursor=pointer]:
+            - cell [ref=e224]:
+              - text: dAVEBOx
+              - link "v1.0-beta.6" [ref=e225]:
+                - /url: https://github.com/legsmechanical/schwung-davebox/releases/tag/v1.0-beta.6
+            - cell "Tool" [ref=e226]
+            - cell "legsmechanical" [ref=e228]
+            - cell [ref=e229]
+          - row [ref=e230] [cursor=pointer]:
+            - cell [ref=e231]:
+              - text: Denis
+              - link "v0.1.1" [ref=e232]:
+                - /url: https://github.com/filliformes/denis-move/releases/tag/v0.1.1
+            - cell "Sound Generator" [ref=e233]
+            - cell "filliformes" [ref=e235]
+            - cell [ref=e236]
+          - row [ref=e237] [cursor=pointer]:
+            - cell [ref=e238]:
+              - text: Dexed
+              - link "v0.5.11" [ref=e239]:
+                - /url: https://github.com/charlesvestal/schwung-dx7/releases/tag/v0.5.11
+            - cell "Sound Generator" [ref=e240]
+            - 'cell "Dexed/MSFA by google/asb2m10 (port: charlesvestal)" [ref=e242]'
+            - cell [ref=e243]
+          - row [ref=e244] [cursor=pointer]:
+            - cell [ref=e245]:
+              - text: Dissolver
+              - link "v0.2.3" [ref=e246]:
+                - /url: https://github.com/filliformes/dissolver-move/releases/tag/v0.2.3
+            - cell "Audio FX" [ref=e247]
+            - cell "filliformes" [ref=e249]
+            - cell [ref=e250]
+          - row [ref=e251] [cursor=pointer]:
+            - cell [ref=e252]:
+              - text: DJ Deck
+              - link "v0.2.1" [ref=e253]:
+                - /url: https://github.com/djhardrich/move-anything-dj/releases/tag/v0.2.1
+            - cell "Tool" [ref=e254]
+            - cell "DJ Hard Rich" [ref=e256]
+            - cell [ref=e257]
+          - row [ref=e258] [cursor=pointer]:
+            - cell [ref=e259]:
+              - text: Dragonfly Hall
+              - link "v1.0.4" [ref=e260]:
+                - /url: https://github.com/wolfrenegade1976/move-anything-dragonfly-hall/releases/tag/v1.0.4
+            - cell "Audio FX" [ref=e261]
+            - cell "bradcoomber" [ref=e263]
+            - cell [ref=e264]
+          - row [ref=e265] [cursor=pointer]:
+            - cell [ref=e266]:
+              - text: Dronage Move
+              - link "v1.4.3" [ref=e267]:
+                - /url: https://github.com/boorch/dronage-move-release/releases/tag/v1.4.3
+            - cell "Tool" [ref=e268]
+            - cell "boorch" [ref=e270]
+            - cell [ref=e271]
+          - row [ref=e272] [cursor=pointer]:
+            - cell [ref=e273]:
+              - text: Ducker
+              - link "v0.1.2" [ref=e274]:
+                - /url: https://github.com/charlesvestal/schwung-ducker/releases/tag/v0.1.2
+            - cell "Audio FX" [ref=e275]
+            - cell "charlesvestal" [ref=e277]
+            - cell [ref=e278]
+          - row [ref=e279] [cursor=pointer]:
+            - cell [ref=e280]:
+              - text: Essaim
+              - link "v0.2.9" [ref=e281]:
+                - /url: https://github.com/filliformes/essaim-move/releases/tag/v0.2.9
+            - cell "Sound Generator" [ref=e282]
+            - cell "filliformes" [ref=e284]
+            - cell [ref=e285]
+          - row [ref=e286] [cursor=pointer]:
+            - cell [ref=e287]:
+              - text: Eucalypso
+              - link "v0.1.5" [ref=e288]:
+                - /url: https://github.com/handcraftedcc/move-everything-eucalypso/releases/tag/v0.1.5
+            - cell "MIDI FX" [ref=e289]
+            - cell "handcraftedcc" [ref=e291]
+            - cell [ref=e292]
+          - row [ref=e293] [cursor=pointer]:
+            - cell [ref=e294]:
+              - text: Euclidrum
+              - link "v0.1.1" [ref=e295]:
+                - /url: https://github.com/filliformes/euclidrum-move/releases/tag/v0.1.1
+            - cell "MIDI FX" [ref=e296]
+            - cell "filliformes" [ref=e298]
+            - cell [ref=e299]
+          - row [ref=e300] [cursor=pointer]:
+            - cell [ref=e301]:
+              - text: File Browser
+              - link "v0.1.0" [ref=e302]:
+                - /url: https://github.com/charlesvestal/schwung/releases/tag/v0.1.0
+            - cell "Tool" [ref=e303]
+            - cell "Schwung" [ref=e305]
+            - cell [ref=e306]
+          - row [ref=e307] [cursor=pointer]:
+            - cell [ref=e308]:
+              - text: Filltron
+              - link "v0.1.0" [ref=e309]:
+                - /url: https://github.com/charlesvestal/schwung/releases/tag/v0.1.0
+            - cell "Audio FX" [ref=e310]
+            - cell "timncox" [ref=e312]
+            - cell [ref=e313]
+          - row [ref=e314] [cursor=pointer]:
+            - cell [ref=e315]:
+              - text: Filter
+              - link "v0.2.0" [ref=e316]:
+                - /url: https://github.com/charlesvestal/schwung-filter/releases/tag/v0.2.0
+            - cell "Audio FX" [ref=e317]
+            - cell "charlesvestal" [ref=e319]
+            - cell [ref=e320]
+          - row [ref=e321] [cursor=pointer]:
+            - cell [ref=e322]:
+              - text: Fizzik
+              - link "v0.1.0" [ref=e323]:
+                - /url: https://github.com/filliformes/fizzik-move/releases/tag/v0.1.0
+            - cell "Sound Generator" [ref=e324]
+            - cell "filliformes" [ref=e326]
+            - cell [ref=e327]
+          - row [ref=e328] [cursor=pointer]:
+            - cell [ref=e329]:
+              - text: Forge
+              - link "v0.2.0" [ref=e330]:
+                - /url: https://github.com/filliformes/forge-move/releases/tag/v0.2.0
+            - cell "Sound Generator" [ref=e331]
+            - cell "filliformes" [ref=e333]
+            - cell [ref=e334]
+          - row [ref=e335] [cursor=pointer]:
+            - cell [ref=e336]:
+              - text: Fork
+              - link "v1.1" [ref=e337]:
+                - /url: https://github.com/andree182/schwung-fork/releases/tag/v1.1
+            - cell "MIDI FX" [ref=e338]
+            - cell "andree182" [ref=e340]
+            - cell [ref=e341]
+          - row [ref=e342] [cursor=pointer]:
+            - cell [ref=e343]:
+              - text: Freeverb
+              - link "v0.1.1" [ref=e344]:
+                - /url: https://github.com/charlesvestal/schwung/releases/tag/v0.1.1
+            - cell "Audio FX" [ref=e345]
+            - cell "Unknown" [ref=e347]
+            - cell [ref=e348]
+          - row [ref=e349] [cursor=pointer]:
+            - cell [ref=e350]:
+              - text: Gate
+              - link "v0.1.1" [ref=e351]:
+                - /url: https://github.com/charlesvestal/schwung-gate/releases/tag/v0.1.1
+            - cell "Audio FX" [ref=e352]
+            - cell "charlesvestal" [ref=e354]
+            - cell [ref=e355]
+          - row [ref=e356] [cursor=pointer]:
+            - cell [ref=e357]:
+              - text: Genera
+              - link "v0.2.4" [ref=e358]:
+                - /url: https://github.com/filliformes/genera-move/releases/tag/v0.2.4
+            - cell "MIDI FX" [ref=e359]
+            - cell "filliformes" [ref=e361]
+            - cell [ref=e362]
+          - row [ref=e363] [cursor=pointer]:
+            - cell [ref=e364]:
+              - text: Granny
+              - link "v0.1.9" [ref=e365]:
+                - /url: https://github.com/handcraftedcc/move-everything-granny/releases/tag/v0.1.9
+            - cell "Sound Generator" [ref=e366]
+            - cell "handcraftedcc" [ref=e368]
+            - cell [ref=e369]
+          - row [ref=e370] [cursor=pointer]:
+            - cell [ref=e371]:
+              - text: Guitar Tuner
+              - link "v0.3.0" [ref=e372]:
+                - /url: https://github.com/eightfour-dev/schwung-guitar-tuner/releases/tag/v0.3.0
+            - cell "Tool" [ref=e373]
+            - cell "eightfour" [ref=e375]
+            - cell [ref=e376]
+          - row [ref=e377] [cursor=pointer]:
+            - cell [ref=e378]:
+              - text: Helm
+              - link "v1.5" [ref=e379]:
+                - /url: https://github.com/andree182/schwung-helm/releases/tag/v1.5
+            - cell "Sound Generator" [ref=e380]
+            - 'cell "Matt Tytel (port: andree182)" [ref=e382]'
+            - cell [ref=e383]
+          - row [ref=e384] [cursor=pointer]:
+            - cell [ref=e385]:
+              - text: Hera
+              - link "v0.1.5" [ref=e386]:
+                - /url: https://github.com/charlesvestal/schwung-hera/releases/tag/v0.1.5
+            - cell "Sound Generator" [ref=e387]
+            - 'cell "jpcima (port: charlesvestal)" [ref=e389]'
+            - cell [ref=e390]
+          - row [ref=e391] [cursor=pointer]:
+            - cell [ref=e392]:
+              - text: HUSH ONE
+              - link "v0.2.6" [ref=e393]:
+                - /url: https://github.com/charlesvestal/schwung-hush1/releases/tag/v0.2.6
+            - cell "Sound Generator" [ref=e394]
+            - cell "charlesvestal" [ref=e396]
+            - cell [ref=e397]
+          - row [ref=e398] [cursor=pointer]:
+            - cell [ref=e399]:
+              - text: Impressive Chords
+              - link "v0.1.24" [ref=e400]:
+                - /url: https://github.com/mestela/schwung-impressive-chords/releases/tag/v0.1.24
+            - cell "MIDI FX" [ref=e401]
+            - cell "mestela" [ref=e403]
+            - cell [ref=e404]
+          - row [ref=e405] [cursor=pointer]:
+            - cell [ref=e406]:
+              - text: Junologue Chorus
+              - link "v0.1.2" [ref=e407]:
+                - /url: https://github.com/charlesvestal/schwung-junologue-chorus/releases/tag/v0.1.2
+            - cell "Audio FX" [ref=e408]
+            - 'cell "Peter Allwin (port: charlesvestal)" [ref=e410]'
+            - cell [ref=e411]
+          - row [ref=e412] [cursor=pointer]:
+            - cell [ref=e413]:
+              - text: Key Detect
+              - link "v0.1.1" [ref=e414]:
+                - /url: https://github.com/charlesvestal/schwung-keydetect/releases/tag/v0.1.1
+            - cell "Audio FX" [ref=e415]
+            - cell "charlesvestal" [ref=e417]
+            - cell [ref=e418]
+          - row [ref=e419] [cursor=pointer]:
+            - cell [ref=e420]:
+              - text: KrautDrums
+              - link "v0.1.1" [ref=e421]:
+                - /url: https://github.com/filliformes/krautdrums-move/releases/tag/v0.1.1
+            - cell "Sound Generator" [ref=e422]
+            - cell "filliformes" [ref=e424]
+            - cell [ref=e425]
+          - row [ref=e426] [cursor=pointer]:
+            - cell [ref=e427]:
+              - text: Libpo32
+              - link "v1.0.6" [ref=e428]:
+                - /url: https://github.com/mestela/schwung-libpo32/releases/tag/v1.0.6
+            - cell "Sound Generator" [ref=e429]
+            - cell "mestela" [ref=e431]
+            - cell [ref=e432]
+          - row [ref=e433] [cursor=pointer]:
+            - cell [ref=e434]:
+              - text: Line In
+              - link "v0.2.0" [ref=e435]:
+                - /url: https://github.com/charlesvestal/schwung/releases/tag/v0.2.0
+            - cell "Sound Generator" [ref=e436]
+            - cell "Unknown" [ref=e438]
+            - cell [ref=e439]
+          - row [ref=e440] [cursor=pointer]:
+            - cell [ref=e441]:
+              - text: M8 LPP Emulator
+              - link "v1.1.9" [ref=e442]:
+                - /url: https://github.com/charlesvestal/schwung-m8/releases/tag/v1.1.9
+            - cell "Overtake" [ref=e443]
+            - 'cell "bobbydigitales (port: charlesvestal)" [ref=e445]'
+            - cell [ref=e446]
+          - row [ref=e447] [cursor=pointer]:
+            - cell [ref=e448]:
+              - text: Magneto
+              - link "v0.1.2" [ref=e449]:
+                - /url: https://github.com/filliformes/magneto-move/releases/tag/v0.1.2
+            - cell "Audio FX" [ref=e450]
+            - cell "filliformes" [ref=e452]
+            - cell [ref=e453]
+          - row [ref=e454] [cursor=pointer]:
+            - cell [ref=e455]:
+              - text: Mark
+              - link "v0.3.1" [ref=e456]:
+                - /url: https://github.com/charlesvestal/schwung/releases/tag/v0.3.1
+            - cell "Overtake" [ref=e457]
+            - cell "timncox" [ref=e459]
+            - cell [ref=e460]
+          - row [ref=e461] [cursor=pointer]:
+            - cell [ref=e462]:
+              - text: MIDI Player
+              - link "v0.1.3" [ref=e463]:
+                - /url: https://github.com/charlesvestal/schwung-midi-player/releases/tag/v0.1.3
+            - cell "MIDI FX" [ref=e464]
+            - cell "Charles Vestal" [ref=e466]
+            - cell [ref=e467]
+          - row [ref=e468] [cursor=pointer]:
+            - cell [ref=e469]:
+              - text: Midiverb
+              - link "v0.2.0" [ref=e470]:
+                - /url: https://github.com/charlesvestal/schwung-midiverb/releases/tag/v0.2.0
+            - cell "Audio FX" [ref=e471]
+            - cell "thement (DSP) · Charles Vestal (port)" [ref=e473]
+            - cell [ref=e474]
+          - row [ref=e475] [cursor=pointer]:
+            - cell [ref=e476]:
+              - text: Mini-JV
+              - link "v0.4.13" [ref=e477]:
+                - /url: https://github.com/charlesvestal/schwung-jv880/releases/tag/v0.4.13
+            - cell "Sound Generator" [ref=e478]
+            - 'cell "nukeykt/giulioz (port: charlesvestal)" [ref=e480]'
+            - cell [ref=e481]
+          - row [ref=e482] [cursor=pointer]:
+            - cell [ref=e483]:
+              - text: Movy
+              - link "v0.22.0" [ref=e484]:
+                - /url: https://github.com/DimaDake/schwung-movy/releases/tag/v0.22.0
+            - cell "Tool" [ref=e485]
+            - cell "megadake" [ref=e487]
+            - cell [ref=e488]
+          - row [ref=e489] [cursor=pointer]:
+            - cell [ref=e490]:
+              - text: MrDrums
+              - link "v0.0.4" [ref=e491]:
+                - /url: https://github.com/handcraftedcc/move-everything-mrdrums/releases/tag/v0.0.4
+            - cell "Sound Generator" [ref=e492]
+            - cell "handcraftedcc" [ref=e494]
+            - cell [ref=e495]
+          - row [ref=e496] [cursor=pointer]:
+            - cell [ref=e497]:
+              - text: MrHyde
+              - link "v0.0.4" [ref=e498]:
+                - /url: https://github.com/handcraftedcc/move-everything-mrhyde/releases/tag/v0.0.4
+            - cell "Sound Generator" [ref=e499]
+            - cell "handcraftedcc" [ref=e501]
+            - cell [ref=e502]
+          - row [ref=e503] [cursor=pointer]:
+            - cell [ref=e504]:
+              - text: MrSample
+              - link "v0.2.0" [ref=e505]:
+                - /url: https://github.com/charlesvestal/schwung-mrsample/releases/tag/v0.2.0
+            - cell "Sound Generator" [ref=e506]
+            - cell "charlesvestal" [ref=e508]
+            - cell [ref=e509]
+          - row [ref=e510] [cursor=pointer]:
+            - cell [ref=e511]:
+              - text: MVerb
+              - link "v0.1.1" [ref=e512]:
+                - /url: https://github.com/charlesvestal/schwung-mverb/releases/tag/v0.1.1
+            - cell "Audio FX" [ref=e513]
+            - 'cell "Andre Louis (DSP: Martin Eastwood)" [ref=e515]'
+            - cell [ref=e516]
+          - row [ref=e517] [cursor=pointer]:
+            - cell [ref=e518]:
+              - text: NAM
+              - link "v0.1.5" [ref=e519]:
+                - /url: https://github.com/charlesvestal/schwung-nam/releases/tag/v0.1.5
+            - cell "Audio FX" [ref=e520]
+            - 'cell "NeuralAudio by Mike Oliphant (port: charlesvestal)" [ref=e522]'
+            - cell [ref=e523]
+          - row [ref=e524] [cursor=pointer]:
+            - cell [ref=e525]:
+              - text: NuSaw
+              - link "v0.2.1" [ref=e526]:
+                - /url: https://github.com/charlesvestal/schwung-nusaw/releases/tag/v0.2.1
+            - cell "Sound Generator" [ref=e527]
+            - cell "charlesvestal" [ref=e529]
+            - cell [ref=e530]
+          - row [ref=e531] [cursor=pointer]:
+            - cell [ref=e532]:
+              - text: OB-Xd
+              - link "v0.4.7" [ref=e533]:
+                - /url: https://github.com/charlesvestal/schwung-obxd/releases/tag/v0.4.7
+            - cell "Sound Generator" [ref=e534]
+            - 'cell "reales (port: charlesvestal)" [ref=e536]'
+            - cell [ref=e537]
+          - row [ref=e538] [cursor=pointer]:
+            - cell [ref=e539]:
+              - text: Osirus
+              - link "v0.6.0" [ref=e540]:
+                - /url: https://github.com/charlesvestal/schwung-virus/releases/tag/v0.6.0
+            - cell "Sound Generator" [ref=e541]
+            - 'cell "dsp56300/gearmulator (port: charlesvestal)" [ref=e543]'
+            - cell [ref=e544]
+          - row [ref=e545] [cursor=pointer]:
+            - cell [ref=e546]:
+              - text: OTTx
+              - link "v0.1.0" [ref=e547]:
+                - /url: https://github.com/legsmechanical/schwung-ottx/releases/tag/v0.1.0
+            - cell "Audio FX" [ref=e548]
+            - 'cell "Matt Tytel (Vital DSP) · Yegor Suslin (vitOTT) · port: legsmechanical" [ref=e550]'
+            - cell [ref=e551]
+          - row [ref=e552] [cursor=pointer]:
+            - cell [ref=e553]:
+              - text: Oversmack
+              - link "v0.9.0" [ref=e554]:
+                - /url: https://github.com/charlesvestal/schwung/releases/tag/v0.9.0
+            - cell "Overtake" [ref=e555]
+            - cell "timncox" [ref=e557]
+            - cell [ref=e558]
+          - row [ref=e559] [cursor=pointer]:
+            - cell [ref=e560]:
+              - text: PALETTE
+              - link "v0.1.0" [ref=e561]:
+                - /url: https://github.com/filliformes/palette-move/releases/tag/v0.1.0
+            - cell "Audio FX" [ref=e562]
+            - cell "filliformes" [ref=e564]
+            - cell [ref=e565]
+          - row [ref=e566] [cursor=pointer]:
+            - cell [ref=e567]:
+              - text: Performance FX
+              - link "v0.0.2" [ref=e568]:
+                - /url: https://github.com/charlesvestal/schwung-performance-fx/releases/tag/v0.0.2
+            - cell "Overtake" [ref=e569]
+            - cell "charlesvestal" [ref=e571]
+            - cell [ref=e572]
+          - row [ref=e573] [cursor=pointer]:
+            - cell [ref=e574]:
+              - text: Plaits
+              - link "v0.5.1" [ref=e575]:
+                - /url: https://github.com/j3threejay/move-anything-plaits/releases/tag/v0.5.1
+            - cell "Sound Generator" [ref=e576]
+            - 'cell "Emilie Gillet (port: Justin Joe)" [ref=e578]'
+            - cell [ref=e579]
+          - row [ref=e580] [cursor=pointer]:
+            - cell [ref=e581]:
+              - text: PSX Verb
+              - link "v0.5.3" [ref=e582]:
+                - /url: https://github.com/charlesvestal/schwung-psxverb/releases/tag/v0.5.3
+            - cell "Audio FX" [ref=e583]
+            - cell "Charles Vestal" [ref=e585]
+            - cell [ref=e586]
+          - row [ref=e587] [cursor=pointer]:
+            - cell [ref=e588]:
+              - text: Punch-In FX
+              - link "v0.2.0" [ref=e589]:
+                - /url: https://github.com/filliformes/punchfx-move/releases/tag/v0.2.0
+            - cell "Audio FX" [ref=e590]
+            - cell "filliformes" [ref=e592]
+            - cell [ref=e593]
+          - row [ref=e594] [cursor=pointer]:
+            - cell [ref=e595]:
+              - text: PushNPull
+              - link "v0.2.0" [ref=e596]:
+                - /url: https://github.com/legsmechanical/schwung-pushnpull/releases/tag/v0.2.0
+            - cell "Audio FX" [ref=e597]
+            - cell "legsmechanical" [ref=e599]
+            - cell [ref=e600]
+          - row [ref=e601] [cursor=pointer]:
+            - cell [ref=e602]:
+              - text: Radio Garden
+              - link "v0.2.3" [ref=e603]:
+                - /url: https://github.com/charlesvestal/schwung-radiogarden/releases/tag/v0.2.3
+            - cell "Sound Generator" [ref=e604]
+            - cell "charlesvestal" [ref=e606]
+            - cell [ref=e607]
+          - row [ref=e608] [cursor=pointer]:
+            - cell [ref=e609]:
+              - text: RaffoSynth
+              - link "v0.2.3" [ref=e610]:
+                - /url: https://github.com/charlesvestal/schwung-moog/releases/tag/v0.2.3
+            - cell "Sound Generator" [ref=e611]
+            - 'cell "Nicolas Roulet, Julian Palladino (port: charlesvestal)" [ref=e613]'
+            - cell [ref=e614]
+          - row [ref=e615] [cursor=pointer]:
+            - cell [ref=e616]:
+              - text: REX Player
+              - link "v0.4.2" [ref=e617]:
+                - /url: https://github.com/charlesvestal/schwung-rex/releases/tag/v0.4.2
+            - cell "Sound Generator" [ref=e618]
+            - cell "charlesvestal" [ref=e620]
+            - cell [ref=e621]
+          - row [ref=e622] [cursor=pointer]:
+            - cell [ref=e623]:
+              - text: RNBO Runner
+              - link "v0.1.0" [ref=e624]:
+                - /url: https://github.com/charlesvestal/schwung/releases/tag/v0.1.0
+            - cell "Overtake" [ref=e625]
+            - cell "charlesvestal" [ref=e627]
+            - cell [ref=e628]
+          - row [ref=e629] [cursor=pointer]:
+            - cell [ref=e630]:
+              - text: Sample Slicer
+              - link "v0.2.0" [ref=e631]:
+                - /url: https://github.com/j3threejay/move-anything-slicer/releases/tag/v0.2.0
+            - cell "Sound Generator" [ref=e632]
+            - cell "Justin Joe" [ref=e634]
+            - cell [ref=e635]
+          - row [ref=e636] [cursor=pointer]:
+            - cell [ref=e637]:
+              - text: SF2 Synth
+              - link "v0.3.15" [ref=e638]:
+                - /url: https://github.com/charlesvestal/schwung-sf2/releases/tag/v0.3.15
+            - cell "Sound Generator" [ref=e639]
+            - 'cell "FluidLite by Robin Lobel (port: charlesvestal)" [ref=e641]'
+            - cell [ref=e642]
+          - row [ref=e643] [cursor=pointer]:
+            - cell [ref=e644]:
+              - text: SFZ Player
+              - link "v0.6.0" [ref=e645]:
+                - /url: https://github.com/charlesvestal/schwung-sfz/releases/tag/v0.6.0
+            - cell "Sound Generator" [ref=e646]
+            - 'cell "sfizz by sfztools (port: charlesvestal)" [ref=e648]'
+            - cell [ref=e649]
+          - row [ref=e650] [cursor=pointer]:
+            - cell [ref=e651]:
+              - text: SID Control
+              - link "v0.4.2" [ref=e652]:
+                - /url: https://github.com/charlesvestal/schwung-sidcontrol/releases/tag/v0.4.2
+            - cell "Overtake" [ref=e653]
+            - cell "charlesvestal" [ref=e655]
+            - cell [ref=e656]
+          - row [ref=e657] [cursor=pointer]:
+            - cell [ref=e658]:
+              - text: Signal
+              - link "v0.2.1" [ref=e659]:
+                - /url: https://github.com/filliformes/signal-move/releases/tag/v0.2.1
+            - cell "Sound Generator" [ref=e660]
+            - cell "filliformes" [ref=e662]
+            - cell [ref=e663]
+          - row [ref=e664] [cursor=pointer]:
+            - cell [ref=e665]:
+              - text: Signal Chain
+              - link "v0.5.2" [ref=e666]:
+                - /url: https://github.com/charlesvestal/schwung/releases/tag/v0.5.2
+            - cell "Featured" [ref=e667]
+            - cell "Schwung" [ref=e669]
+            - cell [ref=e670]
+          - row [ref=e671] [cursor=pointer]:
+            - cell [ref=e672]:
+              - text: Smack
+              - link "v0.12.1" [ref=e673]:
+                - /url: https://github.com/timncox/schwung-smack/releases/tag/v0.12.1
+            - cell "Audio FX" [ref=e674]
+            - cell "timncox" [ref=e676]
+            - cell [ref=e677]
+          - row [ref=e678] [cursor=pointer]:
+            - cell [ref=e679]:
+              - text: Smack In
+              - link "v0.12.1" [ref=e680]:
+                - /url: https://github.com/timncox/schwung-smack-in/releases/tag/v0.12.1
+            - cell "Sound Generator" [ref=e681]
+            - cell "timncox" [ref=e683]
+            - cell [ref=e684]
+          - row [ref=e685] [cursor=pointer]:
+            - cell [ref=e686]:
+              - text: Song Mode
+              - link "v0.1.0" [ref=e687]:
+                - /url: https://github.com/charlesvestal/schwung/releases/tag/v0.1.0
+            - cell "Tool" [ref=e688]
+            - cell "Unknown" [ref=e690]
+            - cell [ref=e691]
+          - row [ref=e692] [cursor=pointer]:
+            - cell [ref=e693]:
+              - text: Spectra
+              - link "v0.2.1" [ref=e694]:
+                - /url: https://github.com/filliformes/spectra-move/releases/tag/v0.2.1
+            - cell "Audio FX" [ref=e695]
+            - cell "filliformes" [ref=e697]
+            - cell [ref=e698]
+          - row [ref=e699] [cursor=pointer]:
+            - cell [ref=e700]:
+              - text: Stems
+              - link "v0.3.2" [ref=e701]:
+                - /url: https://github.com/charlesvestal/schwung-stems/releases/tag/v0.3.2
+            - cell "Tool" [ref=e702]
+            - cell "charlesvestal" [ref=e704]
+            - cell [ref=e705]
+          - row [ref=e706] [cursor=pointer]:
+            - cell [ref=e707]:
+              - text: StreamRTSP
+              - link "v0.1.7" [ref=e708]:
+                - /url: https://github.com/handcraftedcc/schwung-StreamRTSP/releases/tag/v0.1.7
+            - cell "Sound Generator" [ref=e709]
+            - cell "dom" [ref=e711]
+            - cell [ref=e712]
+          - row [ref=e713] [cursor=pointer]:
+            - cell [ref=e714]:
+              - text: Structor
+              - link "v0.3.1" [ref=e715]:
+                - /url: https://github.com/filliformes/structor-move/releases/tag/v0.3.1
+            - cell "Audio FX" [ref=e716]
+            - cell "filliformes" [ref=e718]
+            - cell [ref=e719]
+          - row [ref=e720] [cursor=pointer]:
+            - cell [ref=e721]:
+              - text: Super Arp
+              - link "v0.1.8" [ref=e722]:
+                - /url: https://github.com/handcraftedcc/move-everything-superarp/releases/tag/v0.1.8
+            - cell "MIDI FX" [ref=e723]
+            - cell "handcraftedcc" [ref=e725]
+            - cell [ref=e726]
+          - row [ref=e727] [cursor=pointer]:
+            - cell [ref=e728]:
+              - text: Super Boom
+              - link "v1.4.0" [ref=e729]:
+                - /url: https://github.com/filliformes/super-boom-move/releases/tag/v1.4.0
+            - cell "Audio FX" [ref=e730]
+            - cell "filliformes" [ref=e732]
+            - cell [ref=e733]
+          - row [ref=e734] [cursor=pointer]:
+            - cell [ref=e735]:
+              - text: Surge XT
+              - link "v0.2.0" [ref=e736]:
+                - /url: https://github.com/charlesvestal/schwung-surge/releases/tag/v0.2.0
+            - cell "Sound Generator" [ref=e737]
+            - 'cell "Surge Synth Team (port: charlesvestal)" [ref=e739]'
+            - cell [ref=e740]
+          - row [ref=e741] [cursor=pointer]:
+            - cell [ref=e742]:
+              - text: TapeDelay
+              - link "v0.4.3" [ref=e743]:
+                - /url: https://github.com/charlesvestal/schwung-space-delay/releases/tag/v0.4.3
+            - cell "Audio FX" [ref=e744]
+            - cell "Charles Vestal" [ref=e746]
+            - cell [ref=e747]
+          - row [ref=e748] [cursor=pointer]:
+            - cell [ref=e749]:
+              - text: TAPESCAM
+              - link "v0.5.3" [ref=e750]:
+                - /url: https://github.com/charlesvestal/schwung-tapescam/releases/tag/v0.5.3
+            - cell "Audio FX" [ref=e751]
+            - cell "Charles Vestal" [ref=e753]
+            - cell [ref=e754]
+          - row [ref=e755] [cursor=pointer]:
+            - cell [ref=e756]:
+              - text: TB-3PO
+              - link "v0.2.6" [ref=e757]:
+                - /url: https://github.com/charlesvestal/schwung-tb3po/releases/tag/v0.2.6
+            - cell "Tool" [ref=e758]
+            - 'cell "djphazer / Hemisphere Suite (port: charlesvestal)" [ref=e760]'
+            - cell [ref=e761]
+          - row [ref=e762] [cursor=pointer]:
+            - cell [ref=e763]:
+              - text: Time Stretch
+              - link "v0.3.2" [ref=e764]:
+                - /url: https://github.com/charlesvestal/schwung-stretch/releases/tag/v0.3.2
+            - cell "Tool" [ref=e765]
+            - cell "charlesvestal" [ref=e767]
+            - cell [ref=e768]
+          - row [ref=e769] [cursor=pointer]:
+            - cell [ref=e770]:
+              - text: Tuner
+              - link "v1.0.0" [ref=e771]:
+                - /url: https://github.com/CatsAreCool710/Move-Everything-Tuner/releases/tag/v1.0.0
+            - cell "Tool" [ref=e772]
+            - cell "Jeremiah Ticket" [ref=e774]
+            - cell [ref=e775]
+          - row [ref=e776] [cursor=pointer]:
+            - cell [ref=e777]:
+              - text: TwinSampler
+              - link "v0.3.6.6" [ref=e778]:
+                - /url: https://github.com/jrucho/schwung-twinsampler/releases/tag/v0.3.6.6
+            - cell "Overtake" [ref=e779]
+            - cell "jrucho" [ref=e781]
+            - cell [ref=e782]
+          - row [ref=e783] [cursor=pointer]:
+            - cell [ref=e784]:
+              - text: Usefulity
+              - link "v0.1.2" [ref=e785]:
+                - /url: https://github.com/charlesvestal/schwung-usefulity/releases/tag/v0.1.2
+            - cell "Audio FX" [ref=e786]
+            - cell "charlesvestal" [ref=e788]
+            - cell [ref=e789]
+          - row [ref=e790] [cursor=pointer]:
+            - cell [ref=e791]:
+              - text: Velocity Scale
+              - link "v0.2.0" [ref=e792]:
+                - /url: https://github.com/charlesvestal/schwung/releases/tag/v0.2.0
+            - cell "MIDI FX" [ref=e793]
+            - cell "Unknown" [ref=e795]
+            - cell [ref=e796]
+          - row [ref=e797] [cursor=pointer]:
+            - cell [ref=e798]:
+              - text: Verglas
+              - link "v1.2.2" [ref=e799]:
+                - /url: https://github.com/filliformes/verglas-move/releases/tag/v1.2.2
+            - cell "Audio FX" [ref=e800]
+            - 'cell "Emilie Gillet (port: filliformes)" [ref=e802]'
+            - cell [ref=e803]
+          - row [ref=e804] [cursor=pointer]:
+            - cell [ref=e805]:
+              - text: Vocoder
+              - link "v0.1.3" [ref=e806]:
+                - /url: https://github.com/charlesvestal/schwung-vocoder/releases/tag/v0.1.3
+            - cell "Audio FX" [ref=e807]
+            - cell "charlesvestal" [ref=e809]
+            - cell [ref=e810]
+          - row [ref=e811] [cursor=pointer]:
+            - cell [ref=e812]:
+              - text: War Bells
+              - link "v0.20.1" [ref=e813]:
+                - /url: https://github.com/seajaysec/war-bells/releases/tag/v0.20.1
+            - cell "Audio FX" [ref=e814]
+            - cell "seajay" [ref=e816]
+            - cell [ref=e817]
+          - row [ref=e818] [cursor=pointer]:
+            - cell [ref=e819]:
+              - text: WAV Player
+              - link "v0.1.0" [ref=e820]:
+                - /url: https://github.com/charlesvestal/schwung/releases/tag/v0.1.0
+            - cell "Tool" [ref=e821]
+            - cell "Unknown" [ref=e823]
+            - cell [ref=e824]
+          - row [ref=e825] [cursor=pointer]:
+            - cell [ref=e826]:
+              - text: Wave Edit
+              - link "v0.7.1" [ref=e827]:
+                - /url: https://github.com/charlesvestal/schwung-waveform-editor/releases/tag/v0.7.1
+            - cell "Tool" [ref=e828]
+            - cell "charlesvestal" [ref=e830]
+            - cell [ref=e831]
+          - row [ref=e832] [cursor=pointer]:
+            - cell [ref=e833]:
+              - text: Webstream
+              - link "v0.4.0" [ref=e834]:
+                - /url: https://github.com/charlesvestal/schwung-webstream/releases/tag/v0.4.0
+            - cell "Sound Generator" [ref=e835]
+            - cell "charlesvestal" [ref=e837]
+            - cell [ref=e838]
+          - row [ref=e839] [cursor=pointer]:
+            - cell [ref=e840]:
+              - text: Weird Dreams
+              - link "v0.2.6" [ref=e841]:
+                - /url: https://github.com/filliformes/weird-dreams-move/releases/tag/v0.2.6
+            - cell "Sound Generator" [ref=e842]
+            - 'cell "dfilaretti (port: filliformes)" [ref=e844]'
+            - cell [ref=e845]
+          - row [ref=e846] [cursor=pointer]:
+            - cell [ref=e847]:
+              - text: Wurl
+              - link "v0.1.1" [ref=e848]:
+                - /url: https://github.com/filliformes/wurl-move/releases/tag/v0.1.1
+            - cell "Sound Generator" [ref=e849]
+            - 'cell "hal0zer0 (port: filliformes)" [ref=e851]'
+            - cell [ref=e852]
+      - button "Update All" [ref=e854] [cursor=pointer]
+    - button "Install All" [ref=e856] [cursor=pointer]
+    - group [ref=e857]:
+      - generic "▶ Install Custom Module" [ref=e858] [cursor=pointer]
+  - contentinfo [ref=e859]:
+    - paragraph [ref=e860]: Schwung Manager

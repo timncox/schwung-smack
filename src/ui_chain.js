@@ -422,20 +422,23 @@ function drawUI() {
         }
     }
 
-    /* pattern summary line */
+    /* on-screen step grid: in a slot editor Move firmware keeps the pad
+     * LEDs, so the SCREEN carries the pattern — 16 cells for the current
+     * page in the free band between knob row 2 (ends y49) and the footer
+     * rule (y55): filled = effected slice, hollow = clean, playhead = the
+     * 1px bar underneath. Pin/fx counts live in the footer. */
     if (state === 3) {
         const pat = editPattern();
-        const msk = (chanMode && editLane) ? lockedMaskR : lockedMask;
-        let fxCount = 0, pinCount = 0;
-        for (let i = 0; i < pat.length; i++)
-            if (pat[i] !== '0') fxCount++;
-        for (let i = 0; i < msk.length; i++)
-            if (msk[i] === '1') pinCount++;
-        const lanePfx = chanMode ? (editLane ? 'R ' : 'L ') : '';
-        const pins = pinCount ? ` ${pinCount}pin` : '';
-        const pages = stepPages();
-        const pg = pages > 1 ? ` p${stepPage + 1}/${pages}` : '';
-        print(2, 55, `${lanePfx}${nSlices}sl ${fxCount}fx${pins}${pg}`, 1);
+        const base = stepPage * STEP_COUNT;
+        const gy = 50;
+        for (let i = 0; i < STEP_COUNT; i++) {
+            const s = base + i;
+            if (s >= nSlices) break;
+            const x = i * 8;
+            if (pat[s] && pat[s] !== '0') fill_rect(x, gy, 7, 4, 1);
+            else draw_rect(x, gy, 7, 4, 1);
+            if (s === playSlice) fill_rect(x, gy + 4, 7, 1, 1);
+        }
     }
 
     /* footer budget is ~20 chars total (128 px, no overlap guard in the
@@ -450,7 +453,17 @@ function drawUI() {
             fLeft = 'Cap Arm A/B Roll';
             fRight = '';
         } else {
-            fLeft = 'Step:mute';
+            /* pattern summary (the old y55 line collided with the rule) */
+            const pat = editPattern();
+            const msk = (chanMode && editLane) ? lockedMaskR : lockedMask;
+            let fxCount = 0, pinCount = 0;
+            for (let i = 0; i < pat.length; i++)
+                if (pat[i] !== '0') fxCount++;
+            for (let i = 0; i < msk.length; i++)
+                if (msk[i] === '1') pinCount++;
+            const lanePfx = chanMode ? (editLane ? 'R ' : 'L ') : '';
+            const pins = pinCount ? ` ${pinCount}p` : '';
+            fLeft = `${lanePfx}${nSlices}sl ${fxCount}fx${pins}`;
             fRight = pages > 1 ? `p${stepPage + 1}/${pages}` : '';
         }
         drawFooter({ left: fLeft, right: fRight });
@@ -502,12 +515,14 @@ function tick() {
         refreshSoon();
     }
 
-    /* playhead chase: cheap single get_param per tick */
+    /* playhead chase: cheap single get_param per tick. The screen grid
+     * chases too (the pads belong to firmware in a slot editor). */
     if (state === 3) {
         const ps = parseInt(gp('play_slice') || '-1');
         if (ps !== playSlice) {
             playSlice = ps;
             updateStepLEDs();
+            needsRedraw = true;
         }
     }
 
