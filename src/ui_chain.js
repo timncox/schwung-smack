@@ -25,7 +25,7 @@
  */
 
 import {
-    MoveKnob1, MoveCapture, MoveShift, MoveMainButton,
+    MoveKnob1, MoveCapture, MoveShift, MoveMainButton, MoveMainKnob,
     Black, White, LightGrey, Red, BrightRed, Blue, Green, BrightGreen,
     Cyan, Purple, YellowGreen, OrangeRed
 } from '/data/UserData/schwung/shared/constants.mjs';
@@ -175,14 +175,18 @@ const KNOBS2 = [
       speech: 'BPM override', isBpm: true },
     { key: 'monitor',      name: 'Mon',  opts: ['Mute', 'On'],
       speech: 'Monitoring', speechOpts: ['muted', 'on'] },
-    null,
-    null
+    /* trigger knobs: pads + the Capture button never reach a slot
+     * editor (firmware keeps them), so Arm/Re-Roll fire on a clockwise
+     * twist here — the master-FX trigger-enum idiom */
+    { key: 'arm',    name: 'Arm!',  trig: true, speech: 'Arm' },
+    { key: 'reroll', name: 'Roll!', trig: true, speech: 'Re-roll' }
 ];
 let knob2Values = [0, 100, 0, 0, 0, 1, 0, 0];
 
 function knob2Display(i) {
     const k = KNOBS2[i];
     if (!k) return '';
+    if (k.trig) return '>fire';
     if (k.isBpm) return knob2Values[i] > 0 ? `${Math.round(knob2Values[i])}` : 'Off';
     if (k.opts) {
         const idx = Math.max(0, Math.min(k.opts.length - 1, Math.round(knob2Values[i])));
@@ -202,6 +206,13 @@ function fetchKnob2() {
 function adjustKnob2(i, delta) {
     const k = KNOBS2[i];
     if (!k) return;
+    if (k.trig) {                    /* fire on a clockwise twist only */
+        if (delta <= 0) return;
+        host_module_set_param(k.key, '1');
+        announce(k.speech);
+        refreshSoon();
+        return;
+    }
     let v;
     if (k.isBpm) {
         /* 49 and below = Off (project tempo); 50-200 = override */
@@ -450,8 +461,8 @@ function drawUI() {
             fLeft = 'Knobs pg2';
             fRight = 'click=swap';
         } else if (state !== 3) {
-            fLeft = 'Cap Arm A/B Roll';
-            fRight = '';
+            fLeft = 'click=Cap';
+            fRight = 'Shft=more';
         } else {
             /* pattern summary (the old y55 line collided with the rule) */
             const pat = editPattern();
@@ -565,17 +576,36 @@ function onMidiMessageInternal(data) {
             if (was !== shiftHeld) { fetchKnob2(); updateStepLEDs(); needsRedraw = true; }
             return;
         }
-        /* Shift+jog-click = swap module: same gesture as the chain list
-         * (schwung's handleShiftSelect). host_swap_module unloads this UI
-         * and opens the module chooser — call it last, touch nothing after. */
+        /* Jog-click = Capture, Shift+jog-click = swap module. Pads and
+         * the hardware Capture button never reach a slot editor (Move
+         * firmware keeps them), so the jog carries the transport here.
+         * host_swap_module unloads this UI and opens the module chooser
+         * — call it last, touch nothing after. */
         if (d1 === MoveMainButton && d2 > 0) {
-            if (!shiftHeld) return;
+            if (!shiftHeld) {
+                host_module_set_param('capture', '1');
+                announce('Capture');
+                refreshSoon();
+                return;
+            }
             if (typeof host_swap_module === 'function') {
                 announce('Module chooser');
                 host_swap_module();
             } else {
                 announce('Swap needs a newer schwung');
             }
+            return;
+        }
+        /* Jog-turn = A/B: right lands on B (pattern), left on A (clean) */
+        if (d1 === MoveMainKnob) {
+            const delta = decodeDelta(d2);
+            if (delta === 0 || state !== 3) return;
+            const want = delta > 0 ? 1 : 0;
+            if (want === ab) return;
+            ab = want;
+            host_module_set_param('ab', `${ab}`);
+            announce(ab ? 'B, pattern' : 'A, clean loop');
+            refreshSoon();
             return;
         }
         /* Capture button mirrors the capture pad. Shift+Capture belongs

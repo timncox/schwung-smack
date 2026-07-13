@@ -448,11 +448,13 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
   <h2 class="sh">Capture → roll → punch</h2>
   <div class="cols">
     <div>
-      <p><b>Capture (retro).</b> Play something. Press Capture (pad or the
-      hardware Capture button). The last Loop-Length of audio becomes the
-      loop instantly — Smack was already listening. The ring
-      <i>keeps recording while the loop plays</i>, so pressing Capture again
-      grabs whatever you played since.</p>
+      <p><b>Capture (retro).</b> Play something. Press Capture — pad 68 or
+      the hardware Capture button on oversmack, <span class="hl">jog-click
+      in a slot editor</span> (slots don't receive pads or the Capture
+      button — firmware keeps them). The last Loop-Length of audio becomes
+      the loop instantly — Smack was already listening. The ring
+      <i>keeps recording while the loop plays</i>, so capturing again grabs
+      whatever you played since.</p>
       <p><b>Arm (forward).</b> Press Arm; recording starts on the grid and
       loops automatically when Loop-Length is reached. The pad burns bright
       red while armed/recording.</p>
@@ -798,7 +800,7 @@ const FX = [
   tO.onclick=()=>{mode="over";tO.classList.add("on");tC.classList.remove("on");build();
     roT.textContent="— OVERSMACK —";roD.textContent="Steps select slices; three palette rows pin effects; bottom row is transport. Play passes through to Move.";};
   tC.onclick=()=>{mode="chain";tC.classList.add("on");tO.classList.remove("on");build();
-    roT.textContent="— CHAIN UI —";roD.textContent="Loads when you open Smack's component editor in a Signal Chain slot. Heads-up: in a slot, Move's firmware still owns the pad grid (pads keep playing notes), so on hardware the chain editor is a knobs + screen + jog surface — Shift+jog-click swaps the module, and grid editing lives in oversmack or the web editor.";};
+    roT.textContent="— CHAIN UI —";roD.textContent="Loads when you open Smack's component editor in a Signal Chain slot. In a slot, Move's firmware keeps the pads and the Capture button, so the jog carries the transport: jog-click = Capture, jog-turn = A/B (right = pattern), Shift+jog-click = swap module. Shift-knobs 7-8 fire Arm and Re-Roll. The screen shows the step grid with a live playhead; full grid editing lives in oversmack or the web editor.";};
   document.querySelectorAll(".hwbtn").forEach(b=>{b.onclick=()=>{
     document.querySelectorAll(".hwbtn").forEach(x=>x.classList.remove("sel"));b.classList.add("sel");
     roT.textContent=b.dataset.t;roD.textContent=b.dataset.d;};});
