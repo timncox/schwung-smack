@@ -59,4 +59,25 @@ docker run --rm -v "$PWD":/w -w /w "$IMAGE" bash -c "
     tar -tzf build/oversmack-module.tar.gz
 "
 
+validate_archive() {
+    local archive="$1"
+    shift
+    for member in "$@"; do
+        tar -tzf "$archive" "$member" >/dev/null
+    done
+    if tar -tzf "$archive" | grep -Eq '(^|/)(\._|\.DS_Store)'; then
+        echo "Unexpected macOS metadata in $archive" >&2
+        return 1
+    fi
+}
+
+validate_archive build/smack-module.tar.gz \
+    smack/module.json smack/smack.so smack/ui_chain.js smack/help.json
+validate_archive build/smack-in-module.tar.gz \
+    smack-in/module.json smack-in/dsp.so smack-in/ui_chain.js \
+    smack-in/help.json smack-in/web_ui.html
+validate_archive build/oversmack-module.tar.gz \
+    oversmack/module.json oversmack/dsp.so oversmack/ui.js \
+    oversmack/help.json oversmack/web_ui.html
+
 echo "Built: build/smack-module.tar.gz, build/smack-in-module.tar.gz, build/oversmack-module.tar.gz"
