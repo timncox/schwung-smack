@@ -22,6 +22,8 @@ RUN apt-get update && apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-
 EOF
 fi
 
+rm -rf build/modules/audio_fx/smack build/modules/sound_generators/smack-in \
+       build/modules/overtake/oversmack
 mkdir -p build/modules/audio_fx/smack build/modules/sound_generators/smack-in \
          build/modules/overtake/oversmack
 

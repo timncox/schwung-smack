@@ -53,6 +53,16 @@ static void run_blocks(int nblocks, int16_t *last_out) {
     run_blocks_lr(nblocks, last_out, 1, 1);
 }
 
+static void run_constant_blocks(int nblocks, int16_t value, int16_t *last_out) {
+    int16_t in[BLK * 2], out[BLK * 2];
+    for (int i = 0; i < BLK * 2; i++) in[i] = value;
+    for (int b = 0; b < nblocks; b++) {
+        smack_process(S, in, out, BLK);
+        frames_done += BLK;
+    }
+    if (last_out) memcpy(last_out, out, sizeof(out));
+}
+
 /* Beat-gated saw: 25%-duty bursts at the given BPM (for BPM detection) */
 static void run_blocks_beat(int nblocks, double bpm) {
     static double phase = 0.0;
@@ -90,6 +100,97 @@ static char gp(const char *key) {
     return buf[0];
 }
 
+static void reset_sim_instance(const host_api_v1_t *host) {
+    S = smack_create(host);
+    assert(S);
+    next_tick = 0.0;
+    frames_done = 0;
+}
+
+static void test_fixed_record_quantum(const host_api_v1_t *host) {
+    reset_sim_instance(host);
+    smack_set_param(S, "loop_len", "0");       /* one 16th at 120 = 5512 */
+    smack_set_param(S, "bpm_override", "120");
+    smack_set_param(S, "arm", "1");
+    run_constant_blocks(1, 1000, NULL);
+    assert(gp("run_state") == '2');
+
+    /* Parameter edits during the take affect the next gesture, not the
+     * length already armed. */
+    smack_set_param(S, "bpm_override", "60");
+    smack_set_param(S, "loop_len", "1");
+    run_constant_blocks(100, 1000, NULL);
+    assert(gp("run_state") == '3');
+    char buf[32];
+    smack_get_param(S, "loop_frames", buf, sizeof(buf));
+    assert(atoi(buf) == 5512);
+
+    smack_set_param(S, "fx_density", "999");
+    smack_get_param(S, "fx_density", buf, sizeof(buf));
+    assert(atoi(buf) == 100);
+    smack_set_param(S, "order_density", "-20");
+    smack_get_param(S, "order_density", buf, sizeof(buf));
+    assert(atoi(buf) == 0);
+    smack_set_param(S, "wet", "999");
+    smack_get_param(S, "wet", buf, sizeof(buf));
+    assert(atoi(buf) == 100);
+
+    smack_destroy(S);
+    printf("ok: fixed arm quantum + direct param clamps\n");
+}
+
+static void test_stopped_clock_capture_phase(const host_api_v1_t *host) {
+    reset_sim_instance(host);
+    uint8_t start = 0xFA, stop = 0xFC;
+    smack_on_midi(S, &start, 1, 3);
+    run_blocks(120, NULL);                    /* establish clock tempo + phase */
+    smack_on_midi(S, &stop, 1, 3);
+    run_constant_blocks(400, 12345, NULL);    /* several steps after MIDI Stop */
+
+    smack_set_param(S, "loop_len", "0");
+    smack_set_param(S, "hw_input", "1");
+    smack_set_param(S, "monitor", "0");
+    smack_set_param(S, "wet", "0");
+    smack_set_param(S, "ab", "0");
+    smack_set_param(S, "quantize", "0");
+    smack_set_param(S, "capture", "1");
+    int16_t out[BLK * 2];
+    run_constant_blocks(1, 0, out);
+    int recent = 0;
+    for (int i = SMACK_EDGE_FADE; i < BLK; i++)
+        if (abs((int)out[i * 2] - 12345) <= 1) recent++;
+    assert(recent > 25);                     /* capture ended near now */
+
+    smack_destroy(S);
+    printf("ok: stopped-clock retro phase extrapolation\n");
+}
+
+static void test_paused_loop_ring_guard(const host_api_v1_t *host) {
+    reset_sim_instance(host);
+    smack_set_param(S, "loop_len", "8");       /* 16 bars */
+    smack_set_param(S, "bpm_override", "20"); /* quantum caps at ring size */
+    smack_set_param(S, "hw_input", "1");
+    smack_set_param(S, "monitor", "0");
+    smack_set_param(S, "wet", "0");
+    smack_set_param(S, "ab", "0");
+    smack_set_param(S, "quantize", "0");
+    run_constant_blocks(25000, 10000, NULL);   /* fill the 70-second ring */
+    smack_set_param(S, "capture", "1");
+
+    int16_t before[BLK * 2], after[BLK * 2];
+    run_constant_blocks(1, 0, before);
+    assert(energy(before) > 0);
+    uint8_t stop = 0xFC, start = 0xFA;
+    smack_on_midi(S, &stop, 1, 3);             /* retained loop, paused */
+    run_constant_blocks(1, 0, NULL);           /* must not overwrite its top */
+    smack_on_midi(S, &start, 1, 3);            /* resumes from loop top */
+    run_constant_blocks(1, 0, after);
+    assert(memcmp(before, after, sizeof(before)) == 0);
+
+    smack_destroy(S);
+    printf("ok: paused-loop ring overwrite guard\n");
+}
+
 int main(void) {
     host_api_v1_t host;
     memset(&host, 0, sizeof(host));
@@ -98,8 +199,11 @@ int main(void) {
     host.frames_per_block = BLK;
     host.get_bpm = fake_bpm;
 
-    S = smack_create(&host);
-    assert(S);
+    test_fixed_record_quantum(&host);
+    test_stopped_clock_capture_phase(&host);
+    test_paused_loop_ring_guard(&host);
+
+    reset_sim_instance(&host);
 
     int16_t out[BLK * 2];
 
