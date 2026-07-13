@@ -25,7 +25,7 @@
  */
 
 import {
-    MoveKnob1, MoveCapture, MoveShift,
+    MoveKnob1, MoveCapture, MoveShift, MoveMainButton,
     Black, White, LightGrey, Red, BrightRed, Blue, Green, BrightGreen,
     Cyan, Purple, YellowGreen, OrangeRed
 } from '/data/UserData/schwung/shared/constants.mjs';
@@ -444,8 +444,8 @@ function drawUI() {
         const pages = stepPages();
         let fLeft, fRight;
         if (shiftHeld) {
-            fLeft = 'Knobs pg2 \u00b7 pins';
-            fRight = '';
+            fLeft = 'Knobs pg2';
+            fRight = 'click=swap';
         } else if (state !== 3) {
             fLeft = 'Cap Arm A/B Roll';
             fRight = '';
@@ -548,6 +548,19 @@ function onMidiMessageInternal(data) {
             const was = shiftHeld;
             shiftHeld = d2 >= 64;
             if (was !== shiftHeld) { fetchKnob2(); updateStepLEDs(); needsRedraw = true; }
+            return;
+        }
+        /* Shift+jog-click = swap module: same gesture as the chain list
+         * (schwung's handleShiftSelect). host_swap_module unloads this UI
+         * and opens the module chooser — call it last, touch nothing after. */
+        if (d1 === MoveMainButton && d2 > 0) {
+            if (!shiftHeld) return;
+            if (typeof host_swap_module === 'function') {
+                announce('Module chooser');
+                host_swap_module();
+            } else {
+                announce('Swap needs a newer schwung');
+            }
             return;
         }
         /* Capture button mirrors the capture pad. Shift+Capture belongs

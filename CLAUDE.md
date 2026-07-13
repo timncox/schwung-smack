@@ -254,6 +254,25 @@ Dist hot (+4 drive), Phaser deep/static notches, Verb decay to 0.96.
 fp is int8 (±127) — every render case clamps/masks, never trusts
 range. Sim runs an extreme-min/max render sweep per effect.
 
+## Chain-UI swap + pad-grid reality (v0.12.1, hardware-verified 2026-07-13)
+
+- HARDWARE FINDING (closes the oldest "not yet verified" item): in a
+  slot's component editor, Move firmware KEEPS the pad grid (pads play
+  notes into the synth) — chain module UIs get screen + knobs + jog +
+  hardware buttons, but their pad-LED writes lose to firmware (Tim:
+  "the grid isn't switching for smack-in"). Full pad ownership =
+  overtake mode only. ui_chain.js pad handlers kept (schwung routes
+  all MIDI to the module UI in COMPONENT_EDIT), but the pad map is an
+  oversmack feature on hardware; slot-mode grid editing = web editor.
+- Shift+jog-click in Smack's chain UI = swap module, via schwung
+  main's `host_swap_module()` shim (setupModuleParamShims — unloads
+  the module UI, enters component select). Mirrors the chain list's
+  handleShiftSelect gesture. Guarded with typeof for old hosts
+  ("Swap needs a newer schwung"). Footer shows "click=swap" on Shift.
+- host_list_modules() is registered on the QuickJS global (both host
+  + shadow contexts) — [{id,name,version}] — available if a UI ever
+  needs a module list without fetch.
+
 ## Per-slice depth + mix (v0.12.0 / oversmack 0.9.0)
 
 - Every slice now carries fxp2 (per-effect depth 0-100, -1 = engine

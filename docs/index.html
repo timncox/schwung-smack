@@ -369,7 +369,9 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
       <kbd>Shift</kbd>+<kbd>jog-click</kbd>: the module chooser opens even
       when the slot is full (pick another module, <i>(None)</i> to clear, or
       <i>[Get more...]</i> for the store). <kbd>Mute</kbd>+<kbd>jog-click</kbd>
-      toggles bypass. The web editor's Slot-module panel does the same swap
+      toggles bypass. The same gesture works <i>inside</i> Smack's slot
+      editor: hold <kbd>Shift</kbd> (footer shows <code>click=swap</code>)
+      and jog-click. The web editor's Slot-module panel does the same swap
       from the browser.</div>
     </div>
     <div>
@@ -796,7 +798,7 @@ const FX = [
   tO.onclick=()=>{mode="over";tO.classList.add("on");tC.classList.remove("on");build();
     roT.textContent="— OVERSMACK —";roD.textContent="Steps select slices; three palette rows pin effects; bottom row is transport. Play passes through to Move.";};
   tC.onclick=()=>{mode="chain";tC.classList.add("on");tO.classList.remove("on");build();
-    roT.textContent="— CHAIN UI —";roD.textContent="Loads when you open Smack's component editor in a Signal Chain slot. Steps mute slices; pads 68–76 are the controls; palette editing lives on oversmack and in the web editor.";};
+    roT.textContent="— CHAIN UI —";roD.textContent="Loads when you open Smack's component editor in a Signal Chain slot. Heads-up: in a slot, Move's firmware still owns the pad grid (pads keep playing notes), so on hardware the chain editor is a knobs + screen + jog surface — Shift+jog-click swaps the module, and grid editing lives in oversmack or the web editor.";};
   document.querySelectorAll(".hwbtn").forEach(b=>{b.onclick=()=>{
     document.querySelectorAll(".hwbtn").forEach(x=>x.classList.remove("sel"));b.classList.add("sel");
     roT.textContent=b.dataset.t;roD.textContent=b.dataset.d;};});
