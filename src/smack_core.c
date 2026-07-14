@@ -149,7 +149,8 @@ typedef struct {
 struct smack {
     const host_api_v1_t *host;
 
-    /* Ring buffer — always recording input except while LOOPING. */
+    /* Ring buffer — records continuously until its write head approaches
+     * the active loop region, including while transport is paused. */
     int16_t *ring;               /* SMACK_RING_FRAMES * 2 samples */
     uint32_t ring_w;             /* write index, frames */
     uint64_t written_total;      /* frames ever written */
@@ -170,6 +171,7 @@ struct smack {
     uint32_t loop_len;           /* frames */
     double   play_pos;           /* 0 .. loop_len */
     uint32_t rec_remaining;      /* frames left while RECORDING */
+    uint32_t rec_length;         /* quantum fixed when recording begins */
     uint32_t rec_start;          /* ring index where recording began */
     int      arm_start_flag;     /* set by tick handler: begin record next block */
 
@@ -301,8 +303,17 @@ static double frames_per_halfstep(smack_t *s) { return frames_per_tick_now(s) * 
 
 /* Global frame of the most recent half-step boundary. */
 static uint64_t last_boundary_global(smack_t *s) {
-    if (clock_governs(s)) return s->last_halfstep_global;
+    if (s->clock_running) return s->last_halfstep_global;
     double fph = frames_per_halfstep(s);
+    if (s->clock_seen) {
+        /* MIDI Stop freezes incoming phase, not time. Continue the remembered
+         * grid from its last real boundary so retro capture still ends near
+         * "now" while retaining the clock's tempo and phase anchor. */
+        uint64_t anchor = s->last_halfstep_global;
+        if (s->global_frames <= anchor) return anchor;
+        double elapsed = (double)(s->global_frames - anchor);
+        return anchor + (uint64_t)(floor(elapsed / fph) * fph);
+    }
     return (uint64_t)(floor((double)s->global_frames / fph) * fph);
 }
 
@@ -476,8 +487,7 @@ static uint32_t quantum_frames(smack_t *s) {
 }
 
 /* Retroactive grab: the last loop-length of audio ending at the most recent
- * half-step boundary becomes the loop. Uses the written-frame timeline, so a
- * grab while LOOPING re-slices the frozen history (documented limitation). */
+ * half-step boundary becomes the loop. Uses the written-frame timeline. */
 static void capture_retro(smack_t *s) {
     uint32_t want = quantum_frames(s);
     uint64_t boundary = last_boundary_global(s);
@@ -503,13 +513,14 @@ static void capture_retro(smack_t *s) {
 
 static void begin_record(smack_t *s) {
     s->rec_start = s->ring_w;
-    s->rec_remaining = quantum_frames(s);
+    s->rec_length = quantum_frames(s);
+    s->rec_remaining = s->rec_length;
     s->state = SMACK_RECORDING;
 }
 
 static void finish_record(smack_t *s) {
     s->loop_start = s->rec_start;
-    s->loop_len   = quantum_frames(s);
+    s->loop_len   = s->rec_length;
     s->play_pos = 0.0;
     s->state = SMACK_LOOPING;
     roll_pattern(s);
@@ -1291,8 +1302,9 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
     if (f == SMACK_FX_CRUSH) {
         /* depth = bit destruction: fp2 0 subtle .. 100 pulverized */
         int sh = (fp2 >= 0) ? 1 + (fp2 * 8) / 101 : 5;
-        *l = (float)(((int)*l >> sh) << sh);
-        *r = (float)(((int)*r >> sh) << sh);
+        float step = (float)(1u << sh);
+        *l = floorf(*l / step) * step;
+        *r = floorf(*r / step) * step;
     }
 
     /* per-slice mix: blend the effected slice against the same source
@@ -1434,6 +1446,20 @@ static double pad_rate_frames(const smack_t *s) {
     return hsf * (double)pad_rate_hs[s->pad_rate_idx];
 }
 
+static void record_ring_frame(smack_t *s, int16_t l, int16_t r,
+                              uint64_t global_frame) {
+    if (s->state == SMACK_LOOPING) {
+        uint32_t gap = (s->loop_start + SMACK_RING_FRAMES - s->ring_w)
+                       % SMACK_RING_FRAMES;
+        if (gap <= 2048) return;
+    }
+    s->ring[s->ring_w * 2] = l;
+    s->ring[s->ring_w * 2 + 1] = r;
+    s->ring_w = (s->ring_w + 1) % SMACK_RING_FRAMES;
+    s->written_total++;
+    s->ring_last_global = global_frame;
+}
+
 void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
     if (!s) return;
 
@@ -1446,37 +1472,17 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
 
     for (int n = 0; n < frames; n++) {
         float inl = (float)in[n * 2], inr = (float)in[n * 2 + 1];
+        record_ring_frame(s, in[n * 2], in[n * 2 + 1],
+                          s->global_frames + (uint64_t)n);
 
         if (s->state != SMACK_LOOPING || s->transport_paused) {
             /* record + pass through */
-            s->ring[s->ring_w * 2]     = in[n * 2];
-            s->ring[s->ring_w * 2 + 1] = in[n * 2 + 1];
-            s->ring_w = (s->ring_w + 1) % SMACK_RING_FRAMES;
-            s->written_total++;
-            s->ring_last_global = s->global_frames + (uint64_t)n;
-
             if (s->state == SMACK_RECORDING && s->rec_remaining > 0) {
                 if (--s->rec_remaining == 0) finish_record(s);
             }
             out[n * 2]     = s->monitor ? clip16(inl) : 0;
             out[n * 2 + 1] = s->monitor ? clip16(inr) : 0;
         } else {
-            /* Keep the ring recording while the loop plays, so Capture
-             * re-grabs NEW audio instead of re-slicing frozen history.
-             * Safe until the write head would run into the playing loop
-             * region — then freeze (the original v1 behavior) rather than
-             * corrupt playback. 70 s ring minus the loop = the re-grab
-             * window; a fresh capture resets it. */
-            uint32_t gap = (s->loop_start + SMACK_RING_FRAMES - s->ring_w)
-                           % SMACK_RING_FRAMES;
-            if (gap > 2048) {
-                s->ring[s->ring_w * 2]     = in[n * 2];
-                s->ring[s->ring_w * 2 + 1] = in[n * 2 + 1];
-                s->ring_w = (s->ring_w + 1) % SMACK_RING_FRAMES;
-                s->written_total++;
-                s->ring_last_global = s->global_frames + (uint64_t)n;
-            }
-
             /* quantized A/B switch */
             if (s->ab_pending >= 0) {
                 int apply = 0;
@@ -1789,15 +1795,15 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         s->slice_res_idx = clampi(atoi(val), 0, SLICE_RES_COUNT - 1);
         if (s->state == SMACK_LOOPING) roll_pattern(s);
     } else if (!strcmp(key, "fx_density")) {
-        s->fx_density = (float)atof(val) / 100.0f;
+        s->fx_density = fminf(1.0f, fmaxf(0.0f, (float)atof(val) / 100.0f));
         if (s->state == SMACK_LOOPING) roll_pattern(s);
     } else if (!strcmp(key, "order_density")) {
-        s->order_density = (float)atof(val) / 100.0f;
+        s->order_density = fminf(1.0f, fmaxf(0.0f, (float)atof(val) / 100.0f));
         if (s->state == SMACK_LOOPING) roll_pattern(s);
     } else if (!strcmp(key, "pitch_range")) {
         s->pitch_range = clampi(atoi(val), 1, 24);
     } else if (!strcmp(key, "wet")) {
-        s->wet = (float)atof(val) / 100.0f;
+        s->wet = fminf(1.0f, fmaxf(0.0f, (float)atof(val) / 100.0f));
     } else if (!strcmp(key, "ab")) {
         int v = atoi(val) ? 1 : 0;
         if (s->state == SMACK_LOOPING && s->quantize_mode != 0) s->ab_pending = v;
