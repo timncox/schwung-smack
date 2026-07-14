@@ -568,6 +568,17 @@ int main(void) {
     {
         unsigned r0, r1;
         int on, tick, bpm;
+        smack_set_param(S, "rui_set", "wet:37");
+        smack_get_param(S, "wet", buf, sizeof(buf));
+        assert(atoi(buf) == 37);
+        smack_set_param(S, "rui_set", "rui_set:wet:0");
+        smack_get_param(S, "wet", buf, sizeof(buf));
+        assert(atoi(buf) == 37);
+        smack_set_param(S, "rui_set", "punch_fx:6:5:80:40");
+        smack_get_param(S, "punch_fx", buf, sizeof(buf));
+        assert(atoi(buf) == 6);                  /* routed values may contain ':' */
+        smack_set_param(S, "rui_set", "punch_fx:-1");
+        smack_set_param(S, "rui_set", "wet:100");
         smack_get_param(S, "rui_poll", buf, sizeof(buf));
         assert(sscanf(buf, "%u:%d:%d:%d", &r0, &on, &tick, &bpm) == 4);
         assert(on == 1);                           /* looping */

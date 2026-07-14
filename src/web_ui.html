@@ -330,7 +330,10 @@ function locksOf(k) {            /* "i:f:p,..." -> Map(i -> {f,p}) */
   return m;
 }
 function send(key, val) {
-  if (PREFIX) schwungRemote.setParam(PREFIX + key, String(val));
+  if (!PREFIX) return;
+  const direct = key === "module";
+  schwungRemote.setParam(PREFIX + (direct ? key : "rui_set"),
+                         direct ? String(val) : key + ":" + String(val));
 }
 function trig(key) { send(key, "1"); }
 
@@ -355,20 +358,9 @@ schwungRemote.onParamChange(function (params) {
   }
   if (dirty) render();
 });
-/* schwung-manager <= v0.11.4 serves an older schwung-remote-api.js with no
- * resubscribe() and no server-side param poll: the editor still seeds and
- * edits fine, but device-side changes (pad re-rolls, playhead) only appear
- * after a page reload. Detect and say so instead of erroring 2.5x/s. */
-if (typeof schwungRemote.resubscribe === "function") {
-  setInterval(function () { schwungRemote.resubscribe(); }, 400);
-} else {
-  window.addEventListener("load", function () {
-    const n = document.createElement("span");
-    n.className = "note";
-    n.textContent = "⚠ schwung too old for live sync — editing works, but reload this page to see pad-side changes";
-    document.querySelector(".bar").appendChild(n);
-  });
-}
+/* Never poll resubscribe(): Schwung 0.11.4 remounts the custom iframe during
+ * full parameter refreshes. rui_play keeps transport feedback live; reopen the
+ * slot only when an explicit device-side state refresh is needed. */
 
 /* ---- rendering -------------------------------------------------------- */
 function setIf(id, prop, v) {    /* skip controls the user is touching */

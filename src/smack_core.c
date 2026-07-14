@@ -1789,6 +1789,17 @@ static void parse_locks(smack_lane_t *ln, const char *lk, int skip) {
 
 void smack_set_param(smack_t *s, const char *key, const char *val) {
     if (!s || !key || !val) return;
+    if (!strcmp(key, "rui_set")) {
+        const char *separator = strchr(val, ':');
+        size_t key_len = separator ? (size_t)(separator - val) : 0;
+        char routed_key[32];
+        if (!separator || key_len == 0 || key_len >= sizeof(routed_key)) return;
+        memcpy(routed_key, val, key_len);
+        routed_key[key_len] = '\0';
+        if (!strcmp(routed_key, "rui_set")) return;
+        smack_set_param(s, routed_key, separator + 1);
+        return;
+    }
     if (!strcmp(key, "loop_len")) {
         s->loop_len_idx = clampi(atoi(val), 0, LOOP_LEN_COUNT - 1);
     } else if (!strcmp(key, "slice_res")) {
