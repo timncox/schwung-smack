@@ -111,12 +111,11 @@ target any loaded FX param — e.g. LFO on Smack's fx_density/order_density.
    audio with no code changes; verify by selecting USB as Move's input
    and capturing in smack-in/oversmack.
 1. End-to-end smoke test (clock arrival, capture alignment, audio quality).
-2. Hardware-verified 2026-07-15: Schwung 0.11.4 latches enum "trigger" knob
-   gestures and holds the "Triggered" overlay for about four seconds. Keep
-   Capture/Arm/Re-Roll/Clear/Detect BPM in hierarchy lists, not physical knob
-   mappings. The chain/overtake UIs provide momentary pads instead. The
-   chain UI's Shift page also uses stable Pad Play/Pad Rate values in its last
-   two positions rather than trigger actions.
+2. Schwung 0.11.4 latched enum "trigger" knobs and held the "Triggered"
+   overlay for about four seconds. The custom Schwung build dated 2026-07-15
+   adds short, self-clearing trigger feedback, so the Perform hierarchy maps
+   Capture/Arm/A-B/Re-Roll to knobs 1-4. Clear remains list-only to avoid an
+   accidental loop wipe. The chain/overtake UIs still provide momentary pads.
 
 ## Help + accessibility (added v0.4.1)
 

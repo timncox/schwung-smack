@@ -22,14 +22,14 @@ EXPECTED_KNOBS = {
         "seed",
     ],
     "perform": [
+        "capture",
+        "arm",
         "ab",
+        "reroll",
         "fx_density",
         "order_density",
         "wet",
-        "pitch_range",
-        "quantize",
-        "pad_play",
-        "pad_rate",
+        "seed",
     ],
     "setup": [
         "wet",
@@ -82,10 +82,14 @@ def check_manifest(path: Path) -> None:
         for key in actual:
             assert key in definitions, f"{path}: unresolved knob param {key!r}"
             options = definitions[key].get("options")
-            assert options != ["idle", "trigger"], (
-                f"{path}: trigger param {key!r} must not be knob-mapped; "
-                "Schwung 0.11.4 latches trigger gestures"
-            )
+            if options == ["idle", "trigger"]:
+                assert level_name == "perform" and key in {"capture", "arm", "reroll"}, (
+                    f"{path}: unexpected trigger knob {level_name}.{key}"
+                )
+
+    assert levels["perform"]["knobs"][:4] == ["capture", "arm", "ab", "reroll"], (
+        f"{path}: performance actions must occupy knobs 1-4"
+    )
 
     for level_name, level in levels.items():
         for param in level.get("params", []):
