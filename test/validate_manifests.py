@@ -12,10 +12,10 @@ MANIFESTS = (
 )
 EXPECTED_KNOBS = {
     "root": [
-        "fx_density",
-        "order_density",
         "loop_len",
         "slice_res",
+        "fx_density",
+        "order_density",
         "wet",
         "pitch_range",
         "quantize",
