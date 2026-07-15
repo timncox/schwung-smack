@@ -94,6 +94,12 @@ def check_manifest(path: Path) -> None:
                     f"{path}: {level_name} references undefined param {param!r}"
                 )
 
+    seed = definitions["seed"]
+    assert seed["min"] == 1 and seed["max"] == 9999
+    assert seed.get("knob_acceleration") == "wide", (
+        f"{path}: Seed must opt into wide-range knob acceleration"
+    )
+
 
 def iter_help_lines(value):
     if isinstance(value, dict):
@@ -135,6 +141,9 @@ def check_chain_ui(path: Path, *, allow_sparse_shift: bool = False) -> None:
     else:
         assert shift == CHAIN_UI_SHIFT_KNOBS
     assert "trig: true" not in source, f"{path}: trigger actions must use pads/buttons"
+    assert "accelerateSeedDelta(delta)" in source, (
+        f"{path}: custom UI must accelerate Seed independently of host version"
+    )
 
 
 for manifest in MANIFESTS:

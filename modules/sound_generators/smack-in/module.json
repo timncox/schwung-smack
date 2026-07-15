@@ -240,6 +240,7 @@
               "type": "int",
               "min": 1,
               "max": 9999,
+              "knob_acceleration": "wide",
               "default": 4303
             },
             {

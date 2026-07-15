@@ -165,6 +165,26 @@ const KNOBS = [
 ];
 
 let knobValues = [50, 0, 4, 1, 100, 12, 1, 4303];
+let seedTurnAt = 0;
+let seedTurnDirection = 0;
+
+/* Seed spans 1..9999: slow turns stay exact, while fast turns accelerate
+ * 1 -> 10 -> 50 -> 250 seeds per tick. Reversing starts fine again. */
+function accelerateSeedDelta(delta) {
+    const now = Date.now();
+    const direction = delta > 0 ? 1 : -1;
+    const elapsed = seedTurnAt > 0 ? now - seedTurnAt : 9999;
+    let multiplier = 1;
+    if (direction === seedTurnDirection) {
+        if (elapsed <= 35) multiplier = 250;
+        else if (elapsed <= 90) multiplier = 50;
+        else if (elapsed <= 180) multiplier = 10;
+    }
+    seedTurnAt = now;
+    seedTurnDirection = direction;
+    return delta * multiplier;
+}
+
 let state = 0;          /* 0 idle, 1 armed, 2 rec, 3 looping */
 let ab = 1;
 let pattern = '';
@@ -432,6 +452,7 @@ function adjustKnob(i, delta) {
     const max = k.opts ? k.opts.length - 1 : k.max;
     const min = k.opts ? 0 : k.min;
     const step = k.opts ? 1 : k.step;
+    if (k.key === 'seed') delta = accelerateSeedDelta(delta);
     let v = Math.max(min, Math.min(max, knobValues[i] + delta * step));
     if (v === knobValues[i]) return;
     knobValues[i] = v;
