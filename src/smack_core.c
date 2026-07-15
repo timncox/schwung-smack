@@ -6,8 +6,8 @@
  *     a re-grab while looping re-slices the frozen pre-loop history.
  *   - Arm/record starts on a block boundary after the quantum tick, not
  *     sample-accurately inside the block (<= 2.9 ms early/late).
- *   - Retro grabs align to the last half-step boundary; bar-phase alignment
- *     for >= 1-bar grabs needs on-device verification of downbeat tracking.
+ *   - Retro grabs align to the last half-step boundary and chase the elapsed
+ *     grid phase when playback begins (block-accurate, not sample-stamped).
  *   - Varispeed reads use linear interpolation; no anti-alias filter.
  */
 #include <stdlib.h>
@@ -27,6 +27,11 @@ static const int slice_hs_table[] = { 1, 2, 4, 8 };
 /* Pad-play repeat rates, in half-steps (8 hs = 1 beat in 4/4). */
 static const int pad_rate_hs[] = { 2, 4, 8, 16, 32 }; /* 1/16 1/8 1/4 1/2 bar */
 #define PAD_RATE_COUNT 5
+
+/* A single MIDI-clock callback is quantized to the host's 128-frame render
+ * boundary. Regressing across a full bar removes that callback jitter instead
+ * of baking the most recent 896/1024-frame interval into every loop length. */
+#define CLOCK_EST_WINDOW 96
 
 /* Retrig decay per repeat (0.85^k), k clamped to 15. */
 static const float retrig_decay[16] = {
@@ -161,6 +166,9 @@ struct smack {
     double   frames_per_tick;    /* smoothed; 918.75 = 120 BPM */
     uint64_t last_tick_global;   /* global frame of previous 0xF8 */
     uint64_t last_halfstep_global; /* global frame of last half-step boundary */
+    uint64_t tick_history[CLOCK_EST_WINDOW];
+    uint16_t tick_history_count;
+    uint16_t tick_history_pos;   /* next write; oldest entry when full */
     uint32_t tick_total;         /* ticks since transport start */
     int      clock_running;
     int      clock_seen;
@@ -173,6 +181,9 @@ struct smack {
     uint32_t rec_remaining;      /* frames left while RECORDING */
     uint32_t rec_length;         /* quantum fixed when recording begins */
     uint32_t rec_start;          /* ring index where recording began */
+    uint32_t rec_clock_ticks;    /* grid length fixed when recording begins */
+    uint32_t loop_clock_ticks;   /* captured grid length (3 ticks/half-step) */
+    double   loop_frames_per_tick; /* source-domain rate at capture */
     int      arm_start_flag;     /* set by tick handler: begin record next block */
 
     /* Params */
@@ -300,6 +311,53 @@ static double frames_per_tick_now(smack_t *s) {
 }
 
 static double frames_per_halfstep(smack_t *s) { return frames_per_tick_now(s) * 3.0; }
+
+/* Add one block-stamped MIDI-clock observation. For the first few ticks the
+ * previous low-pass estimate remains useful; once enough observations exist,
+ * a least-squares slope rejects the +/- one-block timestamp staircase. */
+static void clock_estimator_push(smack_t *s, uint64_t frame) {
+    if (s->tick_history_count > 0 && frame > s->last_tick_global) {
+        double d = (double)(frame - s->last_tick_global);
+        if (d > 100.0 && d < 20000.0 && s->tick_history_count < 12)
+            s->frames_per_tick = 0.9 * s->frames_per_tick + 0.1 * d;
+    }
+    s->last_tick_global = frame;
+
+    s->tick_history[s->tick_history_pos] = frame;
+    s->tick_history_pos = (uint16_t)((s->tick_history_pos + 1) % CLOCK_EST_WINDOW);
+    if (s->tick_history_count < CLOCK_EST_WINDOW) s->tick_history_count++;
+
+    int n = (int)s->tick_history_count;
+    if (n < 12) return;
+    int first = ((int)s->tick_history_pos + CLOCK_EST_WINDOW - n) % CLOCK_EST_WINDOW;
+    uint64_t y0 = s->tick_history[first];
+    double sx = 0.0, sy = 0.0, sxx = 0.0, sxy = 0.0;
+    for (int i = 0; i < n; i++) {
+        double x = (double)i;
+        double y = (double)(s->tick_history[(first + i) % CLOCK_EST_WINDOW] - y0);
+        sx += x;
+        sy += y;
+        sxx += x * x;
+        sxy += x * y;
+    }
+    double den = (double)n * sxx - sx * sx;
+    if (den > 0.0) {
+        double slope = ((double)n * sxy - sx * sy) / den;
+        if (slope > 100.0 && slope < 20000.0) s->frames_per_tick = slope;
+    }
+}
+
+static double loop_playback_increment(const smack_t *s) {
+    if (!s->clock_running || s->loop_frames_per_tick <= 0.0 ||
+        s->frames_per_tick <= 0.0) return 1.0;
+    /* Varispeed the captured buffer by the small amount needed to retain its
+     * musical length as the robust clock estimate settles (and across later
+     * tempo changes). Linear interpolation already supports fractional heads. */
+    double inc = s->loop_frames_per_tick / s->frames_per_tick;
+    if (inc < 0.25) inc = 0.25;
+    if (inc > 4.0) inc = 4.0;
+    return inc;
+}
 
 /* Global frame of the most recent half-step boundary. */
 static uint64_t last_boundary_global(smack_t *s) {
@@ -490,7 +548,8 @@ static uint32_t quantum_frames(smack_t *s) {
  * half-step boundary becomes the loop. Uses the written-frame timeline. */
 static void capture_retro(smack_t *s) {
     uint32_t want = quantum_frames(s);
-    uint64_t boundary = last_boundary_global(s);
+    uint64_t grid_boundary = last_boundary_global(s);
+    uint64_t boundary = grid_boundary;
     if (boundary > s->ring_last_global) boundary = s->ring_last_global;
     uint64_t behind = s->ring_last_global - boundary; /* frames since boundary */
     if (behind > (uint64_t)SMACK_RING_FRAMES) behind = 0;
@@ -506,7 +565,15 @@ static void capture_retro(smack_t *s) {
     s->loop_len   = want;
     s->loop_start = (uint32_t)((s->ring_w + (uint64_t)SMACK_RING_FRAMES * 2
                                 - frames_ago_start) % SMACK_RING_FRAMES);
-    s->play_pos = 0.0;
+    s->loop_clock_ticks = (uint32_t)(loop_len_hs_table[s->loop_len_idx] * 3);
+    s->loop_frames_per_tick = (double)want / (double)s->loop_clock_ticks;
+    /* Capture may be pressed between grid boundaries. Starting at zero here
+     * makes the loop late by that elapsed fraction (up to one half-step).
+     * Chase the current phase so the captured buffer and Move keep lining up. */
+    uint64_t elapsed = s->global_frames > grid_boundary
+                     ? s->global_frames - grid_boundary : 0;
+    s->play_pos = fmod((double)elapsed * loop_playback_increment(s),
+                       (double)s->loop_len);
     s->state = SMACK_LOOPING;
     roll_pattern(s);
 }
@@ -514,6 +581,7 @@ static void capture_retro(smack_t *s) {
 static void begin_record(smack_t *s) {
     s->rec_start = s->ring_w;
     s->rec_length = quantum_frames(s);
+    s->rec_clock_ticks = (uint32_t)(loop_len_hs_table[s->loop_len_idx] * 3);
     s->rec_remaining = s->rec_length;
     s->state = SMACK_RECORDING;
 }
@@ -521,6 +589,9 @@ static void begin_record(smack_t *s) {
 static void finish_record(smack_t *s) {
     s->loop_start = s->rec_start;
     s->loop_len   = s->rec_length;
+    s->loop_clock_ticks = s->rec_clock_ticks;
+    s->loop_frames_per_tick = s->loop_clock_ticks > 0
+        ? (double)s->loop_len / (double)s->loop_clock_ticks : 0.0;
     s->play_pos = 0.0;
     s->state = SMACK_LOOPING;
     roll_pattern(s);
@@ -664,6 +735,8 @@ void smack_on_midi(smack_t *s, const uint8_t *msg, int len, int source) {
         s->tick_total = 0;
         s->clock_running = 1;
         s->last_halfstep_global = s->global_frames;
+        s->tick_history_count = 0;
+        s->tick_history_pos = 0;
         s->pad_held = 0;          /* stuck-note safety across transport */
         s->trig_active = 0;
         if (s->transport_paused) { /* resume the loop from its top */
@@ -677,12 +750,7 @@ void smack_on_midi(smack_t *s, const uint8_t *msg, int len, int source) {
             s->transport_paused = 1;
         break;
     case 0xF8: {
-        if (s->clock_seen && s->global_frames > s->last_tick_global) {
-            double d = (double)(s->global_frames - s->last_tick_global);
-            if (d > 100.0 && d < 20000.0)
-                s->frames_per_tick = 0.9 * s->frames_per_tick + 0.1 * d;
-        }
-        s->last_tick_global = s->global_frames;
+        clock_estimator_push(s, s->global_frames);
         s->clock_seen = 1;
         s->tick_total++;
         if (s->tick_total % 3 == 0) { /* half-step boundary */
@@ -1470,6 +1538,8 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
         begin_record(s);
     }
 
+    double play_inc = loop_playback_increment(s);
+
     for (int n = 0; n < frames; n++) {
         float inl = (float)in[n * 2], inr = (float)in[n * 2 + 1];
         record_ring_frame(s, in[n * 2], in[n * 2 + 1],
@@ -1574,8 +1644,9 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
                 out[n * 2 + 1] = clip16(rr * s->wet + inr * dry);
             }
 
-            s->play_pos += 1.0;
-            if (s->play_pos >= (double)s->loop_len) s->play_pos = 0.0;
+            s->play_pos += play_inc;
+            if (s->play_pos >= (double)s->loop_len)
+                s->play_pos = fmod(s->play_pos, (double)s->loop_len);
             if (s->trig_active) s->trig_pos += 1.0;
         }
     }
@@ -2084,6 +2155,8 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
         }
         return snprintf(buf, (size_t)buf_len, "%d", ps);
     }
+    if (!strcmp(key, "play_frame")) /* read-only timing diagnostic */
+        return snprintf(buf, (size_t)buf_len, "%.0f", floor(s->play_pos));
     if (!strcmp(key, "pattern") || !strcmp(key, "pattern_r")) {
         /* fx codes per slice for the step-LED UIs: e.g. "0300102..." */
         const smack_lane_t *ln = &s->lane[key[7] ? 1 : 0];

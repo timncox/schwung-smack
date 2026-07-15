@@ -23,6 +23,18 @@ static float fake_bpm(void) { return 120.0f; }
 static smack_t *S;
 static double next_tick = 0.0;
 static uint64_t frames_done = 0;
+static uint32_t sim_tick_total = 0;
+static uint64_t sim_last_halfstep = 0;
+
+static void send_due_ticks(void) {
+    while (next_tick <= (double)frames_done) {
+        uint8_t tick = 0xF8;
+        smack_on_midi(S, &tick, 1, 3);
+        sim_tick_total++;
+        if (sim_tick_total % 3 == 0) sim_last_halfstep = frames_done;
+        next_tick += FPT;
+    }
+}
 
 /* l_on/r_on: which input channels carry the test saw (dual-mono tests
  * feed one side only) */
@@ -31,11 +43,7 @@ static void run_blocks_lr(int nblocks, int16_t *last_out, int l_on, int r_on) {
     int16_t in[BLK * 2], out[BLK * 2];
     for (int b = 0; b < nblocks; b++) {
         /* clock ticks due before this block */
-        while (next_tick <= (double)frames_done) {
-            uint8_t tick = 0xF8;
-            smack_on_midi(S, &tick, 1, 3);
-            next_tick += FPT;
-        }
+        send_due_ticks();
         for (int i = 0; i < BLK; i++) {
             phase += 220.0 / 44100.0;
             if (phase >= 1.0) phase -= 1.0;
@@ -69,11 +77,7 @@ static void run_blocks_beat(int nblocks, double bpm) {
     const double period = 60.0 / bpm * 44100.0;
     int16_t in[BLK * 2], out[BLK * 2];
     for (int b = 0; b < nblocks; b++) {
-        while (next_tick <= (double)frames_done) {
-            uint8_t tick = 0xF8;
-            smack_on_midi(S, &tick, 1, 3);
-            next_tick += FPT;
-        }
+        send_due_ticks();
         for (int i = 0; i < BLK; i++) {
             phase += 220.0 / 44100.0;
             if (phase >= 1.0) phase -= 1.0;
@@ -105,6 +109,63 @@ static void reset_sim_instance(const host_api_v1_t *host) {
     assert(S);
     next_tick = 0.0;
     frames_done = 0;
+    sim_tick_total = 0;
+    sim_last_halfstep = 0;
+}
+
+static int get_int_param(const char *key) {
+    char buf[64];
+    assert(smack_get_param(S, key, buf, sizeof(buf)) >= 0);
+    return atoi(buf);
+}
+
+static void test_retro_capture_phase_chase(const host_api_v1_t *host) {
+    reset_sim_instance(host);
+    uint8_t start = 0xFA;
+    smack_on_midi(S, &start, 1, 3);
+    smack_set_param(S, "loop_len", "0");
+    run_blocks(100, NULL); /* enough history for a complete 1/16 grab */
+
+    uint64_t elapsed = 0;
+    for (int i = 0; i < 100; i++) {
+        run_blocks(1, NULL);
+        elapsed = frames_done - sim_last_halfstep;
+        if (elapsed > 512 && elapsed < 2000) break;
+    }
+    assert(elapsed > 512 && elapsed < 2000);
+
+    smack_set_param(S, "capture", "1");
+    int loop_frames = get_int_param("loop_frames");
+    int play_frame = get_int_param("play_frame");
+    int expected = (int)(elapsed % (uint64_t)loop_frames);
+    assert(abs(play_frame - expected) <= 2);
+
+    smack_destroy(S);
+    printf("ok: retro capture chases current clock phase\n");
+}
+
+static void test_clock_quantization_does_not_accumulate(const host_api_v1_t *host) {
+    reset_sim_instance(host);
+    uint8_t start = 0xFA;
+    smack_on_midi(S, &start, 1, 3);
+    run_blocks(1400, NULL); /* two bars: fill the 96-tick regression window */
+    smack_set_param(S, "loop_len", "4"); /* one bar */
+    smack_set_param(S, "capture", "1");
+
+    int loop_frames = get_int_param("loop_frames");
+    assert(abs(loop_frames - 88200) <= 8);
+    uint32_t anchor_tick = sim_tick_total - sim_tick_total % 3;
+    uint32_t target_tick = anchor_tick + 32u * 96u;
+    while (sim_tick_total < target_tick) run_blocks(1, NULL);
+
+    int play_frame = get_int_param("play_frame");
+    int from_block_start = abs(play_frame - BLK);
+    if (from_block_start > loop_frames / 2)
+        from_block_start = loop_frames - from_block_start;
+    assert(from_block_start <= 64);
+
+    smack_destroy(S);
+    printf("ok: MIDI block quantization does not accumulate loop drift\n");
 }
 
 static void test_fixed_record_quantum(const host_api_v1_t *host) {
@@ -177,15 +238,17 @@ static void test_paused_loop_ring_guard(const host_api_v1_t *host) {
     run_constant_blocks(25000, 10000, NULL);   /* fill the 70-second ring */
     smack_set_param(S, "capture", "1");
 
-    int16_t before[BLK * 2], after[BLK * 2];
-    run_constant_blocks(1, 0, before);
-    assert(energy(before) > 0);
+    int16_t after[BLK * 2];
+    run_constant_blocks(1, 0, NULL);
     uint8_t stop = 0xFC, start = 0xFA;
     smack_on_midi(S, &stop, 1, 3);             /* retained loop, paused */
     run_constant_blocks(1, 0, NULL);           /* must not overwrite its top */
     smack_on_midi(S, &start, 1, 3);            /* resumes from loop top */
     run_constant_blocks(1, 0, after);
-    assert(memcmp(before, after, sizeof(before)) == 0);
+    for (int i = SMACK_EDGE_FADE; i < BLK; i++) {
+        assert(abs((int)after[i * 2] - 10000) <= 1);
+        assert(abs((int)after[i * 2 + 1] - 10000) <= 1);
+    }
 
     smack_destroy(S);
     printf("ok: paused-loop ring overwrite guard\n");
@@ -202,6 +265,8 @@ int main(void) {
     test_fixed_record_quantum(&host);
     test_stopped_clock_capture_phase(&host);
     test_paused_loop_ring_guard(&host);
+    test_retro_capture_phase_chase(&host);
+    test_clock_quantization_does_not_accumulate(&host);
 
     reset_sim_instance(&host);
 

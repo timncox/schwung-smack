@@ -67,7 +67,11 @@ Schwung = charlesvestal/schwung, the Shadow-UI sidecar framework for the Move
 
 4/4, 16th-note steps, MIDI clock 24 ppqn (6 ticks/step, 96/bar) arriving via
 `on_midi` (source 3 = host). Free-run fallback derives phase from
-`host->get_bpm()`. Retro capture aligns to the last half-step boundary.
+`host->get_bpm()`. Retro capture aligns its buffer to the last half-step
+boundary, then starts at the elapsed grid phase instead of restarting late at
+frame zero. MIDI-clock tempo uses a 96-tick regression window to remove the
+host's 128-frame callback quantization; playback varispeeds by the residual
+capture/current-clock ratio so the error cannot accumulate over long loops.
 
 ## v1 limitations (deliberate, revisit)
 
