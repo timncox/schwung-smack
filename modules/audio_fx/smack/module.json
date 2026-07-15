@@ -67,6 +67,10 @@
               "unit": "%",
               "display_format": "%.0f"
             },
+            "wet",
+            "pitch_range",
+            "quantize",
+            "seed",
             {
               "level": "perform",
               "name": "Perform"
@@ -77,10 +81,14 @@
             }
           ],
           "knobs": [
+            "fx_density",
+            "order_density",
             "loop_len",
             "slice_res",
-            "fx_density",
-            "order_density"
+            "wet",
+            "pitch_range",
+            "quantize",
+            "seed"
           ]
         },
         "perform": {
@@ -145,13 +153,24 @@
                 "idle",
                 "trigger"
               ]
-            }
+            },
+            "fx_density",
+            "order_density",
+            "wet",
+            "pitch_range",
+            "quantize",
+            "pad_play",
+            "pad_rate"
           ],
           "knobs": [
-            "capture",
             "ab",
-            "reroll",
-            "clear"
+            "fx_density",
+            "order_density",
+            "wet",
+            "pitch_range",
+            "quantize",
+            "pad_play",
+            "pad_rate"
           ]
         },
         "setup": {
@@ -260,7 +279,11 @@
             "wet",
             "pitch_range",
             "quantize",
-            "seed"
+            "seed",
+            "transport",
+            "channel_mode",
+            "pan_l",
+            "pan_r"
           ]
         }
       }

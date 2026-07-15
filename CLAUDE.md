@@ -107,8 +107,10 @@ target any loaded FX param — e.g. LFO on Smack's fx_density/order_density.
    audio with no code changes; verify by selecting USB as Move's input
    and capturing in smack-in/oversmack.
 1. End-to-end smoke test (clock arrival, capture alignment, audio quality).
-2. Enum "trigger" params (Capture/Arm/Re-Roll/Clear as knob enums) UX — the
-   real answer is a ui_chain.js with a punch pad + step-LED pattern display.
+2. Hardware-verified 2026-07-15: Schwung 0.11.4 latches enum "trigger" knob
+   gestures and holds the "Triggered" overlay for about four seconds. Keep
+   Capture/Arm/Re-Roll/Clear/Detect BPM in hierarchy lists, not physical knob
+   mappings. The chain/overtake UIs provide momentary pads instead.
 
 ## Help + accessibility (added v0.4.1)
 
