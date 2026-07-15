@@ -12,10 +12,10 @@ MANIFESTS = (
 )
 EXPECTED_KNOBS = {
     "root": [
-        "loop_len",
-        "slice_res",
         "fx_density",
         "order_density",
+        "loop_len",
+        "slice_res",
         "wet",
         "pitch_range",
         "quantize",
@@ -42,6 +42,27 @@ EXPECTED_KNOBS = {
         "pan_r",
     ],
 }
+
+CHAIN_UI_PRIMARY_KNOBS = [
+    "fx_density",
+    "order_density",
+    "loop_len",
+    "slice_res",
+    "wet",
+    "pitch_range",
+    "quantize",
+    "seed",
+]
+CHAIN_UI_SHIFT_KNOBS = [
+    "pan_l",
+    "pan_r",
+    "channel_mode",
+    "transport",
+    "bpm_override",
+    "monitor",
+    "pad_play",
+    "pad_rate",
+]
 
 
 def check_manifest(path: Path) -> None:
@@ -92,9 +113,35 @@ def check_help(path: Path) -> None:
     assert not too_long, f"{path}: help lines exceed 20 chars: {too_long!r}"
 
 
+def extract_js_knob_keys(source: str, const_name: str) -> list[str]:
+    marker = f"const {const_name} = ["
+    start = source.index(marker) + len(marker)
+    end = source.index("\n];", start)
+    block = source[start:end]
+    keys = []
+    for line in block.splitlines():
+        token = "key: '"
+        if token in line:
+            keys.append(line.split(token, 1)[1].split("'", 1)[0])
+    return keys
+
+
+def check_chain_ui(path: Path, *, allow_sparse_shift: bool = False) -> None:
+    source = path.read_text()
+    assert extract_js_knob_keys(source, "KNOBS") == CHAIN_UI_PRIMARY_KNOBS
+    shift = extract_js_knob_keys(source, "KNOBS2")
+    if allow_sparse_shift:
+        assert shift == CHAIN_UI_SHIFT_KNOBS[:6]
+    else:
+        assert shift == CHAIN_UI_SHIFT_KNOBS
+    assert "trig: true" not in source, f"{path}: trigger actions must use pads/buttons"
+
+
 for manifest in MANIFESTS:
     check_manifest(manifest)
 
+check_chain_ui(ROOT / "src/ui_chain.js")
+check_chain_ui(ROOT / "src/ui_overtake.js", allow_sparse_shift=True)
 check_help(ROOT / "src/help.json")
 check_help(ROOT / "src/help_smack_in.json")
 print("manifest UI validation passed")

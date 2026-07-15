@@ -175,18 +175,17 @@ const KNOBS2 = [
       speech: 'BPM override', isBpm: true },
     { key: 'monitor',      name: 'Mon',  opts: ['Mute', 'On'],
       speech: 'Monitoring', speechOpts: ['muted', 'on'] },
-    /* trigger knobs: pads + the Capture button never reach a slot
-     * editor (firmware keeps them), so Arm/Re-Roll fire on a clockwise
-     * twist here — the master-FX trigger-enum idiom */
-    { key: 'arm',    name: 'Arm!',  trig: true, speech: 'Arm' },
-    { key: 'reroll', name: 'Roll!', trig: true, speech: 'Re-roll' }
+    { key: 'pad_play', name: 'Pads', opts: ['Off', 'On'],
+      speech: 'Pad play', speechOpts: ['off', 'on'] },
+    { key: 'pad_rate', name: 'Rate', opts: ['1/16', '1/8', '1/4', '1/2', '1br'],
+      speech: 'Pad rate',
+      speechOpts: ['sixteenth', 'eighth', 'quarter', 'half', '1 bar'] }
 ];
 let knob2Values = [0, 100, 0, 0, 0, 1, 0, 0];
 
 function knob2Display(i) {
     const k = KNOBS2[i];
     if (!k) return '';
-    if (k.trig) return '>fire';
     if (k.isBpm) return knob2Values[i] > 0 ? `${Math.round(knob2Values[i])}` : 'Off';
     if (k.opts) {
         const idx = Math.max(0, Math.min(k.opts.length - 1, Math.round(knob2Values[i])));
@@ -206,13 +205,6 @@ function fetchKnob2() {
 function adjustKnob2(i, delta) {
     const k = KNOBS2[i];
     if (!k) return;
-    if (k.trig) {                    /* fire on a clockwise twist only */
-        if (delta <= 0) return;
-        host_module_set_param(k.key, '1');
-        announce(k.speech);
-        refreshSoon();
-        return;
-    }
     let v;
     if (k.isBpm) {
         /* 49 and below = Off (project tempo); 50-200 = override */

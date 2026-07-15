@@ -85,10 +85,10 @@
             }
           ],
           "knobs": [
-            "loop_len",
-            "slice_res",
             "fx_density",
             "order_density",
+            "loop_len",
+            "slice_res",
             "wet",
             "pitch_range",
             "quantize",

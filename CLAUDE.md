@@ -1,6 +1,6 @@
 ---
 status: active
-last_touched: 2026-07-11
+last_touched: 2026-07-15
 ---
 
 # Smack
@@ -110,7 +110,9 @@ target any loaded FX param — e.g. LFO on Smack's fx_density/order_density.
 2. Hardware-verified 2026-07-15: Schwung 0.11.4 latches enum "trigger" knob
    gestures and holds the "Triggered" overlay for about four seconds. Keep
    Capture/Arm/Re-Roll/Clear/Detect BPM in hierarchy lists, not physical knob
-   mappings. The chain/overtake UIs provide momentary pads instead.
+   mappings. The chain/overtake UIs provide momentary pads instead. The
+   chain UI's Shift page also uses stable Pad Play/Pad Rate values in its last
+   two positions rather than trigger actions.
 
 ## Help + accessibility (added v0.4.1)
 
