@@ -115,7 +115,8 @@ target any loaded FX param — e.g. LFO on Smack's fx_density/order_density.
    overlay for about four seconds. The custom Schwung build dated 2026-07-15
    adds short, self-clearing trigger feedback, so the Perform hierarchy maps
    Capture/Arm/A-B/Re-Roll to knobs 1-4. Clear remains list-only to avoid an
-   accidental loop wipe. The chain/overtake UIs still provide momentary pads.
+   accidental loop wipe. Clockwise fires; counter-clockwise explicitly returns
+   idle and re-arms the gesture. The chain/overtake UIs still provide pads.
 
 ## Help + accessibility (added v0.4.1)
 
