@@ -168,6 +168,64 @@ static void test_clock_quantization_does_not_accumulate(const host_api_v1_t *hos
     printf("ok: MIDI block quantization does not accumulate loop drift\n");
 }
 
+static int resized_play_frame(int old_len, int old_play, int new_len) {
+    int from_end = old_len - old_play;
+    int remainder = from_end % new_len;
+    return remainder == 0 ? 0 : new_len - remainder;
+}
+
+static void test_live_loop_geometry(const host_api_v1_t *host) {
+    reset_sim_instance(host);
+    uint8_t start = 0xFA;
+    smack_on_midi(S, &start, 1, 3);
+    run_blocks(2800, NULL);                    /* four bars of retained history */
+    smack_set_param(S, "loop_len", "4");      /* capture one bar */
+    smack_set_param(S, "slice_res", "1");     /* one step */
+    smack_set_param(S, "capture", "1");
+
+    int one_bar = get_int_param("loop_frames");
+    assert(abs(one_bar - 88200) <= 8);
+    assert(get_int_param("n_slices") == 16);
+    int play_before = get_int_param("play_frame");
+
+    /* Re-slicing is immediate and leaves the audio window/playhead intact. */
+    smack_set_param(S, "slice_res", "0");      /* half-step slices */
+    assert(get_int_param("loop_frames") == one_bar);
+    assert(get_int_param("play_frame") == play_before);
+    assert(get_int_param("n_slices") == 32);
+    smack_set_param(S, "slice_res", "3");      /* four-step slices */
+    assert(get_int_param("n_slices") == 4);
+
+    /* Shorten around the fixed captured endpoint and preserve grid phase. */
+    int old_play = get_int_param("play_frame");
+    smack_set_param(S, "loop_len", "3");       /* half bar */
+    int half_bar = get_int_param("loop_frames");
+    assert(abs(half_bar - 44100) <= 8);
+    assert(get_int_param("n_slices") == 2);
+    assert(abs(get_int_param("play_frame")
+               - resized_play_frame(one_bar, old_play, half_bar)) <= 2);
+
+    /* Lengthening reveals older retained audio without requiring recapture. */
+    old_play = get_int_param("play_frame");
+    smack_set_param(S, "loop_len", "5");       /* two bars */
+    int two_bars = get_int_param("loop_frames");
+    assert(abs(two_bars - 176400) <= 16);
+    assert(get_int_param("n_slices") == 8);
+    assert(abs(get_int_param("play_frame")
+               - resized_play_frame(half_bar, old_play, two_bars)) <= 2);
+
+    smack_set_param(S, "monitor", "0");
+    smack_set_param(S, "wet", "100");
+    smack_set_param(S, "quantize", "0");
+    smack_set_param(S, "ab", "0");
+    int16_t out[BLK * 2];
+    run_blocks(5, out);
+    assert(energy(out) > 0);                    /* active loop still sounds */
+
+    smack_destroy(S);
+    printf("ok: captured loop length and slice resolution update live\n");
+}
+
 static void test_fixed_record_quantum(const host_api_v1_t *host) {
     reset_sim_instance(host);
     smack_set_param(S, "loop_len", "0");       /* one 16th at 120 = 5512 */
@@ -267,6 +325,7 @@ int main(void) {
     test_paused_loop_ring_guard(&host);
     test_retro_capture_phase_chase(&host);
     test_clock_quantization_does_not_accumulate(&host);
+    test_live_loop_geometry(&host);
 
     reset_sim_instance(&host);
 

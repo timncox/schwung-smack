@@ -37,7 +37,13 @@
         "5. Re-Roll for a",
         " new random",
         " pattern; edits",
-        " stay locked."
+        " stay locked.",
+        "",
+        "After capture:",
+        "Loop Len changes the",
+        "playing loop now.",
+        "Slice Res re-dices",
+        "the same audio now."
       ]
     },
     {

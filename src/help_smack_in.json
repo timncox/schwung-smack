@@ -45,7 +45,13 @@
     "Recording starts on",
     "the next step and",
     "stops after the",
-    "loop length."
+    "loop length.",
+    "",
+    "After capture:",
+    "Loop Len changes the",
+    "playing loop now.",
+    "Slice Res re-dices",
+    "the same audio now."
    ]
   },
   {

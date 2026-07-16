@@ -177,6 +177,8 @@ struct smack {
     smack_state_t state;
     uint32_t loop_start;         /* ring frame index */
     uint32_t loop_len;           /* frames */
+    uint32_t loop_history_start; /* earliest retained frame before loop end */
+    uint32_t loop_available;     /* valid retained frames ending at loop end */
     double   play_pos;           /* 0 .. loop_len */
     uint32_t rec_remaining;      /* frames left while RECORDING */
     uint32_t rec_length;         /* quantum fixed when recording begins */
@@ -447,7 +449,11 @@ static void roll_lane(smack_t *s, smack_lane_t *ln) {
 }
 
 static void roll_pattern(smack_t *s) {
-    int loop_hs  = loop_len_hs_table[s->loop_len_idx];
+    /* Once audio exists, its captured/resized clock span is authoritative.
+     * This also keeps a take fixed if Loop Length is edited while recording. */
+    int loop_hs  = (s->state == SMACK_LOOPING && s->loop_clock_ticks >= 3)
+                 ? (int)(s->loop_clock_ticks / 3)
+                 : loop_len_hs_table[s->loop_len_idx];
     int slice_hs = slice_hs_table[s->slice_res_idx];
     int n = loop_hs / slice_hs;
     if (n < 1) n = 1;
@@ -544,6 +550,28 @@ static uint32_t quantum_frames(smack_t *s) {
     return (uint32_t)f;
 }
 
+/* Retain valid frames preceding a captured endpoint, up to the longest loop
+ * setting. Live Loop Length edits move the window start around this fixed end,
+ * while ring recording stops before overwriting a later lengthening target. */
+static void retain_loop_history(smack_t *s, uint32_t loop_end, uint64_t available) {
+    if (available > (uint64_t)SMACK_RING_FRAMES) available = SMACK_RING_FRAMES;
+    /* Keep enough history to reach the longest selectable loop, not the
+     * entire 70-second ring. The remaining space must stay writable so a
+     * later Capture can still grab newly played audio while this loop runs. */
+    double source_frames_per_tick = s->loop_frames_per_tick > 0.0
+                                  ? s->loop_frames_per_tick
+                                  : frames_per_tick_now(s);
+    double max_wanted = source_frames_per_tick
+                      * (double)(loop_len_hs_table[LOOP_LEN_COUNT - 1] * 3);
+    if (max_wanted > (double)SMACK_RING_FRAMES) max_wanted = SMACK_RING_FRAMES;
+    uint64_t max_resize = (uint64_t)(max_wanted + 0.5);
+    if (available > max_resize) available = max_resize;
+    if (available < s->loop_len) available = s->loop_len;
+    s->loop_available = (uint32_t)available;
+    s->loop_history_start = (loop_end + SMACK_RING_FRAMES - s->loop_available)
+                          % SMACK_RING_FRAMES;
+}
+
 /* Retroactive grab: the last loop-length of audio ending at the most recent
  * half-step boundary becomes the loop. Uses the written-frame timeline. */
 static void capture_retro(smack_t *s) {
@@ -575,6 +603,8 @@ static void capture_retro(smack_t *s) {
     s->play_pos = fmod((double)elapsed * loop_playback_increment(s),
                        (double)s->loop_len);
     s->state = SMACK_LOOPING;
+    retain_loop_history(s, (s->loop_start + s->loop_len) % SMACK_RING_FRAMES,
+                        avail - behind);
     roll_pattern(s);
 }
 
@@ -594,6 +624,12 @@ static void finish_record(smack_t *s) {
         ? (double)s->loop_len / (double)s->loop_clock_ticks : 0.0;
     s->play_pos = 0.0;
     s->state = SMACK_LOOPING;
+    {   /* Everything currently preceding the record end is valid history. */
+        uint64_t avail = s->written_total;
+        if (avail > (uint64_t)SMACK_RING_FRAMES) avail = SMACK_RING_FRAMES;
+        retain_loop_history(s, (s->loop_start + s->loop_len) % SMACK_RING_FRAMES,
+                            avail);
+    }
     roll_pattern(s);
 }
 
@@ -1517,7 +1553,9 @@ static double pad_rate_frames(const smack_t *s) {
 static void record_ring_frame(smack_t *s, int16_t l, int16_t r,
                               uint64_t global_frame) {
     if (s->state == SMACK_LOOPING) {
-        uint32_t gap = (s->loop_start + SMACK_RING_FRAMES - s->ring_w)
+        uint32_t protected_start = s->loop_available > 0
+                                 ? s->loop_history_start : s->loop_start;
+        uint32_t gap = (protected_start + SMACK_RING_FRAMES - s->ring_w)
                        % SMACK_RING_FRAMES;
         if (gap <= 2048) return;
     }
@@ -1658,6 +1696,44 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
 /* ------------------------------------------------------------------ */
 
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+/* Resize an already captured loop around its fixed endpoint. Lengthening
+ * reveals older retained ring history; shortening keeps the most-recent part.
+ * Playback stays at the same distance from that endpoint (modulo the new
+ * length), preserving the current sample whenever it remains in the window. */
+static void resize_live_loop(smack_t *s) {
+    if (!s || s->state != SMACK_LOOPING || s->loop_len == 0) return;
+
+    uint32_t old_len = s->loop_len;
+    uint32_t new_ticks = (uint32_t)(loop_len_hs_table[s->loop_len_idx] * 3);
+    double source_frames_per_tick = s->loop_frames_per_tick;
+    if (source_frames_per_tick <= 0.0 && s->loop_clock_ticks > 0)
+        source_frames_per_tick = (double)old_len / (double)s->loop_clock_ticks;
+    if (source_frames_per_tick <= 0.0) source_frames_per_tick = frames_per_tick_now(s);
+
+    double wanted = source_frames_per_tick * (double)new_ticks;
+    if (wanted < 256.0) wanted = 256.0;
+    if (wanted > (double)SMACK_RING_FRAMES) wanted = (double)SMACK_RING_FRAMES;
+    uint32_t new_len = (uint32_t)(wanted + 0.5);
+    uint32_t available = s->loop_available > 0 ? s->loop_available : old_len;
+    if (new_len > available) new_len = available;
+    if (new_len == 0) return;
+
+    uint32_t loop_end = (s->loop_start + old_len) % SMACK_RING_FRAMES;
+    double old_pos = fmod(s->play_pos, (double)old_len);
+    if (old_pos < 0.0) old_pos += old_len;
+    double from_end = (double)old_len - old_pos;
+    double remainder = fmod(from_end, (double)new_len);
+
+    s->loop_start = (loop_end + SMACK_RING_FRAMES - new_len) % SMACK_RING_FRAMES;
+    s->loop_len = new_len;
+    s->loop_clock_ticks = new_ticks;
+    s->loop_frames_per_tick = (double)new_len / (double)new_ticks;
+    s->play_pos = remainder < 0.000001 ? 0.0 : (double)new_len - remainder;
+    s->trig_active = 0;
+    s->trig_render = 0;
+    s->trig_pos = 0.0;
+}
 
 /* Pin (f >= 0: 0 = clean/mute, 1.. = specific effect) or unlock (f < 0) a
  * slice on one lane. Pinning a different effect gets that effect's
@@ -1872,7 +1948,14 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         return;
     }
     if (!strcmp(key, "loop_len")) {
-        s->loop_len_idx = clampi(atoi(val), 0, LOOP_LEN_COUNT - 1);
+        int next = clampi(atoi(val), 0, LOOP_LEN_COUNT - 1);
+        if (next != s->loop_len_idx) {
+            s->loop_len_idx = next;
+            if (s->state == SMACK_LOOPING) {
+                resize_live_loop(s);
+                roll_pattern(s);
+            }
+        }
     } else if (!strcmp(key, "slice_res")) {
         s->slice_res_idx = clampi(atoi(val), 0, SLICE_RES_COUNT - 1);
         if (s->state == SMACK_LOOPING) roll_pattern(s);
@@ -1965,6 +2048,7 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         if (!s->follow_transport) s->transport_paused = 0;
     } else if (!strcmp(key, "state")) {
         /* preset/autosave restore: settings + slice locks, never audio */
+        int old_loop_len_idx = s->loop_len_idx;
         s->loop_len_idx  = clampi(json_int(val, "loop_len", s->loop_len_idx), 0, LOOP_LEN_COUNT - 1);
         s->slice_res_idx = clampi(json_int(val, "slice_res", s->slice_res_idx), 0, SLICE_RES_COUNT - 1);
         s->fx_density    = (float)clampi(json_int(val, "fx_density", (int)(s->fx_density * 100.0f)), 0, 100) / 100.0f;
@@ -1990,7 +2074,10 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
             const char *pp = strstr(val, "\"pal\":\"");
             if (pp) parse_palette(s, pp + 7);
         }
-        if (s->state == SMACK_LOOPING) roll_pattern(s);
+        if (s->state == SMACK_LOOPING) {
+            if (s->loop_len_idx != old_loop_len_idx) resize_live_loop(s);
+            roll_pattern(s);
+        }
     } else if (!strcmp(key, "punch_fx")) {
         /* "f" = punch with the canonical param; "f:p[:p2[:m]]" = a variant
          * pad's punch with its full setting (pressure still bends p) */

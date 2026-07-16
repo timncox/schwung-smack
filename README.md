@@ -15,7 +15,10 @@ pad, knob, and effect, with an interactive surface map.
 - **Capture**: retroactive grab (loop the last N steps/bars you just played —
   also on the hardware Capture button) or arm-and-record. Lengths from
   1 step to 16 bars, clock-synced, with project-tempo free-run fallback.
-- **Slice**: grid slicing at 1/2-step to 4-step resolution.
+  After capture, Loop Length edits the playing window immediately: shortening
+  keeps its most recent audio and lengthening reveals retained earlier audio.
+- **Slice**: grid slicing at 1/2-step to 4-step resolution. Changing Slice Res
+  re-slices and re-rolls the active loop immediately without another capture.
 - **Pattern**: per-slice effects rolled at a set density, plus a separate
   slice-reorder density. Patterns are **seeded**: they repeat identically
   every loop pass until you re-roll, and the Seed knob browses patterns by

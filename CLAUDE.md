@@ -77,9 +77,10 @@ capture/current-clock ratio so the error cannot accumulate over long loops.
 
 - ~~Ring recording pauses while LOOPING~~ FIXED v0.9.0: the ring keeps
   recording during playback, so Capture re-grabs NEW audio. It only
-  freezes when the write head would run into the playing loop region
-  (70 s ring minus loop length = the re-grab window; each capture
-  resets it — only near-ring-filling loops ever hit the freeze).
+  freezes when the write head would run into the retained resize history.
+  Loop Length can therefore crop or expand an active capture around its fixed
+  endpoint in real time (up to the available history / 16-bar maximum), while
+  Slice Res re-slices and re-rolls the active window immediately.
 - Arm/record starts on a block boundary (≤2.9 ms off), not sample-accurate.
 - Bar-phase (downbeat) alignment for ≥1-bar grabs assumes 0xFA start resets
   the grid — VERIFY ON DEVICE.

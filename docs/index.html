@@ -438,8 +438,10 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
   audio the loop holds (1 step to 16 bars). <b>Res</b> is how finely that loop is
   diced for the pattern (one slice every ½, 1, 2, or 4 steps). Long loop +
   fine resolution = many small slices = busy glitch; short loop + coarse
-  resolution = a few big chunks. Changing Res re-slices the same audio —
-  it never changes what was captured.</div>
+  resolution = a few big chunks. Both controls are live after Capture: changing
+  <b>Len</b> immediately crops the playing window from its beginning, or extends
+  it backward into retained pre-capture audio; changing <b>Res</b> immediately
+  re-slices and re-rolls that same window. No recapture is needed.</div>
 </section>
 
 <!-- ============================ 05 WORKFLOW ============================ -->
