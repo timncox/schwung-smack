@@ -22,7 +22,7 @@
  *                         knob 1/2 = Pan L / Pan R); hardware Capture
  *                         button = retro grab
  *   Knobs 1-8             FX Density, Order, Loop Len, Slice Res,
- *                         Wet, Transport, A/B, Seed
+ *                         Wet, Re-Roll, A/B, Seed
  *   Play button           passed through to Move (transport + clock
  *                         keep working under this UI)
  *
@@ -155,8 +155,8 @@ const KNOBS = [
       speechOpts: ['half step', '1 step', '2 steps', '4 steps'] },
     { key: 'wet',           name: 'Wet',  min: 0, max: 100, step: 5,
       speech: 'Wet', unit: ' percent' },
-    { key: 'transport',     name: 'Trns', opts: ['Flw', 'Free'],
-      speech: 'Transport', speechOpts: ['follow', 'free'] },
+    { key: 'reroll',        name: 'Roll', opts: ['Idle', 'Fire'], trig: true,
+      speech: 'Re-Roll', speechOpts: ['idle', 'triggered'] },
     { key: 'ab',            name: 'A/B',  opts: ['A', 'B'],
       speech: 'A B', speechOpts: ['A clean', 'B pattern'] },
     { key: 'seed',          name: 'Seed', min: 1, max: 9999, step: 1,
@@ -166,6 +166,8 @@ const KNOBS = [
 let knobValues = [50, 0, 4, 1, 100, 0, 1, 4303];
 let seedTurnAt = 0;
 let seedTurnDirection = 0;
+let triggerTurnAt = 0;
+let triggerTurnLatched = false;
 
 /* Seed spans 1..9999: slow turns stay exact, while fast turns accelerate
  * 1 -> 10 -> 50 -> 250 seeds per tick. Reversing starts fine again. */
@@ -182,6 +184,25 @@ function accelerateSeedDelta(delta) {
     seedTurnAt = now;
     seedTurnDirection = direction;
     return delta * multiplier;
+}
+
+/* Clockwise fires one action per gesture; counter-clockwise explicitly sends
+ * idle and re-arms it. A pause also starts a fresh gesture. */
+function adjustDirectionalTrigger(i, k, delta) {
+    const now = Date.now();
+    if (!triggerTurnAt || now - triggerTurnAt > 700) triggerTurnLatched = false;
+    triggerTurnAt = now;
+    if (delta < 0) {
+        triggerTurnLatched = false;
+        host_module_set_param(k.key, 'idle');
+        announceParameter(k.speech, 'idle');
+    } else if (delta > 0 && !triggerTurnLatched) {
+        triggerTurnLatched = true;
+        host_module_set_param(k.key, 'trigger');
+        announceParameter(k.speech, 'triggered');
+    }
+    knobValues[i] = 0;
+    needsRedraw = true;
 }
 
 let state = 0;          /* 0 idle, 1 armed, 2 rec, 3 looping */
@@ -247,8 +268,9 @@ const KNOBS2 = [
       speech: 'Pan right lane' },
     { key: 'channel_mode', name: 'Chan', opts: ['St', 'Dual'],
       speech: 'Channels', speechOpts: ['stereo', 'dual mono'] },
-    { key: 'transport',    name: 'Trns', opts: ['Flw', 'Free'],
-      speech: 'Transport', speechOpts: ['follow', 'free'] },
+    { key: 'loop_len',     name: 'Len',  opts: ['1st', '2st', '1bt', '2bt', '1br', '2br', '4br', '8br', '16b'],
+      speech: 'Loop Length',
+      speechOpts: ['1 step', '2 steps', '1 beat', '2 beats', '1 bar', '2 bars', '4 bars', '8 bars', '16 bars'] },
     { key: 'bpm_override', name: 'BPM',  min: 49, max: 200, step: 1,
       speech: 'BPM override', isBpm: true },
     { key: 'monitor',      name: 'Mon',  opts: ['Mute', 'On'],
@@ -256,7 +278,7 @@ const KNOBS2 = [
     null,
     null
 ];
-let knob2Values = [0, 100, 0, 0, 0, 1, 0, 0];
+let knob2Values = [0, 100, 0, 4, 0, 1, 0, 0];
 
 function knob2Display(i) {
     const k = KNOBS2[i];
@@ -448,6 +470,10 @@ function knobSpeech(i) {
 
 function adjustKnob(i, delta) {
     const k = KNOBS[i];
+    if (k.trig) {
+        adjustDirectionalTrigger(i, k, delta);
+        return;
+    }
     const max = k.opts ? k.opts.length - 1 : k.max;
     const min = k.opts ? 0 : k.min;
     const step = k.opts ? 1 : k.step;

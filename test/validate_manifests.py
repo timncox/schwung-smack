@@ -17,7 +17,7 @@ EXPECTED_KNOBS = {
         "loop_len",
         "slice_res",
         "wet",
-        "transport",
+        "reroll",
         "ab",
         "seed",
     ],
@@ -33,10 +33,10 @@ EXPECTED_KNOBS = {
     ],
     "setup": [
         "wet",
-        "detect_bpm",
+        "loop_len",
         "pad_rate",
         "seed",
-        "transport",
+        "slice_res",
         "channel_mode",
         "pan_l",
         "pan_r",
@@ -49,7 +49,7 @@ CHAIN_UI_PRIMARY_KNOBS = [
     "loop_len",
     "slice_res",
     "wet",
-    "transport",
+    "reroll",
     "ab",
     "seed",
 ]
@@ -57,7 +57,7 @@ CHAIN_UI_SHIFT_KNOBS = [
     "pan_l",
     "pan_r",
     "channel_mode",
-    "transport",
+    "loop_len",
     "bpm_override",
     "monitor",
     "pad_play",
@@ -84,8 +84,8 @@ def check_manifest(path: Path) -> None:
             options = definitions[key].get("options")
             if options == ["idle", "trigger"]:
                 allowed_triggers = {
+                    "root": {"reroll"},
                     "perform": {"capture", "arm", "reroll"},
-                    "setup": {"detect_bpm"},
                 }
                 assert key in allowed_triggers.get(level_name, set()), (
                     f"{path}: unexpected trigger knob {level_name}.{key}"
@@ -99,6 +99,12 @@ def check_manifest(path: Path) -> None:
     )
     assert all("pitch_range" not in level.get("knobs", []) for level in levels.values()), (
         f"{path}: Pitch Range must remain list-only"
+    )
+    assert all("transport" not in level.get("knobs", []) for level in levels.values()), (
+        f"{path}: Transport must remain list-only"
+    )
+    assert all("detect_bpm" not in level.get("knobs", []) for level in levels.values()), (
+        f"{path}: Detect BPM must remain list-only"
     )
 
     for level_name, level in levels.items():
@@ -154,7 +160,10 @@ def check_chain_ui(path: Path, *, allow_sparse_shift: bool = False) -> None:
         assert shift == CHAIN_UI_SHIFT_KNOBS[:6]
     else:
         assert shift == CHAIN_UI_SHIFT_KNOBS
-    assert "trig: true" not in source, f"{path}: trigger actions must use pads/buttons"
+    assert source.count("trig: true") == 1, f"{path}: only Re-Roll may be a custom trigger knob"
+    assert "function adjustDirectionalTrigger(i, k, delta)" in source
+    assert "host_module_set_param(k.key, 'trigger')" in source
+    assert "host_module_set_param(k.key, 'idle')" in source
     assert "accelerateSeedDelta(delta)" in source, (
         f"{path}: custom UI must accelerate Seed independently of host version"
     )

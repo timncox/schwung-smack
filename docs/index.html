@@ -428,11 +428,11 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
     <div class="knob"><div class="dial" style="--r:20deg"></div><div class="kn">LEN</div><div class="kv">loop length<br>1 step – 16 bars</div></div>
     <div class="knob"><div class="dial" style="--r:-20deg"></div><div class="kn">RES</div><div class="kv">slice size<br>½ – 4 steps</div></div>
     <div class="knob"><div class="dial" style="--r:70deg"></div><div class="kn">WET</div><div class="kv">effect mix<br>0–100%</div></div>
-    <div class="knob"><div class="dial" style="--r:45deg"></div><div class="kn">TRNS</div><div class="kv">transport<br>follow · free</div></div>
+    <div class="knob"><div class="dial" style="--r:45deg"></div><div class="kn">ROLL</div><div class="kv">right: re-roll<br>left: idle</div></div>
     <div class="knob"><div class="dial" style="--r:0deg"></div><div class="kn">A/B</div><div class="kv">clean loop /<br>pattern side</div></div>
     <div class="knob"><div class="dial" style="--r:110deg"></div><div class="kn">SEED</div><div class="kv">pattern number<br>1–9999</div></div>
   </div>
-  <p class="klayer">Hold <b>SHIFT</b> for layer two (oversmack) — <b>PanL · PanR · Channels · Transport · BPM · Monitor</b>. In the chain UI the same settings live on the Setup knob page.</p>
+  <p class="klayer">Hold <b>SHIFT</b> for layer two (oversmack) — <b>PanL · PanR · Channels · Loop Len · BPM · Monitor</b>. The hierarchy Setup page also keeps Loop Len and Slice Res close at hand.</p>
 
   <div class="note"><b>LEN vs RES — the one people mix up.</b> <b>Len</b> is how much
   audio the loop holds (1 step to 16 bars). <b>Res</b> is how finely that loop is
@@ -630,7 +630,7 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
     <tr><th>Feature</th><th>What it does</th></tr>
     <tr><td>BPM detect</td><td><kbd>Shift</kbd>+<kbd>Capture</kbd> analyses the last 8 s of input and sets the free-run tempo (60–180, octave candidates biased toward the project tempo; title bar shows <code>@BPM</code>). Only used when no MIDI clock is present — real clock always wins. Pads and drones with no clear pulse politely report "no clear tempo" instead of guessing.</td></tr>
     <tr><td>Feedback guard</td><td>smack-in / oversmack monitor their input. If Move's speaker is on with no line-in cable (mic → speaker = squeal), Smack auto-mutes input monitoring — the ring keeps recording and loop playback stays audible. The Monitor pad (73) shows green/red and overrides manually.</td></tr>
-    <tr><td>Transport follow</td><td>Move's stop pauses the loop, play restarts it (switchable to Free on the Shift knob layer).</td></tr>
+    <tr><td>Transport follow</td><td>Move's stop pauses the loop and play restarts it. Switch to Free from the parameter list.</td></tr>
     <tr><td>Presets</td><td>Full settings snapshot via schwung's module-preset system — loop settings, densities, seed, pins, channel mode all restore. (Audio is not saved; capture is the performance.)</td></tr>
     <tr><td>Accessibility</td><td>With schwung's screen reader on, the UIs announce pads, knob values, slice selection, and loop state in plain words. Master FX knob pages announce via the host.</td></tr>
     <tr><td>Punch pressure</td><td>Global punch responds to pad aftertouch — pressure sweeps the held effect's parameter (Pitch punches bend ±24 st).</td></tr>
@@ -810,7 +810,7 @@ const FX = [
   tO.onclick=()=>{mode="over";tO.classList.add("on");tC.classList.remove("on");build();
     roT.textContent="— OVERSMACK —";roD.textContent="Steps select slices; three palette rows pin effects; bottom row is transport. Play passes through to Move.";};
   tC.onclick=()=>{mode="chain";tC.classList.add("on");tO.classList.remove("on");build();
-    roT.textContent="— CHAIN UI —";roD.textContent="Loads when you open Smack's component editor in a Signal Chain slot. In a slot, Move's firmware keeps the pads and the Capture button, so the jog carries the transport: jog-click = Capture, jog-turn = A/B (right = pattern), Shift+jog-click = swap module. Shift-knobs 7-8 fire Arm and Re-Roll. The screen shows the step grid with a live playhead; full grid editing lives in oversmack or the web editor.";};
+    roT.textContent="— CHAIN UI —";roD.textContent="Loads when you open Smack's component editor in a Signal Chain slot. In a slot, Move's firmware keeps the pads and the Capture button, so the jog carries the transport: jog-click = Capture, jog-turn = A/B (right = pattern), Shift+jog-click = swap module. Main knob 6 fires Re-Roll; the hierarchy Perform page puts Capture, Arm, A/B, and Re-Roll on knobs 1-4. The screen shows the step grid with a live playhead; full grid editing lives in oversmack or the web editor.";};
   document.querySelectorAll(".hwbtn").forEach(b=>{b.onclick=()=>{
     document.querySelectorAll(".hwbtn").forEach(x=>x.classList.remove("sel"));b.classList.add("sel");
     roT.textContent=b.dataset.t;roD.textContent=b.dataset.d;};});

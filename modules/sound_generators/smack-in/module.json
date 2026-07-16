@@ -90,7 +90,7 @@
             "loop_len",
             "slice_res",
             "wet",
-            "transport",
+            "reroll",
             "ab",
             "seed"
           ]
@@ -282,10 +282,10 @@
           ],
           "knobs": [
             "wet",
-            "detect_bpm",
+            "loop_len",
             "pad_rate",
             "seed",
-            "transport",
+            "slice_res",
             "channel_mode",
             "pan_l",
             "pan_r"
