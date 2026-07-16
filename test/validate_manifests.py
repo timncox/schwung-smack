@@ -17,7 +17,7 @@ EXPECTED_KNOBS = {
         "loop_len",
         "slice_res",
         "wet",
-        "pitch_range",
+        "transport",
         "ab",
         "seed",
     ],
@@ -33,7 +33,7 @@ EXPECTED_KNOBS = {
     ],
     "setup": [
         "wet",
-        "pitch_range",
+        "detect_bpm",
         "pad_rate",
         "seed",
         "transport",
@@ -49,7 +49,7 @@ CHAIN_UI_PRIMARY_KNOBS = [
     "loop_len",
     "slice_res",
     "wet",
-    "pitch_range",
+    "transport",
     "ab",
     "seed",
 ]
@@ -83,7 +83,11 @@ def check_manifest(path: Path) -> None:
             assert key in definitions, f"{path}: unresolved knob param {key!r}"
             options = definitions[key].get("options")
             if options == ["idle", "trigger"]:
-                assert level_name == "perform" and key in {"capture", "arm", "reroll"}, (
+                allowed_triggers = {
+                    "perform": {"capture", "arm", "reroll"},
+                    "setup": {"detect_bpm"},
+                }
+                assert key in allowed_triggers.get(level_name, set()), (
                     f"{path}: unexpected trigger knob {level_name}.{key}"
                 )
 
@@ -92,6 +96,9 @@ def check_manifest(path: Path) -> None:
     )
     assert all("quantize" not in level.get("knobs", []) for level in levels.values()), (
         f"{path}: A/B Quantize must remain list-only"
+    )
+    assert all("pitch_range" not in level.get("knobs", []) for level in levels.values()), (
+        f"{path}: Pitch Range must remain list-only"
     )
 
     for level_name, level in levels.items():

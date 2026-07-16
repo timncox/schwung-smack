@@ -90,7 +90,7 @@
             "loop_len",
             "slice_res",
             "wet",
-            "pitch_range",
+            "transport",
             "ab",
             "seed"
           ]
@@ -282,7 +282,7 @@
           ],
           "knobs": [
             "wet",
-            "pitch_range",
+            "detect_bpm",
             "pad_rate",
             "seed",
             "transport",

@@ -18,7 +18,7 @@
  *                         press to mute a slice's effect, press again
  *                         to restore the seeded one
  *   Knobs 1-8             FX Density, Order, Loop Len, Slice Res,
- *                         Wet, Pitch Range, A/B, Seed
+ *                         Wet, Transport, A/B, Seed
  *
  * Screen reader: pad actions, knob changes and loop-state transitions are
  * announced via shared/screen_reader.mjs when the reader is enabled.
@@ -107,15 +107,15 @@ const KNOBS = [
       speechOpts: ['half step', '1 step', '2 steps', '4 steps'] },
     { key: 'wet',           name: 'Wet',  min: 0, max: 100, step: 5,
       speech: 'Wet', unit: ' percent' },
-    { key: 'pitch_range',   name: 'Pit',  min: 1, max: 24,  step: 1,
-      speech: 'Pitch Range', unit: ' semitones' },
+    { key: 'transport',     name: 'Trns', opts: ['Flw', 'Free'],
+      speech: 'Transport', speechOpts: ['follow', 'free'] },
     { key: 'ab',            name: 'A/B',  opts: ['A', 'B'],
       speech: 'A B', speechOpts: ['A clean', 'B pattern'] },
     { key: 'seed',          name: 'Seed', min: 1, max: 9999, step: 1,
       speech: 'Seed' }
 ];
 
-let knobValues = [50, 0, 4, 1, 100, 12, 1, 4303];
+let knobValues = [50, 0, 4, 1, 100, 0, 1, 4303];
 let seedTurnAt = 0;
 let seedTurnDirection = 0;
 

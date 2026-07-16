@@ -57,7 +57,7 @@
             "3: Loop Length",
             "4: Slice Res",
             "5: Wet",
-            "6: Pitch Range",
+            "6: Transport",
             "7: A/B",
             "8: Seed",
             "",
@@ -84,7 +84,7 @@
             "Main knobs 1-8:",
             "FX Density, Order,",
             "Loop Len, Slice Res,",
-            "Wet, Pitch Range,",
+            "Wet, Transport,",
             "A/B, Seed.",
             "",
             "Perform knobs 1-8:",
@@ -98,12 +98,14 @@
             "select in the list.",
             "",
             "Setup knobs 1-8:",
-            "Wet, Pitch Range,",
+            "Wet, Detect BPM,",
             "Pad Rate, Seed,",
             "Transport, Channels,",
             "Pan L, Pan R.",
             "AB Quantize stays",
-            "in the param list."
+            "in the param list.",
+            "Pitch Range also",
+            "stays list-only."
           ]
         }
       ]
