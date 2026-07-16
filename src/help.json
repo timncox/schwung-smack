@@ -58,7 +58,7 @@
             "4: Slice Res",
             "5: Wet",
             "6: Pitch Range",
-            "7: AB Quantize",
+            "7: A/B",
             "8: Seed",
             "",
             "Hold Shift: knob",
@@ -85,7 +85,7 @@
             "FX Density, Order,",
             "Loop Len, Slice Res,",
             "Wet, Pitch Range,",
-            "AB Quantize, Seed.",
+            "A/B, Seed.",
             "",
             "Perform knobs 1-8:",
             "Capture, Arm, A/B,",
@@ -99,9 +99,11 @@
             "",
             "Setup knobs 1-8:",
             "Wet, Pitch Range,",
-            "AB Quantize, Seed,",
+            "Pad Rate, Seed,",
             "Transport, Channels,",
-            "Pan L, Pan R."
+            "Pan L, Pan R.",
+            "AB Quantize stays",
+            "in the param list."
           ]
         }
       ]

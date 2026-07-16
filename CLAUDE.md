@@ -192,7 +192,8 @@ pages are the interface. Pad map: 68 Capture / 69 Arm / 70 A-B / 71 Re-Roll
 / 76 Clear; hardware Capture button (CC 52) = retro grab; step buttons 1-16
 show slice FX colors + playhead chase, press = mute slice fx, again =
 restore seeded fx (lock_slice_<i>, -1 unlocks). Knobs 1-8 = FX / Order /
-Len / Res / Wet / Pitch / Qnt / Seed.
+Len / Res / Wet / Pitch / A-B / Seed. A-B Quantize remains available in
+the hierarchy parameter list but is deliberately absent from knob mappings.
 
 ## BPM detection + step paging (v0.6.0)
 

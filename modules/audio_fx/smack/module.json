@@ -87,7 +87,7 @@
             "slice_res",
             "wet",
             "pitch_range",
-            "quantize",
+            "ab",
             "seed"
           ]
         },
@@ -279,7 +279,7 @@
           "knobs": [
             "wet",
             "pitch_range",
-            "quantize",
+            "pad_rate",
             "seed",
             "transport",
             "channel_mode",

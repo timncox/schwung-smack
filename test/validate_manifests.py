@@ -18,7 +18,7 @@ EXPECTED_KNOBS = {
         "slice_res",
         "wet",
         "pitch_range",
-        "quantize",
+        "ab",
         "seed",
     ],
     "perform": [
@@ -34,7 +34,7 @@ EXPECTED_KNOBS = {
     "setup": [
         "wet",
         "pitch_range",
-        "quantize",
+        "pad_rate",
         "seed",
         "transport",
         "channel_mode",
@@ -50,7 +50,7 @@ CHAIN_UI_PRIMARY_KNOBS = [
     "slice_res",
     "wet",
     "pitch_range",
-    "quantize",
+    "ab",
     "seed",
 ]
 CHAIN_UI_SHIFT_KNOBS = [
@@ -89,6 +89,9 @@ def check_manifest(path: Path) -> None:
 
     assert levels["perform"]["knobs"][:4] == ["capture", "arm", "ab", "reroll"], (
         f"{path}: performance actions must occupy knobs 1-4"
+    )
+    assert all("quantize" not in level.get("knobs", []) for level in levels.values()), (
+        f"{path}: A/B Quantize must remain list-only"
     )
 
     for level_name, level in levels.items():

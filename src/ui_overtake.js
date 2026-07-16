@@ -22,7 +22,7 @@
  *                         knob 1/2 = Pan L / Pan R); hardware Capture
  *                         button = retro grab
  *   Knobs 1-8             FX Density, Order, Loop Len, Slice Res,
- *                         Wet, Pitch Range, AB Quantize, Seed
+ *                         Wet, Pitch Range, A/B, Seed
  *   Play button           passed through to Move (transport + clock
  *                         keep working under this UI)
  *
@@ -157,9 +157,8 @@ const KNOBS = [
       speech: 'Wet', unit: ' percent' },
     { key: 'pitch_range',   name: 'Pit',  min: 1, max: 24,  step: 1,
       speech: 'Pitch Range', unit: ' semitones' },
-    { key: 'quantize',      name: 'Qnt',  opts: ['Inst', 'Slic', 'Loop'],
-      speech: 'A B Quantize',
-      speechOpts: ['instant', 'slice', 'loop'] },
+    { key: 'ab',            name: 'A/B',  opts: ['A', 'B'],
+      speech: 'A B', speechOpts: ['A clean', 'B pattern'] },
     { key: 'seed',          name: 'Seed', min: 1, max: 9999, step: 1,
       speech: 'Seed' }
 ];
@@ -457,6 +456,7 @@ function adjustKnob(i, delta) {
     if (v === knobValues[i]) return;
     knobValues[i] = v;
     host_module_set_param(k.key, `${Math.round(v)}`);
+    if (k.key === 'ab') ab = Math.round(v);
     announceParameter(k.speech, knobSpeech(i));
     needsRedraw = true;
 }

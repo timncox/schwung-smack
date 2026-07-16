@@ -429,7 +429,7 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
     <div class="knob"><div class="dial" style="--r:-20deg"></div><div class="kn">RES</div><div class="kv">slice size<br>½ – 4 steps</div></div>
     <div class="knob"><div class="dial" style="--r:70deg"></div><div class="kn">WET</div><div class="kv">effect mix<br>0–100%</div></div>
     <div class="knob"><div class="dial" style="--r:45deg"></div><div class="kn">PIT</div><div class="kv">pitch range<br>±1–24 st</div></div>
-    <div class="knob"><div class="dial" style="--r:0deg"></div><div class="kn">QNT</div><div class="kv">A/B quantize<br>instant · slice · loop</div></div>
+    <div class="knob"><div class="dial" style="--r:0deg"></div><div class="kn">A/B</div><div class="kv">clean loop /<br>pattern side</div></div>
     <div class="knob"><div class="dial" style="--r:110deg"></div><div class="kn">SEED</div><div class="kv">pattern number<br>1–9999</div></div>
   </div>
   <p class="klayer">Hold <b>SHIFT</b> for layer two (oversmack) — <b>PanL · PanR · Channels · Transport · BPM · Monitor</b>. In the chain UI the same settings live on the Setup knob page.</p>
@@ -460,8 +460,8 @@ header h1.title{animation-delay:.05s}.subtitle{animation-delay:.14s}
       red while armed/recording.</p>
       <p><b>A/B.</b> Tap to flip between the clean loop (A) and the pattern
       (B). On oversmack, <i>hold</i> the pad for a momentary punch — it flips
-      while held and snaps back on release. Flips are quantized per the QNT
-      knob: Instant, next Slice, or next Loop boundary.</p>
+      while held and snaps back on release. Flips use the A/B Quantize
+      setting: Instant, next Slice, or next Loop boundary.</p>
     </div>
     <div>
       <p><b>Re-Roll.</b> Deals a new pattern from the current seed stream.
@@ -746,7 +746,7 @@ const FX = [
   const BOTTOM={
     over:{68:["CAPTURE","Retro-grab: the last Loop-Length of audio you already played becomes the loop, grid-aligned. LED: green."],
           69:["ARM","Record forward from the next grid point; auto-loops at Loop-Length. LED: bright red while armed/recording."],
-          70:["A / B","Tap: flip clean loop ↔ pattern (quantized per QNT). Hold: momentary punch — flips while held, snaps back on release."],
+          70:["A / B","Tap: flip clean loop ↔ pattern (using the A/B Quantize setting). Hold: momentary punch — flips while held, snaps back on release."],
           71:["RE-ROLL","Deal a new seeded pattern. Pins survive. LED: blue."],
           72:["CLEAR","Drop the loop, back to idle. Ring keeps recording."],
           73:["MONITOR","Input monitoring on/off; doubles as the feedback-guard override. Green = monitoring, red = muted."],
@@ -754,7 +754,7 @@ const FX = [
           75:["LANE","Dual mono: tap = edit Left or Right lane (cyan/orange). Hold + knobs 1–2 = Pan L / Pan R."]},
     chain:{68:["CAPTURE","Retro-grab: loop the last Loop-Length you already played. Also on the hardware Capture button."],
           69:["ARM","Record forward from the next grid point; auto-loops at Loop-Length."],
-          70:["A / B","Flip clean loop ↔ pattern, quantized per the QNT knob."],
+          70:["A / B","Flip clean loop ↔ pattern using the A/B Quantize setting."],
           71:["RE-ROLL","Deal a new seeded pattern. Pins survive."],
           72:["PAGE","Cycle the 16 step buttons through loops with more than 16 slices."],
           73:["MONITOR","smack-in only: input monitoring + feedback-guard override."],
