@@ -384,12 +384,12 @@ range. Sim runs an extreme-min/max render sweep per effect.
 - Dual-mono mode: BUILT (v0.5.0, 2026-07-11) — see "Dual mono" section
   below. On-device verification pending like the rest.
 - v2 FX: time-preserving pitchshift.
-## Release process (three repos, one source)
+## Release process (dedicated distributions, one source)
 
-Source + `smack` distribution: this repo (timncox/schwung-smack).
-`smack-in` / `oversmack` distributions: timncox/schwung-smack-in and
-timncox/schwung-oversmack — THIN repos holding only README + release.json
-+ release tarballs. (store_utils.mjs does support a multi-module
+Source: this repo (timncox/schwung-smack). Dedicated THIN distribution repos:
+`smack` = timncox/schwung-smack-fx, `smack-in` =
+timncox/schwung-smack-voice, and `oversmack` = timncox/schwung-oversmack.
+Each holds README + release.json + release tarballs. (store_utils.mjs does support a multi-module
 release.json format `{modules:{id:{version,download_url}}}`, but no
 catalog module uses it and older installers may predate it — sticking
 with one repo per catalog id.)

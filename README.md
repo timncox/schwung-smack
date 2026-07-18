@@ -64,13 +64,13 @@ keeps processing.
 
 ## Install
 
-- **Module Store**: install `smack` / `smack-in` from the schwung catalog
-  (if listed).
+- **Module Store**: search for `smack` (Audio FX), `smack-in` (Voice), or
+  `oversmack` (full-surface tool).
 - **From GitHub**: schwung-manager → Install Custom Module →
-  `timncox/schwung-smack` (chain/master FX), `timncox/schwung-smack-in`
-  (standalone line-in looper), or `timncox/schwung-oversmack` (full-surface
-  editor). The -in and over- repos are thin distribution repos; all source
-  lives here.
+  `timncox/schwung-smack-fx` (chain/master FX),
+  `timncox/schwung-smack-voice` (standalone mic/line/USB-C looper), or
+  `timncox/schwung-oversmack` (full-surface editor). These are dedicated
+  distribution repos; all source lives here.
 
 **Sync note:** set Move's **MIDI Clock to Out** so Smack locks to the
 transport (same requirement as the Arp). Without it, Smack free-runs at the
