@@ -53,6 +53,10 @@ Three builds from one core:
 | `smack-in` | sound_generator | standalone, reads Move's selected input (mic/line/USB-C) directly |
 | `oversmack` | overtake | full-surface looper (mic/line/USB-C) with the whole pad grid as a step-FX editor |
 
+The canonical repository owns all three builds and its multi-module release
+manifest. Starting with the next suite release, one tag publishes all three
+archives together.
+
 **Oversmack** takes over the entire Move surface (launch from the overtake
 menu, Shift+Vol+Jog-Click): steps show the pattern and select a slice, the
 upper three pad rows are an effect palette (tap to pin any effect — or
@@ -65,12 +69,14 @@ keeps processing.
 ## Install
 
 - **Module Store**: search for `smack` (Audio FX), `smack-in` (Voice), or
-  `oversmack` (full-surface tool).
+  `oversmack` (full-surface tool). All three entries resolve through this
+  repository's release manifest.
 - **From GitHub**: schwung-manager → Install Custom Module →
   `timncox/schwung-smack-fx` (chain/master FX),
   `timncox/schwung-smack-voice` (standalone mic/line/USB-C looper), or
-  `timncox/schwung-oversmack` (full-surface editor). These are dedicated
-  distribution repos; all source lives here.
+  `timncox/schwung-oversmack` (full-surface editor). These are compatibility
+  mirrors for Schwung's current single-choice Custom GitHub installer; all
+  source and suite release metadata live here.
 
 **Sync note:** set Move's **MIDI Clock to Out** so Smack locks to the
 transport (same requirement as the Arp). Without it, Smack free-runs at the
