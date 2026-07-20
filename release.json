@@ -1,27 +1,27 @@
 {
-  "version": "0.13.3",
-  "download_url": "https://github.com/timncox/schwung-smack-fx/releases/download/v0.13.3/smack-module.tar.gz",
+  "version": "0.14.0",
+  "download_url": "https://github.com/timncox/schwung-smack/releases/download/v0.14.0/smack-module.tar.gz",
   "name": "Smack",
   "description": "Quantized live-loop Audio FX with 26 seeded per-slice glitch effects, slice reordering, A/B punch, and hands-on performance controls",
   "repo_url": "https://github.com/timncox/schwung-smack",
   "modules": {
     "smack": {
-      "version": "0.13.3",
-      "download_url": "https://github.com/timncox/schwung-smack-fx/releases/download/v0.13.3/smack-module.tar.gz",
+      "version": "0.14.0",
+      "download_url": "https://github.com/timncox/schwung-smack/releases/download/v0.14.0/smack-module.tar.gz",
       "name": "Smack",
       "description": "Quantized live-loop Audio FX with 26 seeded per-slice glitch effects, slice reordering, A/B punch, and hands-on performance controls",
       "repo_url": "https://github.com/timncox/schwung-smack"
     },
     "smack-in": {
-      "version": "0.13.3",
-      "download_url": "https://github.com/timncox/schwung-smack-voice/releases/download/v0.13.3/smack-in-module.tar.gz",
+      "version": "0.14.0",
+      "download_url": "https://github.com/timncox/schwung-smack/releases/download/v0.14.0/smack-in-module.tar.gz",
       "name": "Smack In",
       "description": "Standalone mic, line, or USB-C loop Voice with 26 seeded per-slice glitch effects, Pad Play, and a browser step editor",
       "repo_url": "https://github.com/timncox/schwung-smack"
     },
     "oversmack": {
-      "version": "0.10.1",
-      "download_url": "https://github.com/timncox/schwung-oversmack/releases/download/v0.10.1/oversmack-module.tar.gz",
+      "version": "0.14.0",
+      "download_url": "https://github.com/timncox/schwung-smack/releases/download/v0.14.0/oversmack-module.tar.gz",
       "name": "Oversmack",
       "description": "Full-surface Smack input looper with whole-grid step-FX editing, palette pinning, pressure punch effects, and dual-mono lanes",
       "repo_url": "https://github.com/timncox/schwung-smack"

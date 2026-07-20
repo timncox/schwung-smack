@@ -54,8 +54,7 @@ Three builds from one core:
 | `oversmack` | overtake | full-surface looper (mic/line/USB-C) with the whole pad grid as a step-FX editor |
 
 The canonical repository owns all three builds and its multi-module release
-manifest. Starting with the next suite release, one tag publishes all three
-archives together.
+manifest. One tag publishes all three archives together.
 
 **Oversmack** takes over the entire Move surface (launch from the overtake
 menu, Shift+Vol+Jog-Click): steps show the pattern and select a slice, the
