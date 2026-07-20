@@ -1,6 +1,6 @@
 ---
 status: active
-last_touched: 2026-07-18
+last_touched: 2026-07-20
 deploy: scripts/deploy.sh
 ---
 
@@ -15,6 +15,9 @@ full-surface tool. All three share `src/smack_core.c`.
 - Run `make test` for the native core simulator after DSP or state changes.
 - Run the same test with AddressSanitizer and UBSan before release.
 - `make arm` stages and cross-compiles all module archives with Docker.
+- One tag publishes all three archives. Keep the top-level `release.json`
+  fields as the Custom GitHub fallback for `smack`, and keep its `modules`
+  entries aligned with `smack`, `smack-in`, and `oversmack` catalog IDs.
 - `scripts/deploy.sh` writes to Move hardware. Do not run it without explicit
   deployment authorization.
 - Keep trigger params inert for zero/`idle` values; autosave restores those.
