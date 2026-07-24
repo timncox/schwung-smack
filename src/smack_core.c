@@ -173,6 +173,10 @@ struct smack {
     int      clock_running;
     int      clock_seen;
 
+    /* MIDI CC control */
+    uint8_t  cc_last[3];         /* last external CC accepted (dup guard) */
+    uint64_t cc_last_frames;     /* global_frames when it was accepted */
+
     /* Loop */
     smack_state_t state;
     uint32_t loop_start;         /* ring frame index */
@@ -762,9 +766,74 @@ static void pad_note_off(smack_t *s, int note) {
     if (s->pad_held == 0) s->trig_active = 0; /* release = back to the loop */
 }
 
+/* --- MIDI CC control ----------------------------------------------- */
+/* External controllers (USB-A) drive the performance surface. Routed
+ * through smack_set_param so CC edits share every rule with the UI
+ * (trig_active, quantized A/B pending, reroll nonce, edit_rev).
+ *   20 wet          21 fx_density   22 order_density  23 slice_res
+ *   24 pitch_range  25 seed (0-127 browses patterns)  26 quantize
+ *   27 ab (>=64)    28 pan_l        29 pan_r
+ *   30 punch: 0 = release, 1 = punch clean, 2+ = punch effect f-1
+ *   31 punch_pressure (raw 0-127)
+ *   40 arm  41 capture  42 reroll  43 clear   (fire at >=64)
+ *   44 monitor (>=64)
+ * Continuous 0-127 scales into the param range; see README. */
+static void smack_handle_cc(smack_t *s, int cc, int v) {
+    char val[16];
+    int on = v >= 64;
+    const char *key = NULL;
+    int scaled = -1;
+    switch (cc) {
+    case 20: key = "wet";           scaled = (v * 100 + 63) / 127; break;
+    case 21: key = "fx_density";    scaled = (v * 100 + 63) / 127; break;
+    case 22: key = "order_density"; scaled = (v * 100 + 63) / 127; break;
+    case 23: key = "slice_res";
+             scaled = (v * (SLICE_RES_COUNT - 1) + 63) / 127;      break;
+    case 24: key = "pitch_range";   scaled = 1 + (v * 23 + 63) / 127; break;
+    case 25: key = "seed";          scaled = v;                    break;
+    case 26: key = "quantize";      scaled = (v * 2 + 63) / 127;   break;
+    case 27: smack_set_param(s, "ab", on ? "1" : "0");             return;
+    case 28: key = "pan_l";         scaled = (v * 100 + 63) / 127; break;
+    case 29: key = "pan_r";         scaled = (v * 100 + 63) / 127; break;
+    case 30:
+        if (v == 0) smack_set_param(s, "punch_fx", "-1");
+        else {
+            snprintf(val, sizeof val, "%d",
+                     v - 1 > SMACK_FX_COUNT - 1 ? SMACK_FX_COUNT - 1 : v - 1);
+            smack_set_param(s, "punch_fx", val);
+        }
+        return;
+    case 31: key = "punch_pressure"; scaled = v;                   break;
+    case 40: if (on) smack_set_param(s, "arm", "1");               return;
+    case 41: if (on) smack_set_param(s, "capture", "1");           return;
+    case 42: if (on) smack_set_param(s, "reroll", "1");            return;
+    case 43: if (on) smack_set_param(s, "clear", "1");             return;
+    case 44: smack_set_param(s, "monitor", on ? "1" : "0");        return;
+    default: return;
+    }
+    snprintf(val, sizeof val, "%d", scaled);
+    smack_set_param(s, key, val);
+}
+
 void smack_on_midi(smack_t *s, const uint8_t *msg, int len, int source) {
-    (void)source;
     if (!s || len < 1) return;
+    /* External CC control. Internal MIDI never acts as CC; a channel-
+     * matched chain slot delivers one external CC twice (channel dispatch
+     * + FX broadcast), so identical messages within ~2 blocks drop. */
+    if (len >= 3 && (msg[0] & 0xF0) == 0xB0 &&
+        (source == MOVE_MIDI_SOURCE_EXTERNAL ||
+         source == MOVE_MIDI_SOURCE_FX_BROADCAST)) {
+        if (!(msg[0] == s->cc_last[0] && msg[1] == s->cc_last[1] &&
+              msg[2] == s->cc_last[2] &&
+              s->global_frames - s->cc_last_frames <= 256)) {
+            s->cc_last[0] = msg[0];
+            s->cc_last[1] = msg[1];
+            s->cc_last[2] = msg[2];
+            s->cc_last_frames = s->global_frames;
+            smack_handle_cc(s, msg[1], msg[2]);
+        }
+        return;
+    }
     switch (msg[0]) {
     case 0xFA: /* start */
     case 0xFB: /* continue: treated as downbeat too (pushnpull convention) */

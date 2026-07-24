@@ -73,6 +73,20 @@ frame zero. MIDI-clock tempo uses a 96-tick regression window to remove the
 host's 128-frame callback quantization; playback varispeeds by the residual
 capture/current-clock ratio so the error cannot accumulate over long loops.
 
+## MIDI CC control
+
+`smack_handle_cc` maps external CCs onto the performance surface via
+`smack_set_param` strings, so CC edits share trig_active / quantized-A/B
+pending / reroll-nonce semantics with the UI (map in README). Accept ONLY
+source EXTERNAL or FX_BROADCAST — internal MIDI carries Move's encoder
+CCs and would fight the firmware. A channel-matched chain slot delivers
+one external CC twice (channel dispatch + FX broadcast — verified in
+schwung shadow_midi.c 2026-07-24), so identical messages within 256
+samples are dropped (`cc_last` / `cc_last_frames`). audio_fx builds hear
+CCs channel-blind (FX broadcast); smack-in / oversmack are channel-matched
+and Move's auto remap applies to notes, NOT CCs — users set the controller
+channel explicitly.
+
 ## v1 limitations (deliberate, revisit)
 
 - ~~Ring recording pauses while LOOPING~~ FIXED v0.9.0: the ring keeps

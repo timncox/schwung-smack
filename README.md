@@ -81,6 +81,29 @@ keeps processing.
 transport (same requirement as the Arp). Without it, Smack free-runs at the
 project tempo.
 
+## MIDI CC control
+
+A controller on the Move's USB-A port drives the performance surface.
+Continuous CCs scale 0–127 across each range; buttons act at value ≥ 64
+(momentary for the triggers, toggle for A/B and monitor).
+
+| CC | function | | CC | function |
+|----|----------|-|----|----------|
+| 20 | wet | | 28 | pan L |
+| 21 | FX density | | 29 | pan R |
+| 22 | reorder density | | 30 | punch (0 release, 1 clean, 2+ effect) |
+| 23 | slice resolution | | 31 | punch pressure (raw 0–127) |
+| 24 | pitch range | | 40 | arm |
+| 25 | seed (browse patterns) | | 41 | capture |
+| 26 | quantize mode | | 42 | reroll |
+| 27 | A/B (≥64 = B) | | 43 | clear |
+| | | | 44 | monitor |
+
+Channel notes: `smack` in a chain or Master FX slot hears CCs on **any**
+channel. `smack-in` / `oversmack` follow note routing — match the
+controller's channel to the slot's receive channel (Move's auto channel
+mapping remaps notes, not CCs).
+
 ## Build from source
 
 ```bash
