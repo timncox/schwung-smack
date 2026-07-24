@@ -1071,6 +1071,48 @@ int main(void) {
         assert(pb[0] == '2');
     }
 
+    /* --- MIDI CC control: scaling, source filter, duplicate guard --- */
+    {
+        char pb[64];
+        uint8_t cc[3] = { 0xB0, 20, 127 };            /* wet -> 100 */
+        smack_on_midi(S, cc, 3, MOVE_MIDI_SOURCE_EXTERNAL);
+        smack_get_param(S, "wet", pb, sizeof(pb));
+        assert(atoi(pb) == 100);
+
+        /* duplicate inside the guard window drops; passes after audio */
+        smack_set_param(S, "wet", "37");
+        smack_on_midi(S, cc, 3, MOVE_MIDI_SOURCE_FX_BROADCAST);
+        smack_get_param(S, "wet", pb, sizeof(pb));
+        assert(atoi(pb) == 37);
+        run_blocks(4, out);
+        smack_on_midi(S, cc, 3, MOVE_MIDI_SOURCE_EXTERNAL);
+        smack_get_param(S, "wet", pb, sizeof(pb));
+        assert(atoi(pb) == 100);
+
+        /* internal MIDI never drives CC control */
+        cc[1] = 24; cc[2] = 127;                      /* pitch_range -> 24 */
+        smack_on_midi(S, cc, 3, MOVE_MIDI_SOURCE_INTERNAL);
+        smack_get_param(S, "pitch_range", pb, sizeof(pb));
+        assert(atoi(pb) != 24);
+        smack_on_midi(S, cc, 3, MOVE_MIDI_SOURCE_EXTERNAL);
+        smack_get_param(S, "pitch_range", pb, sizeof(pb));
+        assert(atoi(pb) == 24);
+
+        /* selector scaling + trigger + toggle */
+        cc[1] = 23; cc[2] = 127;                      /* slice_res top idx */
+        smack_on_midi(S, cc, 3, MOVE_MIDI_SOURCE_EXTERNAL);
+        smack_get_param(S, "slice_res", pb, sizeof(pb));
+        assert(atoi(pb) == 3);
+        cc[1] = 27; cc[2] = 0;                        /* ab -> A (clean) */
+        smack_on_midi(S, cc, 3, MOVE_MIDI_SOURCE_EXTERNAL);
+        run_blocks(700, out);                         /* ride out pending */
+        smack_get_param(S, "ab", pb, sizeof(pb));
+        assert(pb[0] == '0');
+        cc[1] = 43; cc[2] = 127;                      /* clear (trigger) */
+        smack_on_midi(S, cc, 3, MOVE_MIDI_SOURCE_EXTERNAL);
+        assert(gp("run_state") == '0');               /* back to IDLE */
+    }
+
     printf("host_sim: all assertions passed\n");
     smack_destroy(S);
     return 0;
