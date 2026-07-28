@@ -167,6 +167,8 @@ struct smack {
     uint64_t last_tick_global;   /* global frame of previous 0xF8 */
     uint64_t last_halfstep_global; /* global frame of last half-step boundary */
     uint64_t tick_history[CLOCK_EST_WINDOW];
+    uint64_t tick_history_seq[CLOCK_EST_WINDOW]; /* inferred source tick number */
+    uint64_t clock_seq;          /* includes ticks lost while punching */
     uint16_t tick_history_count;
     uint16_t tick_history_pos;   /* next write; oldest entry when full */
     uint32_t tick_total;         /* ticks since transport start */
@@ -318,29 +320,51 @@ static double frames_per_tick_now(smack_t *s) {
 
 static double frames_per_halfstep(smack_t *s) { return frames_per_tick_now(s) * 3.0; }
 
-/* Add one block-stamped MIDI-clock observation. For the first few ticks the
- * previous low-pass estimate remains useful; once enough observations exist,
- * a least-squares slope rejects the +/- one-block timestamp staircase. */
-static void clock_estimator_push(smack_t *s, uint64_t frame) {
+/* Add one block-stamped MIDI-clock observation. Pad aftertouch and MIDI clock
+ * share Move's input queue; under a dense pressure stream, an occasional F8
+ * can be lost. While a global punch is held, recognise intervals that are
+ * close to an integer multiple of the already-locked clock and retain that
+ * logical tick count. Outside a punch every observation remains one tick so
+ * real transport tempo changes are still learned normally. */
+static uint32_t clock_estimator_push(smack_t *s, uint64_t frame) {
+    uint32_t elapsed_ticks = 1;
     if (s->tick_history_count > 0 && frame > s->last_tick_global) {
         double d = (double)(frame - s->last_tick_global);
-        if (d > 100.0 && d < 20000.0 && s->tick_history_count < 12)
-            s->frames_per_tick = 0.9 * s->frames_per_tick + 0.1 * d;
+        if (s->punch_fx >= 0 && s->frames_per_tick > 0.0) {
+            double ratio = d / s->frames_per_tick;
+            int inferred = ratio >= 1.5 && ratio <= CLOCK_EST_WINDOW + 0.5
+                         ? (int)floor(ratio + 0.5) : 1;
+            if (inferred >= 2) {
+                double per_tick = d / (double)inferred;
+                double block = (s->host && s->host->frames_per_block > 0)
+                             ? (double)s->host->frames_per_block : 128.0;
+                double tolerance = fmax(s->frames_per_tick * 0.20, block);
+                if (fabs(per_tick - s->frames_per_tick) <= tolerance)
+                    elapsed_ticks = (uint32_t)inferred;
+            }
+        }
+        double tick_d = d / (double)elapsed_ticks;
+        if (tick_d > 100.0 && tick_d < 20000.0 && s->tick_history_count < 12)
+            s->frames_per_tick = 0.9 * s->frames_per_tick + 0.1 * tick_d;
     }
     s->last_tick_global = frame;
+    s->clock_seq += elapsed_ticks;
 
     s->tick_history[s->tick_history_pos] = frame;
+    s->tick_history_seq[s->tick_history_pos] = s->clock_seq;
     s->tick_history_pos = (uint16_t)((s->tick_history_pos + 1) % CLOCK_EST_WINDOW);
     if (s->tick_history_count < CLOCK_EST_WINDOW) s->tick_history_count++;
 
     int n = (int)s->tick_history_count;
-    if (n < 12) return;
+    if (n < 12) return elapsed_ticks;
     int first = ((int)s->tick_history_pos + CLOCK_EST_WINDOW - n) % CLOCK_EST_WINDOW;
     uint64_t y0 = s->tick_history[first];
+    uint64_t x0 = s->tick_history_seq[first];
     double sx = 0.0, sy = 0.0, sxx = 0.0, sxy = 0.0;
     for (int i = 0; i < n; i++) {
-        double x = (double)i;
-        double y = (double)(s->tick_history[(first + i) % CLOCK_EST_WINDOW] - y0);
+        int slot = (first + i) % CLOCK_EST_WINDOW;
+        double x = (double)(s->tick_history_seq[slot] - x0);
+        double y = (double)(s->tick_history[slot] - y0);
         sx += x;
         sy += y;
         sxx += x * x;
@@ -351,6 +375,7 @@ static void clock_estimator_push(smack_t *s, uint64_t frame) {
         double slope = ((double)n * sxy - sx * sy) / den;
         if (slope > 100.0 && slope < 20000.0) s->frames_per_tick = slope;
     }
+    return elapsed_ticks;
 }
 
 static double loop_playback_increment(const smack_t *s) {
@@ -842,6 +867,7 @@ void smack_on_midi(smack_t *s, const uint8_t *msg, int len, int source) {
         s->last_halfstep_global = s->global_frames;
         s->tick_history_count = 0;
         s->tick_history_pos = 0;
+        s->clock_seq = 0;
         s->pad_held = 0;          /* stuck-note safety across transport */
         s->trig_active = 0;
         if (s->transport_paused) { /* resume the loop from its top */
@@ -855,14 +881,15 @@ void smack_on_midi(smack_t *s, const uint8_t *msg, int len, int source) {
             s->transport_paused = 1;
         break;
     case 0xF8: {
-        clock_estimator_push(s, s->global_frames);
+        uint32_t previous_tick = s->tick_total;
+        uint32_t elapsed_ticks = clock_estimator_push(s, s->global_frames);
         s->clock_seen = 1;
-        s->tick_total++;
-        if (s->tick_total % 3 == 0) { /* half-step boundary */
+        s->tick_total += elapsed_ticks;
+        if (s->tick_total / 3 != previous_tick / 3) { /* crossed half-step */
             s->last_halfstep_global = s->global_frames;
-            if (s->state == SMACK_ARMED && s->tick_total % 6 == 0)
-                s->arm_start_flag = 1; /* start on step boundaries */
         }
+        if (s->state == SMACK_ARMED && s->tick_total / 6 != previous_tick / 6)
+            s->arm_start_flag = 1; /* crossed a step boundary */
         break;
     }
     default: {

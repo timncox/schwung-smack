@@ -168,6 +168,52 @@ static void test_clock_quantization_does_not_accumulate(const host_api_v1_t *hos
     printf("ok: MIDI block quantization does not accumulate loop drift\n");
 }
 
+/* Reproduce Move's shared MIDI-queue failure mode: while an Oversmack punch
+ * emits poly-pressure, every other clock message is lost. The loop must keep
+ * its captured rate instead of interpreting each two-tick gap as half tempo. */
+static void test_punch_clock_drop_does_not_slow_loop(const host_api_v1_t *host) {
+    reset_sim_instance(host);
+    uint8_t start = 0xFA;
+    smack_on_midi(S, &start, 1, 3);
+    run_blocks(1400, NULL); /* lock clock estimate and retain two bars */
+    smack_set_param(S, "loop_len", "4");
+    smack_set_param(S, "capture", "1");
+
+    int loop_frames = get_int_param("loop_frames");
+    int play_before = get_int_param("play_frame");
+    const int punch_blocks = 1600;
+    uint32_t scheduled = 0;
+    int16_t silence[BLK * 2] = {0};
+    int16_t out[BLK * 2];
+
+    smack_set_param(S, "punch_fx", "0"); /* Clean punch also sends pressure */
+    for (int b = 0; b < punch_blocks; b++) {
+        while (next_tick <= (double)frames_done) {
+            scheduled++;
+            if (scheduled & 1u) {
+                uint8_t tick = 0xF8;
+                smack_on_midi(S, &tick, 1, 3);
+            }
+            next_tick += FPT;
+        }
+        char pressure[8];
+        snprintf(pressure, sizeof(pressure), "%d", (b * 7) & 127);
+        smack_set_param(S, "punch_pressure", pressure);
+        smack_process(S, silence, out, BLK);
+        frames_done += BLK;
+    }
+    smack_set_param(S, "punch_fx", "-1");
+
+    int expected = (play_before + punch_blocks * BLK) % loop_frames;
+    int actual = get_int_param("play_frame");
+    int error = abs(actual - expected);
+    if (error > loop_frames / 2) error = loop_frames - error;
+    assert(error <= BLK * 2);
+
+    smack_destroy(S);
+    printf("ok: dropped clock ticks during effect punch do not slow loop\n");
+}
+
 static int resized_play_frame(int old_len, int old_play, int new_len) {
     int from_end = old_len - old_play;
     int remainder = from_end % new_len;
@@ -325,6 +371,7 @@ int main(void) {
     test_paused_loop_ring_guard(&host);
     test_retro_capture_phase_chase(&host);
     test_clock_quantization_does_not_accumulate(&host);
+    test_punch_clock_drop_does_not_slow_loop(&host);
     test_live_loop_geometry(&host);
 
     reset_sim_instance(&host);

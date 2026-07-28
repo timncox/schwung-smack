@@ -250,6 +250,8 @@ let paletteHeld = null;    /* { pad, code, slice, at, fired } */
  * fatal (exits the tool on any pad release). */
 let punchPad = -1;             /* pad note currently punching, -1 = none */
 let punchLastPressure = -1;    /* last aftertouch sent (throttle: Δ >= 3) */
+let punchLastPressureAt = 0;   /* cap pressure traffic so clock F8s get through */
+const PUNCH_PRESSURE_MS = 12;
 
 /* Feedback guard: the host's slot guard never sees overtake modules, so we
  * mirror it here — speakers on + no line-in cable = the internal mic would
@@ -765,9 +767,12 @@ globalThis.onMidiMessageInternal = function(data) {
 
     /* pad pressure (poly aftertouch) bends the punched effect */
     if (status === 0xA0) {
+        const now = Date.now();
         if (punchPad >= 0 && d1 === punchPad &&
-            Math.abs(d2 - punchLastPressure) >= 3) {
+            Math.abs(d2 - punchLastPressure) >= 3 &&
+            (punchLastPressure < 0 || now - punchLastPressureAt >= PUNCH_PRESSURE_MS)) {
             punchLastPressure = d2;
+            punchLastPressureAt = now;
             host_module_set_param('punch_pressure', `${d2}`);
         }
         return;
@@ -949,6 +954,7 @@ globalThis.onMidiMessageInternal = function(data) {
             if (state === 3 && selectedSlice < 0) {
                 punchPad = d1;
                 punchLastPressure = -1;
+                punchLastPressureAt = 0;
                 host_module_set_param('punch_fx', ent.tok);
                 announce(`${FX_SPEECH[code]} punch`);
                 needsRedraw = true;
