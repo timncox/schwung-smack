@@ -219,4 +219,78 @@ assert.equal(w?.value, '80',
     `after a dead param channel the UI wrote fx_density=${w?.value}; it must ` +
     'continue from 75, not from a zeroed mirror');
 
+
+const FX_N = cEnumCount("src/smack_core.h", "SMACK_FX_COUNT");
+const ENGINE_INDEXED_TABLES = [
+    ["src/ui_overtake.js", "FX_COLORS", FX_N, "a slice effect would light with no colour"],
+    ["src/ui_overtake.js", "FX_NAMES",  FX_N, "a slice effect would display no name"],
+    ["src/ui_overtake.js", "FX_SPEECH", FX_N, "a slice effect would be unspoken to the screen reader"],
+    ["src/ui_chain.js",    "FX_COLORS", FX_N, "a slice effect would light with no colour"]
+];
+
+/* ------------------------------------------------- engine-indexed tables
+ *
+ * These arrays are hand-maintained in JavaScript but INDEXED BY A CODE THE
+ * ENGINE OWNS. Nothing links the two — no import, no compiler — so growing the
+ * C enum silently leaves the UI stale, and the symptom is invisible: the last
+ * entry becomes unreachable, or a label names the wrong thing. That exact shape
+ * made two machines unreachable in the sibling module Work before anyone
+ * noticed, because it never throws.
+ *
+ * They cannot be derived (a colour or an abbreviation is a design choice, not
+ * engine data), so the drift is made LOUD here instead. The counts come from
+ * the C header itself, which is the only source of truth in the repo.
+ */
+function cEnumCount(header, terminator) {
+    const src = fs.readFileSync(path.join(root, header), 'utf8');
+    const at = src.indexOf(terminator);
+    assert(at > 0, `${terminator} not found in ${header}`);
+    const open = src.lastIndexOf('{', at);
+    const body = src.slice(open + 1, at)
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/[^\n]*/g, '');
+    return (body.match(/\b[A-Z_][A-Z0-9_]*\s*(?:=[^,]*)?,/g) || []).length;
+}
+
+function cDefineCount(header, expr) {
+    const src = fs.readFileSync(path.join(root, header), 'utf8');
+    const num = (name) => {
+        const m = src.match(new RegExp('#define\\s+' + name + '\\s+(\\d+)'));
+        return m ? parseInt(m[1], 10) : null;
+    };
+    return expr(num);
+}
+
+/* Count top-level items in `const NAME = [...]`, balancing brackets so nested
+ * arrays and objects count as one. */
+function jsArrayLen(file, name) {
+    const src = fs.readFileSync(path.join(root, file), 'utf8');
+    const m = src.match(new RegExp('const\\s+' + name + '\\s*=\\s*\\['));
+    assert(m, `${name} not found in ${file}`);
+    let i = m.index + m[0].length - 1, depth = 0, end = -1;
+    for (let k = i; k < src.length; k++) {
+        const c = src[k];
+        if (c === '[') depth++;
+        else if (c === ']') { depth--; if (depth === 0) { end = k; break; } }
+    }
+    const body = src.slice(i + 1, end)
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/[^\n]*/g, '');
+    let d = 0, count = 0, cur = '';
+    for (const c of body) {
+        if ('[{('.includes(c)) d++;
+        else if (']})'.includes(c)) d--;
+        if (c === ',' && d === 0) { if (cur.trim()) count++; cur = ''; }
+        else cur += c;
+    }
+    if (cur.trim()) count++;
+    return count;
+}
+
+for (const [file, table, expected, why] of ENGINE_INDEXED_TABLES) {
+    const got = jsArrayLen(file, table);
+    assert.equal(got, expected,
+        `${file}: ${table} has ${got} entries but the engine has ${expected} — ${why}`);
+}
+
 console.log('smack overtake UI: param-channel and knob-response tests passed');
