@@ -239,8 +239,7 @@ function knob2Display(i) {
 function fetchKnob2() {
     for (let i = 0; i < KNOBS2.length; i++) {
         if (!KNOBS2[i]) continue;
-        const v = gp(KNOBS2[i].key);
-        if (v !== null) knob2Values[i] = parseFloat(v) || 0;
+        knob2Values[i] = gpNumOr(KNOBS2[i].key, knob2Values[i]);
     }
 }
 
@@ -251,7 +250,8 @@ function adjustKnob2(i, delta) {
     if (k.isBpm) {
         /* 49 and below = Off (project tempo); 50-200 = override */
         const cur = knob2Values[i] > 0 ? knob2Values[i] : 49;
-        v = Math.max(49, Math.min(200, Math.round(cur) + delta * k.step));
+        v = Math.max(49, Math.min(200,
+            Math.round(cur) + scaledSteps(delta, 49, 200, k.step) * k.step));
         const out = v < 50 ? 0 : v;
         knob2Values[i] = out;
         bpmOverride = out;
@@ -263,7 +263,8 @@ function adjustKnob2(i, delta) {
     const max = k.opts ? k.opts.length - 1 : k.max;
     const min = k.opts ? 0 : k.min;
     const step = k.opts ? 1 : k.step;
-    v = Math.max(min, Math.min(max, knob2Values[i] + delta * step));
+    v = Math.max(min, Math.min(max,
+        knob2Values[i] + scaledSteps(delta, min, max, step) * step));
     if (v === knob2Values[i]) return;
     knob2Values[i] = v;
     host_module_set_param(k.key, `${Math.round(v)}`);
@@ -326,25 +327,58 @@ function gp(key) {
     return (v === null || v === undefined) ? null : String(v);
 }
 
-function fetchAll() {
-    for (let i = 0; i < KNOBS.length; i++) {
-        const v = gp(KNOBS[i].key);
-        if (v !== null) knobValues[i] = parseFloat(v) || 0;
-    }
-    state = parseInt(gp('run_state') || '0');
-    ab = parseInt(gp('ab') || '1');
-    pattern = gp('pattern') || '';
-    patternR = gp('pattern_r') || '';
-    lockedMask = gp('locked') || '';
-    lockedMaskR = gp('locked_r') || '';
-    nSlices = parseInt(gp('n_slices') || '0');
-    chanMode = parseInt(gp('channel_mode') || '0');
-    panL = parseInt(gp('pan_l') || '0');
-    panR = parseInt(gp('pan_r') || '100');
-    hwInput = gp('hw_input') === '1';
-    monitorOn = (gp('monitor') || '1') !== '0';
-    bpmOverride = parseFloat(gp('bpm_override')) || 0;
+/* Read one key, keeping `prev` when it does not come back.
+ *
+ * EVERY read here is a blocking round-trip to the shim, serviced once per SPI
+ * frame (~23 ms) and abandoned after 100 ms — schwung's comment above
+ * js_shadow_get_param calls it "the where-does-the-tick-time-go measurement".
+ * The channel serves roughly 44 a second in total and this editor was asking
+ * for 160, so reads were timing out routinely. Folding a timed-out read into a
+ * literal default put that default into the mirror, and the mirror is written
+ * back to the DSP on the next knob turn. */
+function gpNumOr(key, prev) {
+    const s = gp(key);
+    if (s === null || s === '') return prev;
+    const n = parseFloat(s);
+    return Number.isFinite(n) ? n : prev;
+}
+
+function gpStrOr(key, prev) {
+    const s = gp(key);
+    return s === null ? prev : s;
+}
+
+/* State the LEDs and the step grid depend on: seven reads, refreshed often. */
+function fetchHot() {
+    state = gpNumOr('run_state', state);
+    ab = gpNumOr('ab', ab);
+    pattern = gpStrOr('pattern', pattern);
+    patternR = gpStrOr('pattern_r', patternR);
+    lockedMask = gpStrOr('locked', lockedMask);
+    lockedMaskR = gpStrOr('locked_r', lockedMaskR);
+    nSlices = gpNumOr('n_slices', nSlices);
+}
+
+/* Everything else: knob positions and routing, which only change under our own
+ * hand or from the web editor. Twenty-five reads, so refreshed rarely — at the
+ * old rate this alone was most of the channel. */
+function fetchCold() {
+    for (let i = 0; i < KNOBS.length; i++)
+        knobValues[i] = gpNumOr(KNOBS[i].key, knobValues[i]);
+    chanMode = gpNumOr('channel_mode', chanMode);
+    panL = gpNumOr('pan_l', panL);
+    panR = gpNumOr('pan_r', panR);
+    const hw = gp('hw_input');
+    if (hw !== null) hwInput = hw === '1';
+    const mon = gp('monitor');
+    if (mon !== null) monitorOn = mon !== '0';
+    bpmOverride = gpNumOr('bpm_override', bpmOverride);
     fetchKnob2();
+}
+
+function fetchAll() {
+    fetchHot();
+    fetchCold();
 }
 
 /* pattern / lock target of the lane currently being edited */
@@ -391,6 +425,23 @@ function knobSpeech(i) {
     return `${Math.round(knobValues[i])}${k.unit || ''}`;
 }
 
+/* decodeDelta reports ACCUMULATED encoder movement — the shim batches ticks
+ * per SPI frame, so one brisk turn arrives as a single event carrying 20 or
+ * more. Applied raw to a short range (Loop Length is a nine-entry enum, Slice
+ * Res a four) that pins the knob to an end stop and makes every option in
+ * between unreachable by a normal turn. Cap the magnitude at a quarter of the
+ * range, counted in steps rather than units.
+ *
+ * The Seed knob is deliberately exempt: accelerateSeedDelta() ramps to 250x on
+ * a sustained turn because the seed space is huge and browsing it one integer
+ * at a time is useless. That ramp is a feature, not this bug. */
+function scaledSteps(delta, min, max, step) {
+    const span = Math.max(1, Math.round((max - min) / (step || 1)));
+    const cap = Math.max(1, Math.ceil(span / 4));
+    const mag = Math.min(Math.abs(delta), cap);
+    return delta > 0 ? mag : -mag;
+}
+
 function adjustKnob(i, delta) {
     const k = KNOBS[i];
     if (k.trig) {
@@ -400,8 +451,10 @@ function adjustKnob(i, delta) {
     const max = k.opts ? k.opts.length - 1 : k.max;
     const min = k.opts ? 0 : k.min;
     const step = k.opts ? 1 : k.step;
-    if (k.key === 'seed') delta = accelerateSeedDelta(delta);
-    let v = Math.max(min, Math.min(max, knobValues[i] + delta * step));
+    const move = k.key === 'seed'
+        ? accelerateSeedDelta(delta) * step
+        : scaledSteps(delta, min, max, step) * step;
+    let v = Math.max(min, Math.min(max, knobValues[i] + move));
     if (v === knobValues[i]) return;
     knobValues[i] = v;
     host_module_set_param(k.key, `${Math.round(v)}`);
@@ -568,7 +621,11 @@ function tick() {
 
     /* playhead chase: cheap single get_param per tick. The screen grid
      * chases too (the pads belong to firmware in a slot editor). */
-    if (state === 3) {
+    /* Every third tick. One poll is one blocking read; at 44 a second it
+     * claimed the whole param channel by itself, which is what made the
+     * editor's other reads time out. Fifteen slice updates a second still
+     * looks continuous on the step LEDs. */
+    if (state === 3 && tickCount % 3 === 0) {
         const ps = parseInt(gp('play_slice') || '-1');
         if (ps !== playSlice) {
             playSlice = ps;
@@ -580,10 +637,13 @@ function tick() {
     /* periodic full refresh — device knob edits, quantized AB flips, AND
      * changes arriving from the web editor: knob values must re-poll too,
      * or the Move screen shows stale numbers after a browser-side change */
-    if (tickCount % 12 === 0) {
+    /* Hot state often, the twenty-five cold reads rarely. Refreshing the lot
+     * every twelve ticks cost 55 reads a second on its own. */
+    if (tickCount % 24 === 0) {
         const oldState = state, oldAb = ab, oldPattern = pattern, oldPatternR = patternR;
         const oldKnobs = knobValues.join(','), oldMon = monitorOn;
-        fetchAll();
+        fetchHot();
+        if (tickCount % 120 === 0) fetchCold();
         /* speak async transitions (armed -> recording -> looping) as they
          * land; A/B is announced at press time instead, because the applied
          * value lags the pad while a quantized flip is pending */

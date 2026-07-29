@@ -1,9 +1,9 @@
 CC ?= cc
 CFLAGS = -O2 -g -Wall -Wextra -Iinclude
 
-.PHONY: test arm clean
+.PHONY: test test-ui arm clean
 
-test: build/host_sim
+test: build/host_sim test-ui
 	python3 test/validate_manifests.py
 	./build/host_sim
 
@@ -16,3 +16,7 @@ arm:
 
 clean:
 	rm -rf build
+
+test-ui:
+	node --no-warnings --experimental-vm-modules test/ui_chain.mjs
+	node --no-warnings --experimental-vm-modules test/ui_overtake.mjs

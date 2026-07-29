@@ -3,3 +3,6 @@ build/
 .DS_Store
 .playwright-mcp/
 *.jpeg
+
+# agent worktrees are separate checkouts, never part of a commit
+.claude/worktrees/
