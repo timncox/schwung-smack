@@ -103,6 +103,7 @@
               "name": "Capture Now",
               "type": "enum",
               "default": 0,
+              "behavior": "trigger",
               "options": [
                 "idle",
                 "trigger"
@@ -113,6 +114,7 @@
               "name": "Arm Record",
               "type": "enum",
               "default": 0,
+              "behavior": "trigger",
               "options": [
                 "idle",
                 "trigger"
@@ -133,6 +135,7 @@
               "name": "Re-Roll",
               "type": "enum",
               "default": 0,
+              "behavior": "trigger",
               "options": [
                 "idle",
                 "trigger"
@@ -143,6 +146,7 @@
               "name": "Clear Loop",
               "type": "enum",
               "default": 0,
+              "behavior": "trigger",
               "options": [
                 "idle",
                 "trigger"
@@ -153,6 +157,7 @@
               "name": "Detect BPM",
               "type": "enum",
               "default": 0,
+              "behavior": "trigger",
               "options": [
                 "idle",
                 "trigger"
