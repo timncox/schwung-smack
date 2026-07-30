@@ -119,6 +119,10 @@ def check_manifest(path: Path) -> None:
     assert seed.get("knob_acceleration") == "wide", (
         f"{path}: Seed must opt into wide-range knob acceleration"
     )
+    for key in ("capture", "arm", "reroll", "clear", "detect_bpm"):
+        assert definitions[key].get("behavior") == "trigger", (
+            f"{path}: {key} must publish one-shot trigger behavior"
+        )
 
 
 def iter_help_lines(value):
