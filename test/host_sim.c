@@ -16,7 +16,9 @@
 #include "../src/smack_core.h"
 
 #define BLK 128
-#define FPT 918.75 /* frames per MIDI clock tick at 120 BPM */
+/* Frames per MIDI clock tick at 120 BPM = SR * 60 / (120 * 24) = SR / 48.
+ * Derived, not literal: 44100/48 == 918.75 (the old value), 48000/48 == 1000. */
+#define FPT ((double)SMACK_SR / 48.0)
 
 static float fake_bpm(void) { return 120.0f; }
 
@@ -45,7 +47,7 @@ static void run_blocks_lr(int nblocks, int16_t *last_out, int l_on, int r_on) {
         /* clock ticks due before this block */
         send_due_ticks();
         for (int i = 0; i < BLK; i++) {
-            phase += 220.0 / 44100.0;
+            phase += 220.0 / (double)SMACK_SR;
             if (phase >= 1.0) phase -= 1.0;
             int16_t v = (int16_t)((phase * 2.0 - 1.0) * 12000.0);
             in[i * 2]     = l_on ? v : 0;
@@ -74,12 +76,12 @@ static void run_constant_blocks(int nblocks, int16_t value, int16_t *last_out) {
 /* Beat-gated saw: 25%-duty bursts at the given BPM (for BPM detection) */
 static void run_blocks_beat(int nblocks, double bpm) {
     static double phase = 0.0;
-    const double period = 60.0 / bpm * 44100.0;
+    const double period = 60.0 / bpm * (double)SMACK_SR;
     int16_t in[BLK * 2], out[BLK * 2];
     for (int b = 0; b < nblocks; b++) {
         send_due_ticks();
         for (int i = 0; i < BLK; i++) {
-            phase += 220.0 / 44100.0;
+            phase += 220.0 / (double)SMACK_SR;
             if (phase >= 1.0) phase -= 1.0;
             double beat_pos = fmod((double)frames_done + i, period);
             int on = beat_pos < period * 0.25;
@@ -153,7 +155,7 @@ static void test_clock_quantization_does_not_accumulate(const host_api_v1_t *hos
     smack_set_param(S, "capture", "1");
 
     int loop_frames = get_int_param("loop_frames");
-    assert(abs(loop_frames - 88200) <= 8);
+    assert(abs(loop_frames - 2 * SMACK_SR) <= 8);   /* one bar @120 = 2 s */
     uint32_t anchor_tick = sim_tick_total - sim_tick_total % 3;
     uint32_t target_tick = anchor_tick + 32u * 96u;
     while (sim_tick_total < target_tick) run_blocks(1, NULL);
@@ -230,7 +232,7 @@ static void test_live_loop_geometry(const host_api_v1_t *host) {
     smack_set_param(S, "capture", "1");
 
     int one_bar = get_int_param("loop_frames");
-    assert(abs(one_bar - 88200) <= 8);
+    assert(abs(one_bar - 2 * SMACK_SR) <= 8);   /* one bar @120 = 2 s */
     assert(get_int_param("n_slices") == 16);
     int play_before = get_int_param("play_frame");
 
@@ -246,7 +248,7 @@ static void test_live_loop_geometry(const host_api_v1_t *host) {
     int old_play = get_int_param("play_frame");
     smack_set_param(S, "loop_len", "3");       /* half bar */
     int half_bar = get_int_param("loop_frames");
-    assert(abs(half_bar - 44100) <= 8);
+    assert(abs(half_bar - SMACK_SR) <= 8);      /* half bar @120 = 1 s */
     assert(get_int_param("n_slices") == 2);
     assert(abs(get_int_param("play_frame")
                - resized_play_frame(one_bar, old_play, half_bar)) <= 2);
@@ -255,7 +257,7 @@ static void test_live_loop_geometry(const host_api_v1_t *host) {
     old_play = get_int_param("play_frame");
     smack_set_param(S, "loop_len", "5");       /* two bars */
     int two_bars = get_int_param("loop_frames");
-    assert(abs(two_bars - 176400) <= 16);
+    assert(abs(two_bars - 4 * SMACK_SR) <= 16); /* two bars @120 = 4 s */
     assert(get_int_param("n_slices") == 8);
     assert(abs(get_int_param("play_frame")
                - resized_play_frame(half_bar, old_play, two_bars)) <= 2);
@@ -274,7 +276,7 @@ static void test_live_loop_geometry(const host_api_v1_t *host) {
 
 static void test_fixed_record_quantum(const host_api_v1_t *host) {
     reset_sim_instance(host);
-    smack_set_param(S, "loop_len", "0");       /* one 16th at 120 = 5512 */
+    smack_set_param(S, "loop_len", "0");       /* one 16th at 120 = SR/8 */
     smack_set_param(S, "bpm_override", "120");
     smack_set_param(S, "arm", "1");
     run_constant_blocks(1, 1000, NULL);
@@ -284,11 +286,13 @@ static void test_fixed_record_quantum(const host_api_v1_t *host) {
      * length already armed. */
     smack_set_param(S, "bpm_override", "60");
     smack_set_param(S, "loop_len", "1");
-    run_constant_blocks(100, 1000, NULL);
+    /* Long enough to finish the armed take at any block size: the quantum is
+     * one 16th @120 = SMACK_SR/8 frames (100 blocks @128/44.1k originally). */
+    run_constant_blocks((SMACK_SR / 8) / BLK * 2 + 20, 1000, NULL);
     assert(gp("run_state") == '3');
     char buf[32];
     smack_get_param(S, "loop_frames", buf, sizeof(buf));
-    assert(atoi(buf) == 5512);
+    assert(atoi(buf) == SMACK_SR / 8);
 
     smack_set_param(S, "fx_density", "999");
     smack_get_param(S, "fx_density", buf, sizeof(buf));
@@ -324,7 +328,10 @@ static void test_stopped_clock_capture_phase(const host_api_v1_t *host) {
     int recent = 0;
     for (int i = SMACK_EDGE_FADE; i < BLK; i++)
         if (abs((int)out[i * 2] - 12345) <= 1) recent++;
-    assert(recent > 25);                     /* capture ended near now */
+    /* Threshold scales with the post-fade window (BLK - SMACK_EDGE_FADE),
+     * which shrinks as EDGE_FADE grows with the sample rate.
+     * 32 * 25/32 == 25 at 44.1k, so this is unchanged at the old rate. */
+    assert(recent > (BLK - SMACK_EDGE_FADE) * 25 / 32);
 
     smack_destroy(S);
     printf("ok: stopped-clock retro phase extrapolation\n");
@@ -378,7 +385,7 @@ int main(void) {
 
     int16_t out[BLK * 2];
 
-    /* transport start, then 2 bars of audio (1 bar = 88200 frames = ~689 blocks) */
+    /* transport start, then 2 bars of audio (1 bar @120 = 2 * SMACK_SR frames) */
     uint8_t start = 0xFA;
     smack_on_midi(S, &start, 1, 3);
     run_blocks(1400, out);
@@ -680,8 +687,11 @@ int main(void) {
     smack_set_param(S, "capture", "1");
     assert(gp("run_state") == '3');
     smack_get_param(S, "loop_frames", buf, sizeof(buf));
-    /* 1 bar at 90 BPM = 44100 * 4 * 60/90 = 117600 frames */
-    assert(atoi(buf) > 115000 && atoi(buf) < 120000);
+    /* 1 bar at 90 BPM = SMACK_SR * 4 * 60/90 = SMACK_SR * 8/3 frames */
+    {
+        const int bar90 = SMACK_SR * 8 / 3;
+        assert(atoi(buf) > bar90 - 2600 && atoi(buf) < bar90 + 2400);
+    }
 
     /* global punch: every effect renders under pressure sweeps; readback
      * works; -1 turns it off; punch survives the A side (forces effect) */
@@ -1032,7 +1042,7 @@ int main(void) {
         smack_set_param(S, "wet", "100");
         smack_set_param(S, "ab", "0");         /* A side when not triggering */
         smack_set_param(S, "pad_play", "1");
-        smack_set_param(S, "pad_rate", "2");   /* 1/4 = beat = 22050 frames */
+        smack_set_param(S, "pad_rate", "2");   /* 1/4 = beat = SMACK_SR/2 frames */
 
         run_blocks(20, NULL);                  /* mid-beat, well off boundary */
         uint8_t non[3] = { 0x90, 60, 100 };    /* note 60 -> cell 60%16 = 12 */
@@ -1052,9 +1062,13 @@ int main(void) {
         run_blocks(2, out);
         assert(energy(out) > 0);               /* cell audible, vel-scaled */
 
+        /* A beat is SMACK_SR/2 frames = 172 blocks @44.1k, 187 @48k, so the
+         * wait for the next repeat must be derived, not literal. */
+        const int beat_blocks = (SMACK_SR / 2) / BLK;
         run_blocks(48, out);                   /* past the slice (43 blocks): */
         assert(energy(out) == 0);              /* between repeats = silence */
-        run_blocks(130, out);                  /* next beat: repeat refires */
+        run_blocks(beat_blocks - 42, out);     /* next beat: repeat refires
+                                                * (172-42 == 130 @44.1k) */
         smack_get_param(S, "pad_state", pb, sizeof(pb));
         assert(strcmp(pb, "1:12") == 0);
         assert(energy(out) > 0);
