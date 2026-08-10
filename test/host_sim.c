@@ -119,6 +119,45 @@ static int get_int_param(const char *key) {
     return atoi(buf);
 }
 
+/* Live-mode checks compare input against output frame by frame, which
+ * run_blocks_lr can't do (it keeps its saw to itself). `dc` feeds a constant
+ * instead of the saw so an edge fade shows up as a dip rather than hiding in
+ * a zero crossing. Any of the out-params may be NULL. */
+static double live_saw_phase = 0.0;
+static void run_blocks_io(int nblocks, int amp, int dc,
+                          long *max_err, long *min_abs, long *max_abs) {
+    int16_t in[BLK * 2], out[BLK * 2];
+    if (max_err) *max_err = 0;
+    if (min_abs) *min_abs = 32767;
+    if (max_abs) *max_abs = 0;
+    for (int b = 0; b < nblocks; b++) {
+        send_due_ticks();
+        for (int i = 0; i < BLK; i++) {
+            int16_t v;
+            if (dc) {
+                v = (int16_t)amp;
+            } else {
+                live_saw_phase += 220.0 / 44100.0;
+                if (live_saw_phase >= 1.0) live_saw_phase -= 1.0;
+                v = (int16_t)((live_saw_phase * 2.0 - 1.0) * (double)amp);
+            }
+            in[i * 2] = v;
+            in[i * 2 + 1] = v;
+        }
+        smack_process(S, in, out, BLK);
+        for (int i = 0; i < BLK * 2; i++) {
+            long a = labs((long)out[i]);
+            if (min_abs && a < *min_abs) *min_abs = a;
+            if (max_abs && a > *max_abs) *max_abs = a;
+            if (max_err) {
+                long e = labs((long)out[i] - (long)in[i]);
+                if (e > *max_err) *max_err = e;
+            }
+        }
+        frames_done += BLK;
+    }
+}
+
 static void test_retro_capture_phase_chase(const host_api_v1_t *host) {
     reset_sim_instance(host);
     uint8_t start = 0xFA;
@@ -1116,6 +1155,113 @@ int main(void) {
         assert(pb[0] == '0');
         smack_get_param(S, "pad_rate", pb, sizeof(pb));
         assert(pb[0] == '2');
+    }
+
+    /* --- Live mode: the pattern runs on the input, no captured loop ---- */
+    {
+        char pb[64];
+        reset_sim_instance(&host);
+        {   /* the clock has to be running for the grid to lock */
+            uint8_t start = 0xFA;
+            smack_on_midi(S, &start, 1, MOVE_MIDI_SOURCE_INTERNAL);
+        }
+        smack_set_param(S, "wet", "100");
+        smack_set_param(S, "monitor", "1");
+        smack_set_param(S, "loop_len", "4");     /* 1 bar */
+        smack_set_param(S, "slice_res", "1");
+        run_blocks_io(40, 9000, 0, NULL, NULL, NULL);
+
+        /* entering live mode needs no capture and gives a sliced grid */
+        assert(gp("run_state") == '0');          /* IDLE: nothing captured */
+        smack_set_param(S, "live", "1");
+        assert(gp("run_state") == '4');          /* SMACK_LIVE */
+        assert(get_int_param("n_slices") > 1);
+        smack_get_param(S, "live", pb, sizeof(pb));
+        assert(pb[0] == '1');
+
+        /* The clean side IS the input: the window's newest frame is the one
+         * just written, so A passes audio through sample for sample. Run
+         * well past a pattern cycle — a stale loop-boundary fade would notch
+         * it once a cycle, and a mis-anchored window would delay it. */
+        smack_set_param(S, "ab", "0");
+        {
+            long err = 0;
+            run_blocks_io(900, 9000, 0, &err, NULL, NULL);
+            assert(err <= 1);                    /* int16 round trip only */
+        }
+
+        /* The window slides with the input rather than holding a loop: feed
+         * silence and everything, including a full-density pattern reading
+         * up to a cycle behind, drains inside two cycles. */
+        smack_set_param(S, "ab", "1");
+        smack_set_param(S, "fx_density", "100");
+        smack_set_param(S, "order_density", "100");
+        run_blocks_io(400, 12000, 0, NULL, NULL, NULL);
+        {
+            long peak = 0;
+            run_blocks_io(400, 0, 0, NULL, NULL, NULL);   /* two cycles of hush */
+            run_blocks_io(100, 0, 0, NULL, NULL, &peak);
+            assert(peak == 0);
+        }
+
+        /* An effect that only shapes the sample (no reordered or warped
+         * read) is a continuous process on the input in live mode, so it
+         * must not pick up the slice-edge fade: on DC the output would dip
+         * to nothing at every slice boundary if it did. */
+        {
+            long lo = 0, hi = 0;
+            snprintf(pb, sizeof pb, "%d", (int)SMACK_FX_DIST);
+            smack_set_param(S, "punch_fx", pb);
+            run_blocks_io(600, 8000, 1, NULL, &lo, &hi);
+            smack_set_param(S, "punch_fx", "-1");
+            assert(hi > 1000);                   /* it is passing audio */
+            assert(lo > hi / 4);                 /* and never fading out */
+        }
+
+        /* Every effect has to stay bounded on live input, whether it reads
+         * at the head or a slice behind. */
+        for (int f = 1; f < SMACK_FX_COUNT; f++) {
+            long hi = 0;
+            snprintf(pb, sizeof pb, "%d", f);
+            smack_set_param(S, "punch_fx", pb);
+            run_blocks_io(60, 9000, 0, NULL, NULL, &hi);
+            assert(hi <= 32767);                 /* clip16 holds, no NaN */
+        }
+        smack_set_param(S, "punch_fx", "-1");
+
+        /* The ring stays hot in live mode, so Capture drops straight into
+         * the normal retro grab — jam live, then keep the bar you liked. */
+        run_blocks_io(300, 9000, 0, NULL, NULL, NULL);
+        smack_set_param(S, "capture", "1");
+        assert(gp("run_state") == '3');          /* SMACK_LOOPING */
+        smack_get_param(S, "live", pb, sizeof(pb));
+        assert(pb[0] == '0');
+        {
+            long e = 0;
+            run_blocks_io(60, 9000, 0, NULL, NULL, &e);
+            assert(e > 0);                       /* the grab has audio in it */
+        }
+
+        /* Leaving live mode without capturing lands in IDLE. */
+        smack_set_param(S, "clear", "1");
+        smack_set_param(S, "live", "1");
+        assert(gp("run_state") == '4');
+        smack_set_param(S, "live", "0");
+        assert(gp("run_state") == '0');
+
+        /* Live mode round-trips through a preset snapshot. */
+        smack_set_param(S, "live", "1");
+        {
+            char snap[4096];
+            assert(smack_get_param(S, "state", snap, sizeof(snap)) >= 0);
+            assert(strstr(snap, "\"live\":1"));
+            smack_set_param(S, "clear", "1");
+            assert(gp("run_state") == '0');
+            smack_set_param(S, "state", snap);
+            assert(gp("run_state") == '4');
+        }
+        smack_set_param(S, "live", "0");
+        printf("ok: live mode runs the pattern on the input, no capture\n");
     }
 
     /* --- MIDI CC control: scaling, source filter, duplicate guard --- */

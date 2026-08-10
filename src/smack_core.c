@@ -214,6 +214,17 @@ struct smack {
                                     (gen/oversmack builds); chain UI keys the
                                     feedback guard off this */
 
+    /* Live mode: run the seeded pattern straight on the incoming audio with
+     * no captured loop. The ring becomes a rolling window whose newest frame
+     * is always the last sample written, so the clean side is the live input
+     * at zero latency and effects read BACKWARDS from it — the ones that
+     * would need audio that has not arrived yet source from the previous
+     * slice instead (see fx_lookbehind). Toggling it is non-destructive:
+     * the ring stays hot, so Capture from live mode drops straight into the
+     * normal retro-grab flow. */
+    int   live;                  /* 1 = requested; state == SMACK_LIVE when on */
+    double live_head;            /* loop-domain offset of the newest frame */
+
     /* BPM detection: onset-strength envelope over the last DET_SECONDS of
      * ring audio, autocorrelated across 60-180 BPM. Runs incrementally on
      * the audio thread (DET_FRAMES_PER_BLOCK ring frames per block) so the
@@ -801,7 +812,7 @@ static void pad_note_off(smack_t *s, int note) {
  *   30 punch: 0 = release, 1 = punch clean, 2+ = punch effect f-1
  *   31 punch_pressure (raw 0-127)
  *   40 arm  41 capture  42 reroll  43 clear   (fire at >=64)
- *   44 monitor (>=64)
+ *   44 monitor (>=64)   45 live (>=64)
  * Continuous 0-127 scales into the param range; see README. */
 static void smack_handle_cc(smack_t *s, int cc, int v) {
     char val[16];
@@ -834,6 +845,7 @@ static void smack_handle_cc(smack_t *s, int cc, int v) {
     case 42: if (on) smack_set_param(s, "reroll", "1");            return;
     case 43: if (on) smack_set_param(s, "clear", "1");             return;
     case 44: smack_set_param(s, "monitor", on ? "1" : "0");        return;
+    case 45: smack_set_param(s, "live", on ? "1" : "0");           return;
     default: return;
     }
     snprintf(val, sizeof val, "%d", scaled);
@@ -912,6 +924,50 @@ void smack_on_midi(smack_t *s, const uint8_t *msg, int len, int source) {
 /*  Rendering                                                          */
 /* ------------------------------------------------------------------ */
 
+/* Live-mode source classification.
+ *
+ * In live mode the window's last frame is "now": an effect may read anywhere
+ * behind it, never ahead. Most of the palette only reads backwards inside
+ * the slice it is playing (rp <= p), so it runs on the live input at zero
+ * latency. These seven can compute a read position past the playhead, so
+ * they source from the PREVIOUS slice — a glitch built out of what was just
+ * played, which is what a live beat-repeat does anyway.
+ *
+ * Returns the lookbehind in slices. ring_read_lerp clamps every read to the
+ * window regardless, so a misclassification can only cost sound quality; it
+ * cannot read audio that has not been written yet. */
+static int fx_lookbehind(int f) {
+    switch (f) {
+    case SMACK_FX_REVERSE:  /* rp = sf-1-p — ahead for the first half */
+    case SMACK_FX_PITCH:    /* rates above 1x outrun the playhead */
+    case SMACK_FX_SPEED:    /* double and x1.5 outrun it */
+    case SMACK_FX_SCRATCH:  /* the throw swings forward of the playhead */
+    case SMACK_FX_FREEZE:   /* grain spray lands anywhere in the zone */
+    case SMACK_FX_PSHIFT:   /* an upward shift reads faster than real time */
+    case SMACK_FX_SCATTER:  /* shuffled grains come from anywhere in the slice */
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+/* Effects that leave the read position alone (rp == p) and shape the sample
+ * afterwards. In live mode those are a continuous process on the input, so
+ * the slice-edge fade — which exists to mask a reorder/warp discontinuity —
+ * would only notch an otherwise clean signal once per step. */
+static int fx_source_continuous(int f) {
+    switch (f) {
+    case SMACK_FX_NONE:  case SMACK_FX_GATE:   case SMACK_FX_ENV:
+    case SMACK_FX_PAN:   case SMACK_FX_FILTER: case SMACK_FX_VOWEL:
+    case SMACK_FX_TONALDELAY: case SMACK_FX_DELAY: case SMACK_FX_DIST:
+    case SMACK_FX_PHASER: case SMACK_FX_VERB:  case SMACK_FX_RINGMOD:
+    case SMACK_FX_COMB:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 /* ch: -1 = stereo, 0/1 = that input channel duplicated to both outputs
  * (dual-mono lanes render a mono source through the stereo fx path). */
 static inline void ring_read_lerp(const smack_t *s, double loop_off, int ch,
@@ -969,9 +1025,27 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
     if (s->punch_fx == 0) use_pattern = 0;      /* punching clean */
     else if (s->punch_fx > 0) use_pattern = 1;  /* punching an effect */
 
+    /* Live mode reads relative to the newest frame instead of a fixed loop.
+     * `live_head` is now; `p_now` is how far into the current grid step now
+     * sits; `cur_step` is that step. A source slice is expressed as a number
+     * of slices BEHIND cur_step, so every read lands on written audio. */
+    int    live     = (s->state == SMACK_LIVE);
+    double p_now    = (live && sf > 0.0) ? fmod(s->play_pos, sf) : 0.0;
+    int    cur_step = (live && sf > 0.0) ? (int)(s->play_pos / sf) : 0;
+    if (cur_step >= s->n_slices) cur_step = s->n_slices > 0 ? s->n_slices - 1 : 0;
+
     if (!use_pattern) {
         /* clean, original order (pad-play still repeats its cell here) */
-        src = s->trig_render ? ((double)oslice * sf + p) : s->play_pos;
+        if (live) {
+            /* not padding: the clean side IS the input, read at the head */
+            int back = (s->trig_render && s->n_slices > 0)
+                     ? ((cur_step - oslice) % s->n_slices + s->n_slices) % s->n_slices
+                     : 0;
+            src = s->live_head - p_now + (s->trig_render ? p : p_now)
+                - (double)back * sf;
+        } else {
+            src = s->trig_render ? ((double)oslice * sf + p) : s->play_pos;
+        }
     } else {
         int sslice = ln->order[oslice];
         f  = ln->fx[oslice];
@@ -985,7 +1059,22 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
             fp2  = s->punch_fxp2;
             fmix = s->punch_mix;
         }
-        src_dry = (double)sslice * sf + p;
+        /* How many slices behind "now" this slice's audio lives. The reorder
+         * table can only be honoured backwards in live mode — a step that
+         * has not played yet has no audio — so a forward jump of k becomes a
+         * lookbehind of n-k. Effects that read ahead of the playhead add
+         * their own slice of lookbehind on top. */
+        int live_back = 0;
+        if (live) {
+            live_back = fx_lookbehind(f);
+            if (s->n_slices > 0) {
+                int ob = ((cur_step - sslice) % s->n_slices + s->n_slices)
+                       % s->n_slices;
+                if (ob > live_back) live_back = ob;
+            }
+        }
+        src_dry = live ? (s->live_head - p_now + p - (double)live_back * sf)
+                       : ((double)sslice * sf + p);
         double rp = p;
         switch (f) {
         case SMACK_FX_RETRIG: {
@@ -1214,23 +1303,40 @@ static void render_lane(smack_t *s, smack_lane_t *ln, int ch, int side, float *l
         }
         if (rp < 0.0) rp = 0.0;
         if (rp > sf - 1.0) rp = sf - 1.0;
-        src = (double)sslice * sf + rp;
-        if (src2 >= 0.0) {
-            if (src2 > sf - 1.0) src2 = sf - 1.0;
-            src2 = (double)sslice * sf + src2;
+        if (live) {
+            double base = s->live_head - p_now - (double)live_back * sf;
+            src = base + rp;
+            if (src2 >= 0.0) {
+                if (src2 > sf - 1.0) src2 = sf - 1.0;
+                src2 = base + src2;
+            }
+        } else {
+            src = (double)sslice * sf + rp;
+            if (src2 >= 0.0) {
+                if (src2 > sf - 1.0) src2 = sf - 1.0;
+                src2 = (double)sslice * sf + src2;
+            }
         }
 
-        /* slice-edge fade masks discontinuities from reorder/fx */
-        if (p < SMACK_EDGE_FADE) gedge *= (float)(p / SMACK_EDGE_FADE);
-        double tail = sf - p;
-        if (tail < SMACK_EDGE_FADE) gedge *= (float)(tail / SMACK_EDGE_FADE);
+        /* slice-edge fade masks discontinuities from reorder/fx. In live mode
+         * an effect that neither warps the read nor looks behind is a
+         * continuous process on the input — fading it would notch a clean
+         * signal once a step for no reason. */
+        if (!live || live_back > 0 || !fx_source_continuous(f)) {
+            if (p < SMACK_EDGE_FADE) gedge *= (float)(p / SMACK_EDGE_FADE);
+            double tail = sf - p;
+            if (tail < SMACK_EDGE_FADE) gedge *= (float)(tail / SMACK_EDGE_FADE);
+        }
     }
 
-    /* loop-boundary fade in both modes */
-    if (s->play_pos < SMACK_EDGE_FADE)
-        gedge *= (float)(s->play_pos / SMACK_EDGE_FADE);
-    double ltail = (double)s->loop_len - s->play_pos;
-    if (ltail < SMACK_EDGE_FADE) gedge *= (float)(ltail / SMACK_EDGE_FADE);
+    /* loop-boundary fade — captured loops only. Live mode has no seam: the
+     * pattern cycle wraps but the audio underneath it never does. */
+    if (!live) {
+        if (s->play_pos < SMACK_EDGE_FADE)
+            gedge *= (float)(s->play_pos / SMACK_EDGE_FADE);
+        double ltail = (double)s->loop_len - s->play_pos;
+        if (ltail < SMACK_EDGE_FADE) gedge *= (float)(ltail / SMACK_EDGE_FADE);
+    }
 
     ring_read_lerp(s, src, ch, l, r);
 
@@ -1662,6 +1768,85 @@ static void record_ring_frame(smack_t *s, int16_t l, int16_t r,
     s->ring_last_global = global_frame;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Live mode                                                          */
+/* ------------------------------------------------------------------ */
+
+/* Refreshed every block: in live mode the grid comes from the running clock
+ * instead of being frozen at capture, so a tempo change just tracks. The
+ * window is one full pattern cycle, which is exactly the deepest lookbehind
+ * a full-cycle reorder can ask for. */
+static void live_sync_geometry(smack_t *s) {
+    int slice_hs = slice_hs_table[s->slice_res_idx];
+    int n = loop_len_hs_table[s->loop_len_idx] / slice_hs;
+    if (n < 1) n = 1;
+    if (n > SMACK_MAX_SLICES) n = SMACK_MAX_SLICES;
+
+    double fphs = frames_per_halfstep(s);
+    if (fphs < 1.0) fphs = 1.0;
+    double len = fphs * (double)slice_hs * (double)n;
+    if (len > (double)(SMACK_RING_FRAMES - 4)) len = (double)SMACK_RING_FRAMES - 4.0;
+    if (len < (double)n) len = (double)n;   /* >= 1 frame per slice */
+
+    s->loop_len = (uint32_t)len;
+    if (n != s->n_slices) {
+        s->n_slices = n;
+        roll_pattern(s);      /* a new grid needs a pattern sized to match */
+    } else {
+        s->slice_frames = len / (double)n;
+    }
+}
+
+/* Pattern-cycle position, locked to the transport grid so the cycle lands on
+ * the bar rather than on whenever live mode happened to be switched on.
+ * Falls back to free-running off the frame counter with no clock. */
+static double live_phase(smack_t *s) {
+    double fphs = frames_per_halfstep(s);
+    if (fphs < 1.0) fphs = 1.0;
+    int cyc_hs = s->n_slices * slice_hs_table[s->slice_res_idx];
+    if (cyc_hs < 1) cyc_hs = 1;
+
+    uint64_t boundary = last_boundary_global(s);
+    double into = (s->global_frames > boundary)
+                ? (double)(s->global_frames - boundary) : 0.0;
+    if (into > fphs) into = fphs;
+
+    uint64_t hs = s->clock_seen ? (uint64_t)(s->tick_total / 3)
+                                : (uint64_t)((double)s->global_frames / fphs);
+    double pos = (double)(hs % (uint64_t)cyc_hs) * fphs + into;
+
+    double len = (double)s->loop_len;
+    if (len <= 0.0) return 0.0;
+    pos = fmod(pos, len);
+    return pos < 0.0 ? pos + len : pos;
+}
+
+/* Live mode overwrites the ring continuously, so any captured loop's audio
+ * is gone the moment it starts — entering drops the loop rather than
+ * pretending it survives, and leaving lands in IDLE. Capture still works
+ * from live mode: the ring is hot, so it falls into the normal retro grab. */
+static void live_enter(smack_t *s) {
+    if (s->state == SMACK_LIVE) return;
+    s->state = SMACK_LIVE;
+    s->transport_paused = 0;
+    s->trig_active = 0;
+    s->trig_render = 0;
+    s->loop_available = 0;
+    s->n_slices = 0;              /* force live_sync_geometry to roll */
+    live_sync_geometry(s);
+    s->play_pos = live_phase(s);
+    s->edit_rev++;
+}
+
+static void live_exit(smack_t *s) {
+    if (s->state != SMACK_LIVE) return;
+    s->state = SMACK_IDLE;
+    s->trig_active = 0;
+    s->trig_render = 0;
+    s->play_pos = 0.0;
+    s->edit_rev++;
+}
+
 void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
     if (!s) return;
 
@@ -1672,14 +1857,29 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
         begin_record(s);
     }
 
-    double play_inc = loop_playback_increment(s);
+    int live = (s->state == SMACK_LIVE);
+    if (live) {
+        live_sync_geometry(s);
+        s->play_pos = live_phase(s);   /* re-anchor to the grid each block */
+    }
+    double play_inc = live ? 1.0 : loop_playback_increment(s);
 
     for (int n = 0; n < frames; n++) {
         float inl = (float)in[n * 2], inr = (float)in[n * 2 + 1];
         record_ring_frame(s, in[n * 2], in[n * 2 + 1],
                           s->global_frames + (uint64_t)n);
 
-        if (s->state != SMACK_LOOPING || s->transport_paused) {
+        if (live) {
+            /* Rolling window: slide it so its last frame is the one just
+             * written. ring_read_lerp already clamps reads to loop_len-1, so
+             * that clamp IS the guarantee that nothing reads unwritten
+             * audio — no effect can outrun the input. */
+            s->loop_start = (uint32_t)((s->ring_w + SMACK_RING_FRAMES - s->loop_len)
+                                       % SMACK_RING_FRAMES);
+            s->live_head = (double)s->loop_len - 1.0;
+        }
+
+        if (!live && (s->state != SMACK_LOOPING || s->transport_paused)) {
             /* record + pass through */
             if (s->state == SMACK_RECORDING && s->rec_remaining > 0) {
                 if (--s->rec_remaining == 0) finish_record(s);
@@ -1769,7 +1969,9 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
                 }
             }
             if (s->hw_input) {
-                float dry = s->monitor ? 1.0f : 0.0f;
+                /* Live mode's clean tap already IS the input (read at the
+                 * head), so monitoring it again would just add 6 dB. */
+                float dry = (s->monitor && !live) ? 1.0f : 0.0f;
                 out[n * 2]     = clip16(ll + inl * dry);
                 out[n * 2 + 1] = clip16(rr + inr * dry);
             } else {
@@ -2088,18 +2290,24 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         }
     } else if (!strcmp(key, "capture")) {
         if (trig_active(val)) {
+            /* Grabbing from live mode is the point of keeping the ring hot:
+             * jam through the pattern, then take the bar you liked. */
+            s->live = 0;
             capture_retro(s);
             s->transport_paused = 0; /* manual grab plays even when stopped */
         }
     } else if (!strcmp(key, "arm")) {
         if (trig_active(val) &&
-            (s->state == SMACK_IDLE || s->state == SMACK_LOOPING)) {
+            (s->state == SMACK_IDLE || s->state == SMACK_LOOPING ||
+             s->state == SMACK_LIVE)) {
+            s->live = 0;
             s->state = SMACK_ARMED;
             s->transport_paused = 0;
             s->arm_start_flag = !s->clock_running; /* free-run: start next block */
         }
     } else if (!strcmp(key, "clear")) {
         if (trig_active(val)) {
+            s->live = 0;
             s->state = SMACK_IDLE;
             s->ab_pending = -1;
             s->transport_paused = 0;
@@ -2137,6 +2345,12 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         }
     } else if (!strcmp(key, "monitor")) {
         s->monitor = atoi(val) ? 1 : 0;
+    } else if (!strcmp(key, "live")) {
+        int want = atoi(val) ? 1 : 0;
+        if (want != s->live) {
+            s->live = want;
+            if (want) live_enter(s); else live_exit(s);
+        }
     } else if (!strcmp(key, "hw_input")) {
         s->hw_input = atoi(val) ? 1 : 0; /* set once by the gen wrapper */
     } else if (!strcmp(key, "transport")) {
@@ -2173,6 +2387,15 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         if (s->state == SMACK_LOOPING) {
             if (s->loop_len_idx != old_loop_len_idx) resize_live_loop(s);
             roll_pattern(s);
+        }
+        {   /* absent in old presets -> stay wherever the engine already is */
+            int want = json_int(val, "live", s->live) ? 1 : 0;
+            if (want != s->live) {
+                s->live = want;
+                if (want) live_enter(s); else live_exit(s);
+            } else if (want) {
+                live_sync_geometry(s);   /* new grid/seed under live mode */
+            }
         }
     } else if (!strcmp(key, "punch_fx")) {
         /* "f" = punch with the canonical param; "f:p[:p2[:m]]" = a variant
@@ -2272,7 +2495,7 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
             "\"chan\":%d,\"pan_l\":%d,\"pan_r\":%d,\"pp\":%d,\"pr\":%d,"
             "\"pal\":\"%s\","
             "\"run\":%d,\"nsl\":%d,\"mon\":%d,\"ps\":%d,\"det\":%d,\"pfx\":%d,"
-            "\"bpmo\":%d,\"locks\":\"",
+            "\"bpmo\":%d,\"live\":%d,\"locks\":\"",
             s->loop_len_idx, s->slice_res_idx, (int)(s->fx_density * 100.0f),
             (int)(s->order_density * 100.0f), s->pitch_range,
             (int)(s->wet * 100.0f), s->ab, s->quantize_mode, s->seed,
@@ -2281,7 +2504,7 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
             pal,
             (int)s->state, s->n_slices, s->monitor, ps,
             s->det_active ? -1 : (int)(s->det_bpm + 0.5f), s->punch_fx,
-            (int)(s->bpm_override + 0.5f));
+            (int)(s->bpm_override + 0.5f), s->live);
         if (n < 0 || n >= buf_len - 3) return -1;
         for (int k = 0; k < 2; k++) {
             if (k == 1)
@@ -2369,6 +2592,8 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
                         s->trig_active, s->trig_active ? s->trig_step : -1);
     if (!strcmp(key, "monitor"))
         return snprintf(buf, (size_t)buf_len, "%d", s->monitor);
+    if (!strcmp(key, "live"))
+        return snprintf(buf, (size_t)buf_len, "%d", s->live);
     if (!strcmp(key, "hw_input"))
         return snprintf(buf, (size_t)buf_len, "%d", s->hw_input);
     if (!strcmp(key, "detected_bpm")) { /* -1 scanning, 0 none, else BPM */

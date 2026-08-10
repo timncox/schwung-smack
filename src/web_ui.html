@@ -108,6 +108,7 @@
   <button id="bUnlock">Unlock All</button>
   <span style="flex:1"></span>
   <button id="bAB">A/B</button>
+  <button id="bLive">Live</button>
   <button id="bMon">Monitor</button>
   <label class="k">Wet <input id="wet" type="range" min="0" max="100" step="5"></label>
   <span id="wetv" class="note"></span>
@@ -391,6 +392,7 @@ function render() {
 
   el("bAB").classList.toggle("on", num("ab", 0) === 1);
   el("bAB").textContent = num("ab", 0) ? "B (pattern)" : "A (clean)";
+  el("bLive").classList.toggle("on", num("live", 0) === 1);
   el("bMon").classList.toggle("on", num("mon", 0) === 1);
   setIf("wet", "value", num("wet", 100));
   el("wetv").textContent = num("wet", 100) + "%";
@@ -786,6 +788,7 @@ el("bUnlock").onclick = function () { trig("unlock_all"); };
 el("bDet").onclick = function () { send("detect_bpm", "trigger"); };
 armConfirm(el("bClear"), function () { trig("clear"); });
 el("bAB").onclick = function () { send("ab", num("ab", 0) ? 0 : 1); };
+el("bLive").onclick = function () { send("live", num("live", 0) ? 0 : 1); };
 el("bMon").onclick = function () { send("monitor", num("mon", 0) ? 0 : 1); };
 
 /* two-click confirm (sandbox blocks window.confirm) */

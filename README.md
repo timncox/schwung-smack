@@ -26,6 +26,16 @@ pad, knob, and effect, with an interactive surface map.
   chase; press a step to mute that slice's effect.
 - **A/B**: punch between the clean loop (A) and the pattern (B), quantized
   to slice or loop boundaries.
+- **Live**: skip the loop entirely and run the pattern straight on the
+  incoming audio. The clean side is the input itself at zero latency; on an
+  effect step you hear the glitch instead. Effects that need a whole slice
+  before they can play it (reverse, pitch, speed, scratch, freeze, pitch
+  shift, scatter) source from the *previous* step, so they glitch what you
+  just played — the rest process the input as it arrives. Slice reorder runs
+  backwards only (a step that hasn't played has no audio), and Loop Length
+  sets the pattern cycle plus how far back reorder can reach. The ring keeps
+  recording, so Capture from Live drops straight into a normal grabbed loop:
+  jam through the pattern, then keep the bar you liked.
 - **26 effects**: retrigger, reverse, pitch (±24 st varispeed), half/double
   speed, gate, buzz, bitcrush, repeat-after-split, reverse-after-split,
   tape stop, tape start, vinyl scratch, envelope shapes, pan tricks, LP/HP
@@ -98,6 +108,7 @@ Continuous CCs scale 0–127 across each range; buttons act at value ≥ 64
 | 26 | quantize mode | | 42 | reroll |
 | 27 | A/B (≥64 = B) | | 43 | clear |
 | | | | 44 | monitor |
+| | | | 45 | live |
 
 Channel notes: `smack` in a chain or Master FX slot hears CCs on **any**
 channel. `smack-in` / `oversmack` follow note routing — match the

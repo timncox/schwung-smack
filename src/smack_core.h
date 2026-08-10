@@ -22,7 +22,15 @@
 #define SMACK_MAX_SLICES  512              /* 16 bars x 16 steps x 2 (half-step res) */
 #define SMACK_EDGE_FADE   96               /* ~2.2 ms fade at slice/loop edges */
 
-typedef enum { SMACK_IDLE = 0, SMACK_ARMED, SMACK_RECORDING, SMACK_LOOPING } smack_state_t;
+/* SMACK_LIVE is appended so the existing codes stay stable for UIs that
+ * report state as an integer. */
+typedef enum {
+    SMACK_IDLE = 0,
+    SMACK_ARMED,
+    SMACK_RECORDING,
+    SMACK_LOOPING,
+    SMACK_LIVE       /* no captured loop: the pattern runs on the input */
+} smack_state_t;
 
 typedef enum {
     SMACK_FX_NONE = 0,

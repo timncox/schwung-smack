@@ -138,8 +138,11 @@ const FX_SPEECH = [
     'pitch shift', 'ring mod', 'comb filter', 'scatter'
 ];
 
-const STATE_NAMES = ['IDLE', 'ARMED', 'REC', 'LOOP'];
-const STATE_SPEECH = ['idle', 'armed', 'recording', 'looping'];
+const STATE_NAMES = ['IDLE', 'ARMED', 'REC', 'LOOP', 'LIVE'];
+const STATE_SPEECH = ['idle', 'armed', 'recording', 'looping', 'live'];
+
+/* LOOP and LIVE both have a running pattern with slices to show. */
+function running() { return state === 3 || state === 4; }
 
 /* Knobs 1-8 (CC 71-78). Terse screen strings + speech-friendly variants. */
 const KNOBS = [
@@ -258,6 +261,9 @@ const PUNCH_PRESSURE_MS = 12;
  * feed the speakers. Mute the DSP's input monitoring (ring keeps recording,
  * loop playback stays audible) until it's safe or the user overrides. */
 let monitorOn = true;
+
+/* Live mode: the pattern runs on the input with no captured loop. */
+let liveOn = false;
 let guardMuted = false;   /* we muted because of risk */
 let guardOverride = false; /* user forced monitoring on during risk */
 
@@ -400,6 +406,7 @@ function fetchAll() {
     panL = parseInt(gp('pan_l') || '0');
     panR = parseInt(gp('pan_r') || '100');
     monitorOn = (gp('monitor') || '1') !== '0';
+    liveOn = gp('live') === '1';
     bpmOverride = parseFloat(gp('bpm_override')) || 0;
     const pv = gp('palette');
     if (pv !== null && pv !== paletteCsv) { paletteCsv = pv; applyPaletteCsv(pv); }
@@ -493,10 +500,11 @@ function adjustKnob(i, delta) {
 
 function paintTransport(force) {
     setLED(PAD_CAPTURE, Green, force);
-    setLED(PAD_ARM, state === 1 || state === 2 ? BrightRed : Red, force);
-    setLED(PAD_AB, state === 3 ? (ab ? White : LightGrey) : Black, force);
+    setLED(PAD_ARM, liveOn ? Cyan
+                  : (state === 1 || state === 2 ? BrightRed : Red), force);
+    setLED(PAD_AB, running() ? (ab ? White : LightGrey) : Black, force);
     setLED(PAD_REROLL, Blue, force);
-    setLED(PAD_CLEAR, state === 3 ? OrangeRed : Black, force);
+    setLED(PAD_CLEAR, running() ? OrangeRed : Black, force);
     setLED(PAD_MONITOR, monitorOn ? Green : BrightRed, force);
     setLED(PAD_MODE, chanMode ? White : 0x10, force);
     setLED(PAD_LANE, chanMode ? (editLane ? OrangeRed : Cyan) : Black, force);
@@ -510,13 +518,13 @@ function paintPalette(force) {
 
 function paintSteps(force) {
     const pages = stepPages();
-    setButtonLED(MoveLeft, (state === 3 && stepPage > 0) ? 1 : 0, force);
-    setButtonLED(MoveRight, (state === 3 && stepPage < pages - 1) ? 1 : 0, force);
+    setButtonLED(MoveLeft, (running() && stepPage > 0) ? 1 : 0, force);
+    setButtonLED(MoveRight, (running() && stepPage < pages - 1) ? 1 : 0, force);
     const base = stepPage * STEP_COUNT;
     for (let i = 0; i < STEP_COUNT; i++) {
         const s = base + i;
         let color = Black;
-        if (state === 3 && s < nSlices) {
+        if (running() && s < nSlices) {
             if (shiftHeld) {
                 /* page-2 view: light only the pinned slices */
                 color = sliceLocked(s) ? FX_COLORS[sliceFx(s)] : Black;
@@ -543,17 +551,17 @@ function paintAll(force) {
 function drawUI() {
     clear_screen();
     let title = 'OVERSMACK  ' + STATE_NAMES[state];
-    if (state === 3) title += ab ? ' · B' : ' · A';
+    if (running()) title += ab ? ' · B' : ' · A';
     if (detecting) title += ' @...';
     else if (bpmOverride > 0) title += ` @${Math.round(bpmOverride)}`;
     drawHeader(title);
 
     /* selected-slice line (lane-prefixed in dual mono, pin marker) */
     const lanePfx = chanMode ? (editLane ? 'R ' : 'L ') : '';
-    if (state === 3 && selectedSlice >= 0 && selectedSlice < nSlices) {
+    if (running() && selectedSlice >= 0 && selectedSlice < nSlices) {
         const pin = sliceLocked(selectedSlice) ? ' *pin' : '';
         print(2, 13, `${lanePfx}Step ${selectedSlice + 1}: ${FX_NAMES[sliceFx(selectedSlice)]}${pin}`, 1);
-    } else if (state === 3) {
+    } else if (running()) {
         print(2, 13, lanePfx + 'Press a step to edit', 1);
     } else {
         print(2, 13, 'Capture or Arm a loop', 1);
@@ -582,7 +590,7 @@ function drawUI() {
     if (shiftHeld) {
         fLeft = 'Knobs pg2 \u00b7 pins';
         fRight = '';
-    } else if (state !== 3) {
+    } else if (!running()) {
         fLeft = '';
         fRight = 'Back:hide';
     } else {
@@ -596,7 +604,7 @@ function drawUI() {
 /* ---- Actions ---- */
 
 function assignFx(code, tok) {
-    if (state !== 3 || selectedSlice < 0 || selectedSlice >= nSlices) {
+    if (!running() || selectedSlice < 0 || selectedSlice >= nSlices) {
         announce('Select a step first');
         return;
     }
@@ -607,7 +615,7 @@ function assignFx(code, tok) {
 }
 
 function unlockSlice() {
-    if (state !== 3 || selectedSlice < 0 || selectedSlice >= nSlices) {
+    if (!running() || selectedSlice < 0 || selectedSlice >= nSlices) {
         announce('Select a step first');
         return;
     }
@@ -640,7 +648,7 @@ globalThis.init = function() {
     needsRedraw = true;
     if (dspReady) {
         let spoken = 'Oversmack, ' + STATE_SPEECH[state];
-        if (state === 3) spoken += ab ? ', side B' : ', side A';
+        if (running()) spoken += ab ? ', side B' : ', side A';
         announceView(spoken);
         reconcileFeedbackGuard();
     }
@@ -726,7 +734,7 @@ globalThis.tick = function() {
     }
 
     /* playhead chase: cheap single get_param per tick */
-    if (state === 3) {
+    if (running()) {
         const ps = parseInt(gp('play_slice') || '-1');
         if (ps !== playSlice) {
             playSlice = ps;
@@ -741,12 +749,14 @@ globalThis.tick = function() {
         const oldState = state, oldAb = ab, oldPattern = pattern, oldPatternR = patternR;
         const oldKnobs = knobValues.join(','), oldMon = monitorOn;
         fetchAll();
-        if (state !== 3) { selectedSlice = -1; stepPage = 0; }
+        if (!running()) { selectedSlice = -1; stepPage = 0; }
         if (stepPage >= stepPages()) stepPage = stepPages() - 1;
         /* speak async transitions (armed -> recording -> looping); A/B is
          * announced at press time (applied value lags a quantized flip) */
         if (state !== oldState)
-            announce(state === 3 ? `looping, ${nSlices} slices` : STATE_SPEECH[state]);
+            announce(running()
+                ? `${STATE_SPEECH[state]}, ${nSlices} slices`
+                : STATE_SPEECH[state]);
         if (state !== oldState || ab !== oldAb ||
             pattern !== oldPattern || patternR !== oldPatternR) {
             paintTransport(false);
@@ -797,15 +807,15 @@ globalThis.onMidiMessageInternal = function(data) {
         /* Jog wheel or arrow buttons page through the steps (bars) */
         if (d1 === MoveMainKnob) {
             const delta = decodeDelta(d2);
-            if (delta !== 0 && state === 3) stepPageBy(delta);
+            if (delta !== 0 && running()) stepPageBy(delta);
             return;
         }
         if (d1 === MoveLeft && d2 >= 64) {
-            if (state === 3) stepPageBy(-1);
+            if (running()) stepPageBy(-1);
             return;
         }
         if (d1 === MoveRight && d2 >= 64) {
-            if (state === 3) stepPageBy(1);
+            if (running()) stepPageBy(1);
             return;
         }
         /* Knobs 1-8; while the lane pad is held, knobs 1-2 are the pans */
@@ -883,7 +893,21 @@ globalThis.onMidiMessageInternal = function(data) {
             refreshSoon();
             return;
         }
-        if (d1 === PAD_ARM)     { host_module_set_param('arm', '1');     announce('Arm');     refreshSoon(); return; }
+        if (d1 === PAD_ARM) {
+            /* The transport row is full, so Live rides the Shift layer on
+             * Arm — the two are the same choice anyway: record a loop, or
+             * run the pattern on the input without one. */
+            if (shiftHeld) {
+                liveOn = !liveOn;
+                host_module_set_param('live', liveOn ? '1' : '0');
+                announce(liveOn ? 'Live, pattern on the input' : 'Live off');
+            } else {
+                host_module_set_param('arm', '1');
+                announce('Arm');
+            }
+            refreshSoon();
+            return;
+        }
         if (d1 === PAD_REROLL) {
             /* Shift+Re-Roll = detect BPM (Shift+Capture is the host's
              * skipback); tap: re-roll; hold: unlock everything + fresh */
@@ -951,7 +975,7 @@ globalThis.onMidiMessageInternal = function(data) {
         if (d1 >= PAD_PALETTE_FIRST && d1 < PAD_PALETTE_FIRST + paletteLayout.length) {
             const ent = paletteLayout[d1 - PAD_PALETTE_FIRST];
             const code = ent.f;
-            if (state === 3 && selectedSlice < 0) {
+            if (running() && selectedSlice < 0) {
                 punchPad = d1;
                 punchLastPressure = -1;
                 punchLastPressureAt = 0;
@@ -962,7 +986,7 @@ globalThis.onMidiMessageInternal = function(data) {
             }
             const slice = selectedSlice;
             assignFx(code, ent.tok);
-            if (state === 3 && slice >= 0 && slice < nSlices) {
+            if (running() && slice >= 0 && slice < nSlices) {
                 paletteHeld = { pad: d1, code, tok: ent.tok,
                                 slice, at: Date.now(), fired: false };
             }
@@ -972,7 +996,7 @@ globalThis.onMidiMessageInternal = function(data) {
         /* Step press: select a slice for editing; same step again deselects */
         if (d1 >= STEP_FIRST && d1 < STEP_FIRST + STEP_COUNT) {
             const i = stepPage * STEP_COUNT + (d1 - STEP_FIRST);
-            if (state === 3 && i < nSlices) {
+            if (running() && i < nSlices) {
                 if (selectedSlice === i) {
                     selectedSlice = -1;
                     announce('Selection cleared');
@@ -984,7 +1008,7 @@ globalThis.onMidiMessageInternal = function(data) {
                 }
                 paintSteps(false);
                 needsRedraw = true;
-            } else if (state !== 3) {
+            } else if (!running()) {
                 announce('No loop yet');
             }
             return;

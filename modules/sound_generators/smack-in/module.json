@@ -121,6 +121,16 @@
               ]
             },
             {
+              "key": "live",
+              "name": "Live Input",
+              "type": "enum",
+              "options": [
+                "Off",
+                "On"
+              ],
+              "default": 0
+            },
+            {
               "key": "ab",
               "name": "A/B",
               "type": "enum",

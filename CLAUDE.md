@@ -386,6 +386,49 @@ range. Sim runs an extreme-min/max render sweep per effect.
   MIDI even reaches the DSP there is unverified). smack audio_fx:
   default 0 — notes-to-fx-slot delivery UNVERIFIED on hardware.
 
+## Live mode — the pattern on the input, no loop (branch, UNVERIFIED)
+
+- New state `SMACK_LIVE` (=4, appended so 0-3 stay stable for UIs that
+  report state as an int). `live` param + CC 45 + `"live"` in the state
+  blob; Perform-page param on the two hierarchy builds.
+- The whole thing is a source-position change. `render_lane` already
+  funnelled every effect through one `src = sslice*sf + rp`; live mode
+  swaps that for `src = live_head - p_now + rp - back*sf`, where
+  `live_head` is the newest frame in a window that slides with `ring_w`
+  (`loop_start = ring_w - loop_len`, updated per frame).
+- **The clamp is the safety net.** `ring_read_lerp` already pinned reads to
+  `[0, loop_len-1]`, and `loop_start + (loop_len-1) == ring_w - 1` — the
+  frame just written. So nothing can read audio that hasn't arrived,
+  independent of the per-effect classification below.
+- `fx_lookbehind()`: 7 effects (reverse, pitch, speed, scratch, freeze,
+  pshift, scatter) can compute `rp > p`, so they source one slice back —
+  they glitch the previous step. The other 19 read at the head. Verified
+  by hand against each case in the switch: revafter, tapestop and tapestart
+  all stay `rp <= p` despite looking like they wouldn't.
+- `fx_source_continuous()`: the pointwise effects skip the slice-edge fade
+  in live mode — there's no discontinuity to mask and the fade would notch
+  a clean signal once a step. The loop-boundary fade is off entirely (live
+  audio has no seam even though the pattern cycle wraps).
+- Reorder is lookbehind-only: a forward jump of k becomes `n-k` back. Same
+  seeded table, same knob.
+- Geometry comes from the running clock every block (`live_sync_geometry`),
+  phase from `tick_total` anchored at 0xFA/0xFB (`live_phase`), so the
+  cycle lands on the bar and tempo changes track. `play_inc` is 1.0.
+- `record_ring_frame`'s overwrite guard keys on `SMACK_LOOPING`, so live
+  mode writes unconditionally for free — which is what makes Capture from
+  live fall into the normal retro grab. Entering live DROPS a captured
+  loop (the ring overwrites it); leaving lands in IDLE.
+- `hw_input` builds zero the monitor add in live mode: the clean tap already
+  IS the input, so monitoring it again would just add 6 dB.
+- Tests: `make test` covers sample-exact passthrough on the clean side
+  across a cycle boundary, draining to silence within two cycles (proves
+  the window slides), no edge-fade notch on DC through a pointwise effect,
+  all 26 effects bounded, capture-from-live, and preset round-trip. Both
+  mutation-checked: shifting `live_head` by one frame and re-enabling the
+  loop-boundary fade each fail the suite.
+- **Not verified on hardware.** Pads: chain UI pad 77, oversmack Shift+Arm
+  (its transport row was full). Neither has been pressed on a Move.
+
 ## Next steps
 
 - On-device: verify chain UI (LED colors on steps, pad consumption,

@@ -52,6 +52,7 @@ const PAD_MODE    = 74;   /* Stereo <-> Dual Mono (same pads as oversmack) */
 const PAD_LANE    = 75;   /* dual mono: tap = lane L/R; hold + knob1/2 = pans */
 const PAD_MONITOR = 73;   /* smack-in only: input monitoring + feedback guard */
 const PAD_PAGE    = 72;   /* next 16-step window (loops > 16 slices) */
+const PAD_LIVE    = 77;   /* run the pattern on the input, no captured loop */
 
 /* Step buttons show the first 16 slices */
 const STEP_FIRST = 16;
@@ -88,8 +89,12 @@ const FX_COLORS = [
     White        /* SCATTER    — texture family */
 ];
 
-const STATE_NAMES = ['IDLE', 'ARMED', 'REC', 'LOOP'];
-const STATE_SPEECH = ['idle', 'armed', 'recording', 'looping'];
+const STATE_NAMES = ['IDLE', 'ARMED', 'REC', 'LOOP', 'LIVE'];
+const STATE_SPEECH = ['idle', 'armed', 'recording', 'looping', 'live'];
+
+/* LOOP and LIVE both have a running pattern with slices to show; everything
+ * gated on "there is something playing" wants both. */
+function running() { return state === 3 || state === 4; }
 
 /* Knobs 1-8 (CC 71-78) left to right. `name`/`opts` are the terse screen
  * strings; `speech`/`speechOpts`/`unit` are what the screen reader says
@@ -198,6 +203,9 @@ let lockedMaskR = '';
  * audio_fx build processes upstream chain audio; the guard never fires. */
 let hwInput = false;
 let monitorOn = true;
+
+/* Live mode: the pattern runs on the input with no captured loop. */
+let liveOn = false;
 let guardMuted = false;
 let guardOverride = false;
 
@@ -343,6 +351,7 @@ function fetchAll() {
     panR = parseInt(gp('pan_r') || '100');
     hwInput = gp('hw_input') === '1';
     monitorOn = (gp('monitor') || '1') !== '0';
+    liveOn = gp('live') === '1';
     bpmOverride = parseFloat(gp('bpm_override')) || 0;
     fetchKnob2();
 }
@@ -415,12 +424,13 @@ function adjustKnob(i, delta) {
 function updateTransportLEDs() {
     setLED(PAD_CAPTURE, Green);
     setLED(PAD_ARM, state === 1 || state === 2 ? BrightRed : Red);
-    setLED(PAD_AB, state === 3 ? (ab ? White : LightGrey) : Black);
+    setLED(PAD_AB, running() ? (ab ? White : LightGrey) : Black);
     setLED(PAD_REROLL, Blue);
-    setLED(PAD_CLEAR, state === 3 ? OrangeRed : Black);
+    setLED(PAD_CLEAR, running() ? OrangeRed : Black);
     setLED(PAD_MODE, chanMode ? White : 0x10);
     setLED(PAD_LANE, chanMode ? (editLane ? OrangeRed : Cyan) : Black);
     setLED(PAD_MONITOR, hwInput ? (monitorOn ? Green : BrightRed) : Black);
+    setLED(PAD_LIVE, liveOn ? Cyan : 0x10);
 }
 
 function updateStepLEDs() {
@@ -429,7 +439,7 @@ function updateStepLEDs() {
     for (let i = 0; i < STEP_COUNT; i++) {
         const s = base + i;
         let color = Black;
-        if (state === 3 && s < nSlices) {
+        if (running() && s < nSlices) {
             const code = pat.charCodeAt(s) - 48;
             const fxc = FX_COLORS[(code >= 0 && code < FX_COLORS.length) ? code : 0];
             if (shiftHeld) {
@@ -452,7 +462,7 @@ function updateStepLEDs() {
 function drawUI() {
     clear_screen();
     let title = 'SMACK  ' + STATE_NAMES[state];
-    if (state === 3) title += ab ? ' · B' : ' · A';
+    if (running()) title += ab ? ' · B' : ' · A';
     if (detecting) title += ' @...';
     else if (bpmOverride > 0) title += ` @${Math.round(bpmOverride)}`;
     drawHeader(title);
@@ -478,7 +488,7 @@ function drawUI() {
      * page in the free band between knob row 2 (ends y49) and the footer
      * rule (y55): filled = effected slice, hollow = clean, playhead = the
      * 1px bar underneath. Pin/fx counts live in the footer. */
-    if (state === 3) {
+    if (running()) {
         const pat = editPattern();
         const base = stepPage * STEP_COUNT;
         const gy = 50;
@@ -500,7 +510,7 @@ function drawUI() {
         if (shiftHeld) {
             fLeft = 'Knobs pg2';
             fRight = 'click=swap';
-        } else if (state !== 3) {
+        } else if (!running()) {
             fLeft = 'click=Cap';
             fRight = 'Shft=more';
         } else {
@@ -531,7 +541,7 @@ function init() {
     updateStepLEDs();
     needsRedraw = true;
     let spoken = 'Smack, ' + STATE_SPEECH[state];
-    if (state === 3) spoken += ab ? ', side B' : ', side A';
+    if (running()) spoken += ab ? ', side B' : ', side A';
     announceView(spoken);
     reconcileFeedbackGuard();
 }
@@ -568,7 +578,7 @@ function tick() {
 
     /* playhead chase: cheap single get_param per tick. The screen grid
      * chases too (the pads belong to firmware in a slot editor). */
-    if (state === 3) {
+    if (running()) {
         const ps = parseInt(gp('play_slice') || '-1');
         if (ps !== playSlice) {
             playSlice = ps;
@@ -582,14 +592,17 @@ function tick() {
      * or the Move screen shows stale numbers after a browser-side change */
     if (tickCount % 12 === 0) {
         const oldState = state, oldAb = ab, oldPattern = pattern, oldPatternR = patternR;
-        const oldKnobs = knobValues.join(','), oldMon = monitorOn;
+        const oldKnobs = knobValues.join(',');
+        const oldMon = monitorOn, oldLive = liveOn;
         fetchAll();
         /* speak async transitions (armed -> recording -> looping) as they
          * land; A/B is announced at press time instead, because the applied
          * value lags the pad while a quantized flip is pending */
         if (state !== oldState)
-            announce(state === 3 ? `looping, ${nSlices} slices` : STATE_SPEECH[state]);
-        if (state !== 3) stepPage = 0;
+            announce(running()
+                ? `${STATE_SPEECH[state]}, ${nSlices} slices`
+                : STATE_SPEECH[state]);
+        if (!running()) stepPage = 0;
         if (stepPage >= stepPages()) stepPage = stepPages() - 1;
         if (state !== oldState || ab !== oldAb ||
             pattern !== oldPattern || patternR !== oldPatternR) {
@@ -598,7 +611,10 @@ function tick() {
             needsRedraw = true;
         }
         if (knobValues.join(',') !== oldKnobs) needsRedraw = true;
-        if (monitorOn !== oldMon) { updateTransportLEDs(); needsRedraw = true; }
+        if (monitorOn !== oldMon || liveOn !== oldLive) {
+            updateTransportLEDs();
+            needsRedraw = true;
+        }
     }
 
     if (needsRedraw) drawUI();
@@ -639,7 +655,7 @@ function onMidiMessageInternal(data) {
         /* Jog-turn = A/B: right lands on B (pattern), left on A (clean) */
         if (d1 === MoveMainKnob) {
             const delta = decodeDelta(d2);
-            if (delta === 0 || state !== 3) return;
+            if (delta === 0 || !running()) return;
             const want = delta > 0 ? 1 : 0;
             if (want === ab) return;
             ab = want;
@@ -739,13 +755,21 @@ function onMidiMessageInternal(data) {
         }
         if (d1 === PAD_PAGE) {
             const pages = stepPages();
-            if (state === 3 && pages > 1) {
+            if (running() && pages > 1) {
                 stepPage = (stepPage + 1) % pages;
                 const base = stepPage * STEP_COUNT;
                 announce(`Steps ${base + 1} to ${Math.min(base + STEP_COUNT, nSlices)}`);
                 updateStepLEDs();
                 needsRedraw = true;
             }
+            return;
+        }
+        if (d1 === PAD_LIVE) {
+            liveOn = !liveOn;
+            host_module_set_param('live', liveOn ? '1' : '0');
+            announce(liveOn ? 'Live, pattern on the input'
+                            : 'Live off');
+            refreshSoon();
             return;
         }
         if (d1 === PAD_MONITOR) {
@@ -790,7 +814,7 @@ function onMidiMessageInternal(data) {
          * (on the lane being edited, in dual mono) */
         if (d1 >= STEP_FIRST && d1 < STEP_FIRST + STEP_COUNT) {
             const i = stepPage * STEP_COUNT + (d1 - STEP_FIRST);
-            if (state === 3 && i < nSlices) {
+            if (running() && i < nSlices) {
                 const code = editPattern().charCodeAt(i) - 48;
                 const where = chanMode ? `, ${laneSpeech()}` : '';
                 if (code > 0) {
