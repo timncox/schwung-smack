@@ -1183,7 +1183,12 @@ int main(void) {
          * just written, so A passes audio through sample for sample. Run
          * well past a pattern cycle — a stale loop-boundary fade would notch
          * it once a cycle, and a mis-anchored window would delay it. */
+        /* A/B is quantized in live mode too, so let the flip land first —
+         * that it lands at all is the assertion. */
         smack_set_param(S, "ab", "0");
+        run_blocks_io(200, 9000, 0, NULL, NULL, NULL);
+        smack_get_param(S, "ab", pb, sizeof(pb));
+        assert(pb[0] == '0');
         {
             long err = 0;
             run_blocks_io(900, 9000, 0, &err, NULL, NULL);
@@ -1196,12 +1201,59 @@ int main(void) {
         smack_set_param(S, "ab", "1");
         smack_set_param(S, "fx_density", "100");
         smack_set_param(S, "order_density", "100");
-        run_blocks_io(400, 12000, 0, NULL, NULL, NULL);
         {
-            long peak = 0;
-            run_blocks_io(400, 0, 0, NULL, NULL, NULL);   /* two cycles of hush */
-            run_blocks_io(100, 0, 0, NULL, NULL, &peak);
-            assert(peak == 0);
+            long loud = 0, quiet = 0;
+            run_blocks_io(400, 12000, 0, NULL, NULL, NULL);
+            run_blocks_io(60, 12000, 0, NULL, NULL, &loud);
+            run_blocks_io(800, 0, 0, NULL, NULL, NULL);   /* cut the input */
+            run_blocks_io(100, 0, 0, NULL, NULL, &quiet);
+            assert(loud > 2000);
+            /* A frozen window would keep replaying the loud material at full
+             * level forever. What is left here is only the feedback effects'
+             * own tails ringing out. */
+            assert(quiet * 20 < loud);
+        }
+
+        /* The pattern is live too, not rolled once on entry: the four
+         * primary knobs, the seed, a re-roll and a step lock all have to
+         * reach it, and the playhead has to report a slice. */
+        {
+            char pat0[600], pat1[600], lk[600];
+            smack_set_param(S, "fx_density", "100");
+            assert(smack_get_param(S, "pattern", pat0, sizeof(pat0)) > 0);
+            smack_set_param(S, "seed", "777");
+            assert(smack_get_param(S, "pattern", pat1, sizeof(pat1)) > 0);
+            assert(strcmp(pat0, pat1) != 0);     /* seed re-rolls */
+            smack_set_param(S, "reroll", "1");
+            assert(smack_get_param(S, "pattern", pat0, sizeof(pat0)) > 0);
+            assert(strcmp(pat0, pat1) != 0);     /* re-roll re-rolls */
+
+            smack_set_param(S, "lock_slice_0", "5");   /* pin Gate on step 1 */
+            assert(smack_get_param(S, "pattern", pat1, sizeof(pat1)) > 0);
+            assert(pat1[0] == '0' + (char)SMACK_FX_GATE);
+            assert(smack_get_param(S, "locked", lk, sizeof(lk)) > 0);
+            assert(lk[0] == '1');
+            smack_set_param(S, "reroll", "1");
+            assert(smack_get_param(S, "pattern", pat0, sizeof(pat0)) > 0);
+            assert(pat0[0] == '0' + (char)SMACK_FX_GATE);  /* pin survives */
+            smack_set_param(S, "unlock_all", "1");
+
+            run_blocks_io(20, 9000, 0, NULL, NULL, NULL);
+            assert(get_int_param("play_slice") >= 0);      /* playhead runs */
+            assert(get_int_param("n_slices") > 1);
+        }
+
+        /* Order density reaches the live pattern too — at 0 the order is the
+         * identity, so raising it has to change the "ord" display field. */
+        {
+            char s0[4096], s1[4096];
+            smack_set_param(S, "order_density", "0");
+            assert(smack_get_param(S, "state", s0, sizeof(s0)) > 0);
+            smack_set_param(S, "order_density", "100");
+            assert(smack_get_param(S, "state", s1, sizeof(s1)) > 0);
+            const char *a = strstr(s0, "\"ord\":\"");
+            const char *b = strstr(s1, "\"ord\":\"");
+            assert(a && b && strcmp(a, b) != 0);
         }
 
         /* An effect that only shapes the sample (no reordered or warped

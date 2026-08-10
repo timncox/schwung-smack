@@ -420,12 +420,26 @@ range. Sim runs an extreme-min/max render sweep per effect.
   loop (the ring overwrites it); leaving lands in IDLE.
 - `hw_input` builds zero the monitor add in live mode: the clean tap already
   IS the input, so monitoring it again would just add 6 dB.
+- `pattern_running(s)` = `LOOPING || LIVE` mirrors the JS `running()`. Every
+  param gate that means "there is a pattern to re-roll / edit / show a
+  playhead for" uses it: seed, re-roll, fx_density, order_density, slice_res,
+  loop_len, channel_mode, unlock_all, set_lock, pad_note_on, quantized A/B,
+  `play_slice`, and the Remote-UI poll flag. **Missing this sweep leaves the
+  four primary knobs dead in live mode** — the pattern rolls once on entry
+  and never again. What stays LOOPING-only is what needs a captured buffer:
+  the ring overwrite guard, `resize_live_loop`, and the 0xFC transport pause.
+- Feedback guard: on `hw_input` builds the clean tap IS the input in live
+  mode, so Monitor-off has to mute it there or the mic kill switch stops
+  working the moment live comes on. Effect steps still sound — partial
+  guard, not a full mute. Worth a listen on hardware with a live mic.
 - Tests: `make test` covers sample-exact passthrough on the clean side
   across a cycle boundary, draining to silence within two cycles (proves
   the window slides), no edge-fade notch on DC through a pointwise effect,
   all 26 effects bounded, capture-from-live, and preset round-trip. Both
-  mutation-checked: shifting `live_head` by one frame and re-enabling the
-  loop-boundary fade each fail the suite.
+  and that the knobs reach the live pattern (seed/re-roll/density/locks).
+  Four mutation checks all fail the suite as they should: shifting
+  `live_head` by one frame, re-enabling the loop-boundary fade, freezing the
+  rolling window, and reverting `pattern_running` to LOOPING-only.
 - **Not verified on hardware.** Pads: chain UI pad 77, oversmack Shift+Arm
   (its transport row was full). Neither has been pressed on a Move.
 

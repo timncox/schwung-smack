@@ -421,6 +421,14 @@ static uint64_t last_boundary_global(smack_t *s) {
 /*  Pattern                                                            */
 /* ------------------------------------------------------------------ */
 
+/* LOOPING and LIVE both have a pattern playing over sliced audio, so
+ * anything gated on "there is something to re-roll, edit or show a playhead
+ * for" wants both. What stays LOOPING-only is what needs a captured buffer:
+ * the ring overwrite guard, loop resizing, and the transport pause. */
+static int pattern_running(const smack_t *s) {
+    return s->state == SMACK_LOOPING || s->state == SMACK_LIVE;
+}
+
 static void roll_lane(smack_t *s, smack_lane_t *ln) {
     int n = s->n_slices;
 
@@ -783,7 +791,7 @@ static void pad_stack_remove(smack_t *s, int note) {
 }
 
 static void pad_note_on(smack_t *s, int note, int vel) {
-    if (s->state != SMACK_LOOPING) return;
+    if (!pattern_running(s)) return;
     pad_stack_remove(s, note);
     if (s->pad_held >= (int)sizeof(s->pad_note_stk)) { /* drop the oldest */
         for (int j = 1; j < s->pad_held; j++) {
@@ -1940,8 +1948,16 @@ void smack_process(smack_t *s, const int16_t *in, int16_t *out, int frames) {
                 if (s->punch_fx > 0) w = 1.0f;       /* punch = full effect */
                 else if (s->punch_fx == 0) w = 0.0f; /* punch clean */
                 float cl = 0.0f, cr = 0.0f, pl = 0.0f, pr = 0.0f;
-                if (w < 1.0f)
+                if (w < 1.0f) {
                     render_lane(s, &s->lane[0], -1, 0, &cl, &cr);
+                    /* Feedback guard. On a mic build Monitor is the kill
+                     * switch, and in live mode the clean tap IS the input —
+                     * so muting the monitor has to mute it here or the pad
+                     * would stop doing its job the moment live came on.
+                     * Effect steps still sound: they are the point of the
+                     * mode, and they are not the open mic-to-speaker path. */
+                    if (live && !s->monitor) { cl = 0.0f; cr = 0.0f; }
+                }
                 if (w > 0.0f) {
                     if (!s->chan_mode) {
                         render_lane(s, &s->lane[0], -1, 1, &pl, &pr);
@@ -2063,7 +2079,7 @@ static int8_t clamp_pct(int v) {  /* depth/mix: 0-100, -1 = default */
 static void set_lock(smack_t *s, smack_lane_t *ln, int i, int f) {
     if (f < 0) { /* unlock: re-roll restores the seeded value */
         ln->locked[i] = 0;
-        if (s->state == SMACK_LOOPING) roll_pattern(s);
+        if (pattern_running(s)) roll_pattern(s);
     } else {
         f = clampi(f, 0, SMACK_FX_COUNT - 1);
         if (ln->fx[i] != (uint8_t)f) ln->fxp[i] = default_fxp(f);
@@ -2252,24 +2268,26 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
             if (s->state == SMACK_LOOPING) {
                 resize_live_loop(s);
                 roll_pattern(s);
+            } else if (pattern_running(s)) {
+                roll_pattern(s);   /* live: the window resizes next block */
             }
         }
     } else if (!strcmp(key, "slice_res")) {
         s->slice_res_idx = clampi(atoi(val), 0, SLICE_RES_COUNT - 1);
-        if (s->state == SMACK_LOOPING) roll_pattern(s);
+        if (pattern_running(s)) roll_pattern(s);
     } else if (!strcmp(key, "fx_density")) {
         s->fx_density = fminf(1.0f, fmaxf(0.0f, (float)atof(val) / 100.0f));
-        if (s->state == SMACK_LOOPING) roll_pattern(s);
+        if (pattern_running(s)) roll_pattern(s);
     } else if (!strcmp(key, "order_density")) {
         s->order_density = fminf(1.0f, fmaxf(0.0f, (float)atof(val) / 100.0f));
-        if (s->state == SMACK_LOOPING) roll_pattern(s);
+        if (pattern_running(s)) roll_pattern(s);
     } else if (!strcmp(key, "pitch_range")) {
         s->pitch_range = clampi(atoi(val), 1, 24);
     } else if (!strcmp(key, "wet")) {
         s->wet = fminf(1.0f, fmaxf(0.0f, (float)atof(val) / 100.0f));
     } else if (!strcmp(key, "ab")) {
         int v = atoi(val) ? 1 : 0;
-        if (s->state == SMACK_LOOPING && s->quantize_mode != 0) s->ab_pending = v;
+        if (pattern_running(s) && s->quantize_mode != 0) s->ab_pending = v;
         else s->ab = v;
     } else if (!strcmp(key, "quantize")) {
         s->quantize_mode = clampi(atoi(val), 0, 2);
@@ -2278,7 +2296,7 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
          * and returning to a number restores that exact pattern. */
         s->seed = (uint32_t)strtoul(val, NULL, 10);
         s->roll_nonce = 0;
-        if (s->state == SMACK_LOOPING) roll_pattern(s);
+        if (pattern_running(s)) roll_pattern(s);
     } else if (!strcmp(key, "reroll")) {
         if (trig_active(val)) {
             /* advance the hidden nonce, never the seed: the shadow UI's knob
@@ -2286,7 +2304,7 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
              * makes the next Seed-knob edit jump from a stale baseline */
             s->roll_nonce = s->roll_nonce * 1664525u + 1013904223u;
             if (!s->roll_nonce) s->roll_nonce = 1;
-            if (s->state == SMACK_LOOPING) roll_pattern(s);
+            if (pattern_running(s)) roll_pattern(s);
         }
     } else if (!strcmp(key, "capture")) {
         if (trig_active(val)) {
@@ -2318,7 +2336,7 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         int m = atoi(val) ? 1 : 0;
         if (m != s->chan_mode) {
             s->chan_mode = m;
-            if (s->state == SMACK_LOOPING) roll_pattern(s); /* populate lane 1 */
+            if (pattern_running(s)) roll_pattern(s); /* populate lane 1 */
         }
     } else if (!strcmp(key, "pan_l")) {
         s->pan_l = clampi(atoi(val), 0, 100);
@@ -2387,6 +2405,8 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         if (s->state == SMACK_LOOPING) {
             if (s->loop_len_idx != old_loop_len_idx) resize_live_loop(s);
             roll_pattern(s);
+        } else if (pattern_running(s)) {
+            roll_pattern(s);
         }
         {   /* absent in old presets -> stay wherever the engine already is */
             int want = json_int(val, "live", s->live) ? 1 : 0;
@@ -2427,7 +2447,7 @@ void smack_set_param(smack_t *s, const char *key, const char *val) {
         if (trig_active(val)) {
             memset(s->lane[0].locked, 0, sizeof(s->lane[0].locked));
             memset(s->lane[1].locked, 0, sizeof(s->lane[1].locked));
-            if (s->state == SMACK_LOOPING) roll_pattern(s);
+            if (pattern_running(s)) roll_pattern(s);
         }
     } else if (!strncmp(key, "lock_slice_r_", 13)) {
         lock_from_str(s, &s->lane[1], clampi(atoi(key + 13), 0, SMACK_MAX_SLICES - 1), val);
@@ -2482,7 +2502,7 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
          * run/nsl/mon/ps/det/pfx/pat/fxp/ord are read-only display fields;
          * the restore parser ignores them. Audio is never serialized. */
         int ps = -1;
-        if (s->state == SMACK_LOOPING && s->slice_frames > 0.0) {
+        if (pattern_running(s) && s->slice_frames > 0.0) {
             ps = (int)(s->play_pos / s->slice_frames);
             if (ps >= s->n_slices) ps = s->n_slices - 1;
         }
@@ -2535,7 +2555,7 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
         /* schwung-manager Remote-UI poll digest "rev:on:tick:bpm"
          * (remote_ui.go parseRuiPoll): rev gates the heavy full-state
          * refetch, tick drives the browser playhead while nothing edits. */
-        int on = (s->state == SMACK_LOOPING && !s->transport_paused) ? 1 : 0;
+        int on = (pattern_running(s) && !s->transport_paused) ? 1 : 0;
         int ps = -1;
         if (on && s->slice_frames > 0.0) {
             ps = (int)(s->play_pos / s->slice_frames);
@@ -2555,7 +2575,7 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
         return snprintf(buf, (size_t)buf_len, "%d", s->n_slices);
     if (!strcmp(key, "play_slice")) { /* current output slice, -1 if idle */
         int ps = -1;
-        if (s->state == SMACK_LOOPING && s->slice_frames > 0.0) {
+        if (pattern_running(s) && s->slice_frames > 0.0) {
             ps = (int)(s->play_pos / s->slice_frames);
             if (ps >= s->n_slices) ps = s->n_slices - 1;
         }
