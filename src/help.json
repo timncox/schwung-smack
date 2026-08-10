@@ -211,10 +211,15 @@
         "any loop already",
         "captured.",
         "",
-        "Toggle: the Live",
-        "pad, MIDI CC 45, or",
-        "Live Input in the",
-        "Perform knob page."
+        "Toggle: Live Input",
+        "in the Perform knob",
+        "page, the web",
+        "editor, or MIDI CC",
+        "45. Pad 77 works",
+        "too, but a slot",
+        "editor's pad LEDs",
+        "belong to Move so",
+        "it will not light."
       ]
     },
     {

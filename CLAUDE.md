@@ -440,8 +440,16 @@ range. Sim runs an extreme-min/max render sweep per effect.
   Four mutation checks all fail the suite as they should: shifting
   `live_head` by one frame, re-enabling the loop-boundary fade, freezing the
   rolling window, and reverting `pattern_running` to LOOPING-only.
-- **Not verified on hardware.** Pads: chain UI pad 77, oversmack Shift+Arm
-  (its transport row was full). Neither has been pressed on a Move.
+- Controls: oversmack **Shift+Arm** (its transport row was full), chain UI
+  **pad 77**, the web editor's Live button, the Perform knob page, and CC 45.
+  Per the v0.12.1 hardware finding above, a chain UI's pad-LED writes lose to
+  firmware in a slot editor — the pad 77 *handler* still fires (schwung routes
+  MIDI to the module UI in COMPONENT_EDIT) but it won't light. So in a slot
+  the dependable paths are the web editor and CC; in Master FX it's the
+  Perform page; on oversmack the pad surface is real.
+- **Not verified on hardware.** Nothing here has been pressed on a Move, and
+  live mode is a by-ear judgement anyway — especially the previous-step
+  sourcing and the partial feedback guard with a real mic.
 
 ## Next steps
 
