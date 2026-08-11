@@ -87,9 +87,11 @@ keeps processing.
   mirrors for Schwung's current single-choice Custom GitHub installer; all
   source and suite release metadata live here.
 
-**Sync note:** set Move's **MIDI Clock to Out** so Smack locks to the
-transport (same requirement as the Arp). Without it, Smack free-runs at the
-project tempo.
+**Sync note:** if Smack free-runs at the project tempo instead of locking
+to the transport, set Move's **MIDI Clock to Out** (the same requirement
+the Arp used to have). Recent schwung versions take clock from Move's
+internal transport regardless of that setting, so it may not be needed —
+but it costs nothing to leave on.
 
 ## MIDI CC control
 
@@ -111,9 +113,10 @@ Continuous CCs scale 0–127 across each range; buttons act at value ≥ 64
 | | | | 45 | live |
 
 Channel notes: `smack` in a chain or Master FX slot hears CCs on **any**
-channel. `smack-in` / `oversmack` follow note routing — match the
-controller's channel to the slot's receive channel (Move's auto channel
-mapping remaps notes, not CCs).
+channel. `smack-in` follows note routing — match the controller's channel
+to the slot's receive channel (Move's auto channel mapping remaps notes,
+not CCs). `oversmack` is not channel-filtered by schwung at all, so if a
+CC isn't landing there, the channel is unlikely to be the reason.
 
 ## Build from source
 

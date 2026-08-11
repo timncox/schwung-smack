@@ -83,9 +83,31 @@ CCs and would fight the firmware. A channel-matched chain slot delivers
 one external CC twice (channel dispatch + FX broadcast — verified in
 schwung shadow_midi.c 2026-07-24), so identical messages within 256
 samples are dropped (`cc_last` / `cc_last_frames`). audio_fx builds hear
-CCs channel-blind (FX broadcast); smack-in / oversmack are channel-matched
-and Move's auto remap applies to notes, NOT CCs — users set the controller
-channel explicitly.
+CCs channel-blind (FX broadcast); smack-in is channel-matched and Move's
+auto remap applies to notes, NOT CCs — users set the controller channel
+explicitly.
+
+**oversmack is NOT channel-matched** (source-verified 2026-08-11,
+hardware-unverified). schwung's channel filter lives in
+shadow_midi.c:332, which walks chain SLOTS only. The overtake DSP gets
+external cable-2 channel-voice MIDI from schwung_shim.c:1305 with no
+channel check at all. What that means in practice depends on whether
+Move's firmware echoes every channel to MIDI_OUT cable 2 — not visible
+from schwung source — so the safe claim is "schwung applies no filter",
+not "any channel works".
+
+Three routes reach the overtake DSP, all via the plugin STRUCT's
+on_midi (no dlsym gotcha on this path):
+- `schwung_shim.c:1211` — realtime (0xF8/0xFA/0xFB/0xFC) from cable 0,
+  source EXTERNAL.
+- `schwung_shim.c:1305` — external cable-2 notes/CC/aftertouch, source
+  EXTERNAL, so the whole CC map works on oversmack.
+- `schwung_shim.c:6928` — Move's OWN pad notes (internal cable 0, note
+  >= 10, overtake_mode == 2), source INTERNAL. Smack's note handling has
+  no source gate, so these DO land in pad_note_on; they are inert only
+  because ui_overtake forces `pad_play=0` at init. Turning it on makes
+  every editor pad press also fire a slice — there is no CC for
+  pad_play, only the web editor.
 
 ## v1 limitations (deliberate, revisit)
 
@@ -100,14 +122,33 @@ channel explicitly.
   the grid — VERIFY ON DEVICE.
 - Varispeed = linear interp, no anti-aliasing (lo-fi is part of the charm).
 
-## Setup prerequisite (from schwung manual, manual.html#limitations)
+## Setup prerequisite — LIKELY OBSOLETE (verify by ear)
 
-Modules only receive MIDI clock when **Move's MIDI Clock is set to Out**
-(same as the Arp). Without it Smack free-runs from get_bpm() project tempo —
-functional but not phase-locked to Move's transport. The manual confirms
-this clock→project-tempo fallback is the house convention (the built-in
-Quantized Sampler does the same). Also: Master FX has two LFOs that can
-target any loaded FX param — e.g. LFO on Smack's fx_density/order_density.
+**The old rule:** modules only receive MIDI clock when **Move's MIDI Clock
+is set to Out** (same as the Arp), from the schwung manual,
+manual.html#limitations. Without it Smack free-runs from get_bpm() project
+tempo — functional but not phase-locked.
+
+**Why it looks stale** (source-verified 2026-08-11, NOT confirmed on
+hardware): schwung moved clock delivery to cable 0, which Move populates
+whenever its sequencer runs, independent of the Clock Out setting.
+- Overtake DSPs: b54f4bfc, 2026-04-30 ("forward overtake DSP transport
+  from cable 0 instead of cable 2").
+- Chain slots: 04fa7245, 2026-06-11, whose own comment names Clock Out as
+  *"the source of the 'plugins need MIDI Out for sync' friction."*
+
+Both ship in v0.11.4, so the Move is already running them. NOT traced:
+the audio_fx realtime path (chain_midi.c:756 forwards `out_msgs` to FX
+slots — whether a 1-byte realtime message survives the MIDI-FX chain into
+`out_msgs` is unchecked). So `smack` in a chain/Master FX slot may still
+want Clock Out; oversmack and smack-in should not.
+
+Keep the setting on until someone confirms by ear — it costs nothing and
+the fallback is only a free-run, not a failure. Delete this section once
+verified.
+
+Also: Master FX has two LFOs that can target any loaded FX param — e.g.
+LFO on Smack's fx_density/order_density.
 
 ## Clock findings from shipped modules (verified in repos 2026-07-10)
 
@@ -382,9 +423,12 @@ range. Sim runs an extreme-min/max render sweep per effect.
 - Defaults: engine 0. smack_gen create() sets pad_play=1 — in a slot
   editor the firmware pads play notes into the synth, and smack-in IS
   the synth, so the stock grid becomes slice-repeat pads with zero UI.
-  ui_overtake init forces 0 (overtake pads are editors; whether note
-  MIDI even reaches the DSP there is unverified). smack audio_fx:
-  default 0 — notes-to-fx-slot delivery UNVERIFIED on hardware.
+  ui_overtake init forces 0 — and that is now load-bearing, not just
+  tidy: note MIDI DOES reach the overtake DSP (schwung_shim.c:6928
+  delivers Move's own pad notes as source INTERNAL, and smack's note
+  handling has no source gate), so with pad_play on, every palette/step
+  press would ALSO fire a slice. Source-verified 2026-08-11. smack
+  audio_fx: default 0 — notes-to-fx-slot delivery UNVERIFIED on hardware.
 
 ## Live mode — the pattern on the input, no loop (branch, UNVERIFIED)
 
@@ -459,7 +503,11 @@ range. Sim runs an extreme-min/max render sweep per effect.
   and whether standalone DSP output sums into Move's mix at sane gain).
 - Pad play (v0.13.0) on-device: which note numbers Move's grid emits
   per scale/octave (mod mapping absorbs any base), velocity delivery,
-  and whether notes reach audio_fx slots / the overtake DSP.
+  and whether notes reach audio_fx slots. (Overtake DSP: ANSWERED —
+  they do, schwung_shim.c:6928, source-verified 2026-08-11.)
+- Does clock still need Move's MIDI Clock = Out? Source says no since
+  v0.11.4 for overtake + chain slots — see the Setup prerequisite
+  section. Turn the setting OFF and check Smack still locks.
 - Dual-mono mode: BUILT (v0.5.0, 2026-07-11) — see "Dual mono" section
   below. On-device verification pending like the rest.
 - v2 FX: time-preserving pitchshift.
