@@ -22,6 +22,7 @@
           "params": [
             {
               "key": "loop_len",
+              "short_name": "Len",
               "name": "Loop Len",
               "type": "enum",
               "options": [
@@ -39,6 +40,7 @@
             },
             {
               "key": "slice_res",
+              "short_name": "Res",
               "name": "Slice Res",
               "type": "enum",
               "options": [
@@ -100,6 +102,7 @@
           "params": [
             {
               "key": "capture",
+              "short_name": "Now",
               "name": "Capture Now",
               "type": "enum",
               "default": 0,
@@ -111,6 +114,7 @@
             },
             {
               "key": "arm",
+              "short_name": "Record",
               "name": "Arm Record",
               "type": "enum",
               "default": 0,
@@ -132,6 +136,7 @@
             },
             {
               "key": "reroll",
+              "short_name": "Roll",
               "name": "Re-Roll",
               "type": "enum",
               "default": 0,
@@ -143,6 +148,7 @@
             },
             {
               "key": "clear",
+              "short_name": "Loop",
               "name": "Clear Loop",
               "type": "enum",
               "default": 0,
@@ -154,6 +160,7 @@
             },
             {
               "key": "detect_bpm",
+              "short_name": "BPM",
               "name": "Detect BPM",
               "type": "enum",
               "default": 0,
@@ -198,6 +205,7 @@
             },
             {
               "key": "pitch_range",
+              "short_name": "Pitch",
               "name": "Pitch Range",
               "type": "int",
               "min": 1,
@@ -218,6 +226,7 @@
             },
             {
               "key": "pad_play",
+              "short_name": "Play",
               "name": "Pad Play",
               "type": "enum",
               "options": [
@@ -228,6 +237,7 @@
             },
             {
               "key": "pad_rate",
+              "short_name": "Rate",
               "name": "Pad Rate",
               "type": "enum",
               "options": [
