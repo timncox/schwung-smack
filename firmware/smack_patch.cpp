@@ -203,8 +203,11 @@ static void emit_to_engine(void *ctx, uint8_t byte)
 }
 
 /* DaisyPatch::StartAudio takes the NON-interleaving callback (the Versio's is
- * interleaving). Audio In 1/2 are the stereo source, Out 1/2 the result;
- * Outs 3/4 are driven to silence rather than left undefined. */
+ * interleaving). Audio In 1/2 are the stereo source, Out 1/2 the result.
+ *
+ * Outs 3/4 carry the DRY input as a straight thru. Smack is a glitcher, so
+ * having the untouched signal on its own pair is what lets you crossfade or
+ * gate between clean and mangled downstream instead of committing to `wet`. */
 static void AudioCallback(AudioHandle::InputBuffer  in,
                           AudioHandle::OutputBuffer out,
                           size_t                    size)
@@ -226,11 +229,67 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
     {
         out[0][i] = (float)bufi[i * 2]     / 32767.0f;
         out[1][i] = (float)bufi[i * 2 + 1] / 32767.0f;
-        out[2][i] = 0.0f;
-        out[3][i] = 0.0f;
+        out[2][i] = in[0][i];    /* dry thru */
+        out[3][i] = in[1][i];
     }
 
     clk_advance(&CLK, (int)n, emit_to_engine, S);
+}
+
+/* ---- CV and gate outputs ------------------------------------------------ */
+
+/*
+ * The Versio has four LEDs; the Patch has two CV outputs and a gate. That is
+ * the difference between a module that shows you what it is doing and one
+ * that tells the rest of the rack.
+ *
+ *   CV Out 1   playhead through the captured loop, 0-5 V ramp per pass
+ *   CV Out 2   wet amount, 0-5 V
+ *   Gate Out   pulse on every loop wrap
+ *
+ * The gate is the useful one: Smack's loop length is whatever the player
+ * captured, so this is a clock at the musical period actually in the buffer.
+ * Nothing derived from a master clock knows that length.
+ *
+ * play_frame is formatted "%.0f" by the engine, which is precisely why the
+ * Makefile links -u _printf_float. Without it this reads "" and the ramp sits
+ * at zero forever -- the same silent failure that broke smack-versio's LIVE
+ * mode. If the ramp is dead on hardware, check the ELF for _printf_float
+ * before suspecting anything here.
+ */
+#define GATE_MS 5u
+
+static uint32_t g_gate_until;
+static long     g_pf_prev;
+
+static void update_cv_outs(void)
+{
+    char buf[24];
+    long pf = -1, lf = 0;
+
+    if(smack_get_param(S, "play_frame", buf, sizeof(buf)) >= 0)
+        pf = atol(buf);
+    if(smack_get_param(S, "loop_frames", buf, sizeof(buf)) >= 0)
+        lf = atol(buf);
+
+    if(pf >= 0 && lf > 0)
+    {
+        if(pf > lf) pf = lf;
+        hw.seed.dac.WriteValue(DacHandle::Channel::ONE,
+                               (uint16_t)((uint64_t)pf * 4095u / (uint64_t)lf));
+        if(pf < g_pf_prev)          /* wrapped: top of the loop */
+            g_gate_until = System::GetNow() + GATE_MS;
+        g_pf_prev = pf;
+    }
+
+    int wet = 0;
+    if(smack_get_param(S, "wet", buf, sizeof(buf)) >= 0) wet = atoi(buf);
+    if(wet < 0) wet = 0;
+    if(wet > 100) wet = 100;
+    hw.seed.dac.WriteValue(DacHandle::Channel::TWO,
+                           (uint16_t)(wet * 4095 / 100));
+
+    hw.gate_output.Write(System::GetNow() < g_gate_until);
 }
 
 /* ---- gestures ----------------------------------------------------------- */
@@ -410,6 +469,10 @@ int main(void)
                 smack_on_midi(S, msg, 3, 2); /* 2 = external */
             }
         }
+
+        /* CV and gate follow the playhead, so they run every loop pass. A
+         * loop-wrap gate that lagged 50 ms would be useless as a clock. */
+        update_cv_outs();
 
         uint32_t now = System::GetNow();
         if(now - last_draw >= 50u)

@@ -13,13 +13,27 @@ TARGET = smack_patch
 
 LIBDAISY_DIR ?= $(HOME)/tim-os/daisy-sdk/libDaisy
 
-# Try BOOT_NONE first and read --print-memory-usage. smack-versio had to take
-# BOOT_SRAM because its image was ~137 KB against the STM32H750's 128 KB of
-# internal flash, but that build carries the USB serial logger (7.1 KB on its
-# own) which this one does not. If FLASH exceeds 131072 B, switch to BOOT_SRAM
-# and follow smack-versio's FLASHING.md — the tradeoff is a bootloader install
-# and the ~2000 ms DFU window, versus flashing straight from ST ROM DFU.
-APP_TYPE ?= BOOT_NONE
+# BOOT_SRAM, and the history is worth keeping because it is a warning.
+#
+# The first cut of this port fit BOOT_NONE at 123408 B of 131072 B — 94.15%,
+# 7664 B free — and the Makefile said out loud that the next feature would
+# push it over. The very next commit added -u _printf_float (~4.5 KB, and NOT
+# optional: see the note after the include) plus the CV/gate outputs, and it
+# landed at 128296 B — 97.88%, 2776 B free. That is not a margin, it is a
+# tripwire for whoever touches this next.
+#
+#   BOOT_NONE   128296 B / 131072 B internal flash   97.88%
+#   BOOT_SRAM   128152 B / 491520 B SRAM             26.07%
+#
+# Cost of BOOT_SRAM: the module needs the Daisy bootloader in internal flash
+# once (see smack-versio's FLASHING.md), and the bootloader's DFU window is
+# only ~2000 ms after power-up — arm `dfu-util ... -w` FIRST, then power-cycle
+# WITHOUT touching BOOT/RESET. Installing the bootloader is itself done over
+# USB from ST ROM DFU, so nothing extra is needed to get there. It is also
+# reversible: flashing any BOOT_NONE image over internal flash removes it.
+#
+# Belt and Mark stay BOOT_NONE — they fit at 72% and 77%. Smack is the big one.
+APP_TYPE ?= BOOT_SRAM
 
 CPP_SOURCES = smack_patch.cpp
 
@@ -32,10 +46,32 @@ C_SOURCES = clock_adapter.c patch_alloc.c smack_core_patch.c
 # compiler reorder the float paths the seeded FX depend on. Leave it off.
 OPT = -Os
 
-# NOTE: no `-u _printf_float` here. That flag is needed whenever newlib-nano
-# has to format a %f — it silently prints nothing otherwise. This firmware
-# formats only %d and %s (BPM is cast to int before printing). If you add a
-# %f to the display code you must add the flag or the field renders empty.
-
 SYSTEM_FILES_DIR = $(LIBDAISY_DIR)/core
 include $(SYSTEM_FILES_DIR)/Makefile
+
+# REQUIRED, and this firmware is the reason the rule exists. newlib-nano
+# declares _printf_float as a weak reference that nothing defines under
+# --specs=nano.specs; unresolved, vfprintf skips the conversion entirely —
+# no error, no warning, no truncation marker — and atoi() then sees 0.
+#
+# Auditing only this shim's own printf calls would talk you out of the flag:
+# it formats %d and %s, and casts BPM to int before printing. But the values
+# it READS are formatted by the engine, and six of those are floats —
+# including the one that matters most here:
+#
+#   smack_core.c:2341   "%.0f", floor(play_pos)   play_frame  -> CV Out 1
+#   smack_core.c:2234   "%.0f", fx_density*100    fx_density
+#   smack_core.c:2240   "%.0f", wet*100           wet         -> CV Out 2
+#
+# play_frame is the canonical case: smack-versio's LIVE mode never re-captured
+# on any build because smack_get_param("play_frame") handed back "" and the
+# trigger `pf < last_pf` compared 0 < 0. Three sibling params used %d and %u
+# and worked fine, so the feature looked enabled and did nothing. Hours went
+# to the wrong suspects because every host test passed — glibc formats %f
+# perfectly, so this bug class cannot be caught off-device.
+#
+# Applied after the include so it appends to libDaisy's LDFLAGS. ~4.5 KB.
+# Verify on the built ELF:
+#   arm-none-eabi-nm build/smack_patch.elf | grep _printf_float
+# Empty output means every %f in the image is silently producing nothing.
+LDFLAGS += -u _printf_float

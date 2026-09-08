@@ -18,24 +18,29 @@ make -C firmware program-dfu     # flash over USB
 Needs libDaisy built at `~/tim-os/daisy-sdk/libDaisy` (override with
 `LIBDAISY_DIR`). DaisySP is not used.
 
-## Flashing — and a warning about headroom
+## Flashing — this one needs the bootloader
 
-Builds `BOOT_NONE`, which **just fits**: 123,408 B of 131,072 B, **94.15%
-used, 7,664 B free**.
+Builds **`BOOT_SRAM`**, unlike Belt and Mark. The history is the warning:
 
-That means it flashes with the STM32 ROM DFU baked into the silicon — hold
-**BOOT**, tap **RESET**, release BOOT, and the board sits in DFU indefinitely
-as `0483:df11`. No bootloader install, no QSPI write, and none of the
-~2000 ms bootloader DFU window smack-versio has to race.
+| | Size | |
+|---|---|---|
+| First cut, `BOOT_NONE` | 123,408 B / 131,072 B | 94.15% — Makefile said "the next feature pushes it over" |
+| After `-u _printf_float` + CV outs | **128,296 B** | **97.88%, 2,776 B free** |
+| **`BOOT_SRAM`** | 128,152 B of 480 KB SRAM | **26.07%** |
 
-**But 7.6 KB is not much.** smack-versio hit exactly this wall — its Makefile
-records BOOT_NONE at `-O3` having "4,056 bytes of headroom and could not take
-another feature." Expect the next feature here to push it over. When it does,
-switch to `APP_TYPE=BOOT_SRAM` and follow smack-versio's `FLASHING.md`.
+The Makefile predicted it and the very next commit proved it. 2,776 B is not a
+margin, it is a tripwire for whoever edits this next.
 
-This build fits where smack-versio's ~137 KB did not, largely because it does
-not link the USB serial logger — 7.1 KB on its own in smack-versio's measured
-breakdown.
+**What that costs you:** the module needs the Daisy bootloader in internal
+flash once (see smack-versio's `FLASHING.md`), and the bootloader's DFU window
+is only **~2000 ms** after power-up — arm `dfu-util … -w` **first**, then
+power-cycle **without** touching BOOT/RESET. Installing the bootloader is
+itself done over USB from ST ROM DFU, so nothing extra is needed to get there,
+and it is reversible: flashing any `BOOT_NONE` image over internal flash
+removes it again.
+
+Belt and Mark stay `BOOT_NONE` at 72% and 77%, so they still flash straight
+from ST ROM DFU with no bootloader.
 
 ## Relationship to smack-versio
 
@@ -71,7 +76,10 @@ play.
 | Gate In 2 | Direct capture trigger — footswitchable |
 | Audio In 1/2 | Stereo source |
 | Audio Out 1/2 | Processed out |
-| Audio Out 3/4 | Silent |
+| Audio Out 3/4 | **Dry thru** — clean signal for downstream crossfading |
+| **CV Out 1** | **Playhead through the captured loop, 0–5 V ramp per pass** |
+| **CV Out 2** | **Wet amount, 0–5 V** |
+| **Gate Out** | **Pulse on every loop wrap** |
 | MIDI In | CC to the engine |
 
 The gesture mapping is the one arrived at by playing smack-versio — tap is
@@ -97,11 +105,22 @@ alignment fails. Reproduced at 44.1 kHz too, so it is block size, not rate.
 stereo int16 — plus the per-lane delay and reverb lines. Same pool size
 smack-versio uses.
 
-## Known gaps
+## Why the gate output matters
 
-- **Outs 3/4 are silent.**
+Smack's loop length is whatever the player captured. The gate output pulses on
+every wrap, so it is a clock at the musical period *actually in the buffer* —
+something no division of a master clock knows. The Versio has four LEDs; the
+Patch can tell the rest of the rack.
+
+This requires `-u _printf_float`: the engine formats `play_frame` as `"%.0f"`,
+and without the flag it reads `""`, the ramp sits at zero and the gate never
+fires. That is the exact silent failure that broke smack-versio's LIVE mode.
+**If the ramp is dead on hardware, check the ELF for `_printf_float` before
+suspecting anything else.**
+
+## Known gaps
 - **No persistence.** smack-versio keeps settings in the last QSPI sector via
   `PersistentStorage`; that is not wired up here. Params reset on power-up.
-- **CV outs and the SD card are unused.**
+- **The SD card is unused.** It is the obvious home for persistence.
 - **Nothing has been heard on hardware.** Clean build, measured memory map;
   that is all that is known.
