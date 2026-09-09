@@ -2338,6 +2338,21 @@ int smack_get_param(smack_t *s, const char *key, char *buf, int buf_len) {
         }
         return snprintf(buf, (size_t)buf_len, "%d", ps);
     }
+    if (!strcmp(key, "play_source")) {
+        /* Which ORIGINAL slice is feeding the output right now, -1 if idle.
+         * Equals play_slice on the clean side; on the pattern side it is
+         * lane A's reorder, so it jumps around the way the audio does. A
+         * punch forces original order (render_lane does the same), so the
+         * value follows what is actually heard. Read-only, for CV outs. */
+        int ps = -1;
+        if (s->state == SMACK_LOOPING && s->slice_frames > 0.0) {
+            ps = (int)(s->play_pos / s->slice_frames);
+            if (ps >= s->n_slices) ps = s->n_slices - 1;
+            if (ps < 0) ps = 0;
+            if (s->ab && s->punch_fx < 0) ps = (int)s->lane[0].order[ps];
+        }
+        return snprintf(buf, (size_t)buf_len, "%d", ps);
+    }
     if (!strcmp(key, "play_frame")) /* read-only timing diagnostic */
         return snprintf(buf, (size_t)buf_len, "%.0f", floor(s->play_pos));
     if (!strcmp(key, "pattern") || !strcmp(key, "pattern_r")) {

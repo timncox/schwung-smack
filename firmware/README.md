@@ -64,38 +64,71 @@ play.
 
 | Control | Function |
 |---|---|
-| Encoder turn | Page: `FX` / `LOOP` / `CLOCK` |
+| **Knob 1 + CV 1** | `fx_density` — how many slices get an effect |
+| **Knob 2 + CV 2** | `order_density` — how scrambled the slice order is |
+| **Knob 3 + CV 3** | `wet` — clean loop ↔ glitched pattern |
+| **Knob 4 + CV 4** | `slice_res` — how finely the loop is cut |
+| Encoder turn | Move the menu cursor: `seed` / `len` / `ptch` / `rat` / `clk` |
+| **Encoder push + turn** | Edit the selected menu item |
 | Encoder tap | **Re-roll** — new pattern, same loop |
 | Encoder hold > 0.6 s | **Capture** |
 | Encoder hold > 2 s | **Clear** |
 | Encoder double-tap | **Live** toggle |
-| Knobs (page FX) | `fx_density` `order_density` `wet` `seed` |
-| Knobs (page LOOP) | `loop_len` `slice_res` `pitch_range` |
-| Knobs (page CLOCK) | 1 = ratio `/2 =1 x2`, 2 = mode `EXT INFER AUTO` |
 | Gate In 1 | Clock / trigger (as on the Versio) |
 | Gate In 2 | Direct capture trigger — footswitchable |
 | Audio In 1/2 | Stereo source |
 | Audio Out 1/2 | Processed out |
 | Audio Out 3/4 | **Dry thru** — clean signal for downstream crossfading |
 | **CV Out 1** | **Playhead through the captured loop, 0–5 V ramp per pass** |
-| **CV Out 2** | **Wet amount, 0–5 V** |
+| **CV Out 2** | **Source slice under the playhead, stepped 0–5 V — a sequencer that plays Smack's shuffle** |
 | **Gate Out** | **Pulse on every loop wrap** |
 | MIDI In | CC to the engine |
 
-The gesture mapping is the one arrived at by playing smack-versio — tap is
+The press gestures are the ones arrived at by playing smack-versio — tap is
 re-roll because re-roll is used constantly; hold is capture because capture is
 deliberate and happens once. It was reversed from the original for that reason;
-don't reverse it back without playing it.
+don't reverse it back without playing it. A push-and-turn spends the press:
+releasing it does not re-roll, and holding on does not capture. Press, then
+turn promptly — a hold that has already passed 0.6 s has already captured.
 
-Display shows page, run state, inferred BPM and a `?` until the clock locks.
-Knobs that have not yet picked up are marked `*`.
+## Screen
+
+128×64, `Font_6x8`. Knobs on the left, live; the encoder menu on the right
+with a `>` cursor. The header is the run state, the tempo (`?` until the clock
+locks) and the A/B side.
+
+```
+LOOP 120  B
+fxd 100  >seed 4303
+ord  35   len    16
+wet 100   ptch   12
+res   2   rat    =1
+          clk   AUTO
+```
+
+`len` is shown in steps (1 step to 16 bars: 1, 2, 4 … 256); `rat` is the clock
+ratio `/2 =1 x2`; `clk` is `EXT INF AUTO`. Seed, length and pitch range are
+read back from the engine on every frame, so a MIDI CC or a state restore that
+changes them shows up without any bookkeeping.
 
 ## Port decisions
 
-**Knob pickup.** Seven params across pages on four absolute knobs — without
-pickup, changing page slams whatever is under the pot into the engine. A knob
-is inert until it crosses the value it takes over. The Versio never needed this
-because its knobs were one-to-one with params.
+**The CV inputs share the knobs' ADCs.** libDaisy's `DaisyPatch` exposes four
+analog controls, not eight: each CV jack is summed with its knob before the
+ADC, so a CV input can only ever be read together with its knob. The first cut
+paged four knobs across seven params with pickup, which would have fallen apart
+the moment a cable went in — the voltage would have steered whichever param
+was on the current page, and pickup would have "picked up" on the CV's own
+motion. So the four params that take CV own their knobs permanently, there are
+no pages and no pickup, and the rest live on the encoder menu. The knobs are
+one-to-one with params exactly as on the Versio, which is why the Versio's
+deadband logic applies unchanged.
+
+**What CV into FX or ORDER does.** Every one-unit change re-rolls the pattern,
+deterministically for the current seed (`smack_set_param` calls
+`roll_pattern`). A slow CV walks through related patterns; a fast LFO is a
+re-roll machine. Knobs are dispatched at about block rate (every 3 ms), as the
+Versio does from its audio callback, which caps how often that can happen.
 
 **Block size 128 is not a preference.** The engine's clock regression was built
 for 128-frame callbacks; at Daisy's default 48 the retro-capture phase

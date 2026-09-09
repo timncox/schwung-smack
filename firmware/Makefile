@@ -56,12 +56,10 @@ include $(SYSTEM_FILES_DIR)/Makefile
 #
 # Auditing only this shim's own printf calls would talk you out of the flag:
 # it formats %d and %s, and casts BPM to int before printing. But the values
-# it READS are formatted by the engine, and six of those are floats —
-# including the one that matters most here:
+# it READS are formatted by the engine, and the one the CV outputs and the
+# loop-wrap gate hang off is a float:
 #
-#   smack_core.c:2341   "%.0f", floor(play_pos)   play_frame  -> CV Out 1
-#   smack_core.c:2234   "%.0f", fx_density*100    fx_density
-#   smack_core.c:2240   "%.0f", wet*100           wet         -> CV Out 2
+#   smack_core.c   "%.0f", floor(play_pos)   play_frame  -> CV Out 1 + Gate Out
 #
 # play_frame is the canonical case: smack-versio's LIVE mode never re-captured
 # on any build because smack_get_param("play_frame") handed back "" and the
