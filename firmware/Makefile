@@ -32,10 +32,16 @@ LIBDAISY_DIR ?= $(HOME)/tim-os/daisy-sdk/libDaisy
 # USB from ST ROM DFU, so nothing extra is needed to get there. It is also
 # reversible: flashing any BOOT_NONE image over internal flash removes it.
 #
-# Belt and Mark stay BOOT_NONE — they fit at 72% and 77%. Smack is the big one.
+# Since 2026-09-09 Belt and Mark are BOOT_SRAM too, for a different reason:
+# the module picker (module_picker.cpp) switches firmware from the front panel
+# by writing a .bin from the SD card into the bootloader's QSPI app slot, so
+# every app has to run under the bootloader. See module_picker.h.
 APP_TYPE ?= BOOT_SRAM
 
-CPP_SOURCES = smack_patch.cpp
+# FatFS is not in libdaisy.a; this compiles it into the app for the picker.
+USE_FATFS = 1
+
+CPP_SOURCES = smack_patch.cpp module_picker.cpp
 
 # smack_core_patch.c #includes vendor/smack_core.c with calloc/free redirected
 # to the SDRAM pool. Never list vendor/smack_core.c here as well — that would

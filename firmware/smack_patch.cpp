@@ -19,6 +19,7 @@
  */
 #include "daisy_patch.h"
 #include "patch_alloc.h"
+#include "module_picker.h"
 
 extern "C" {
 #include "vendor/smack_core.h"
@@ -170,8 +171,8 @@ static void dispatch_knobs(void)
  * changes them shows up without any bookkeeping. Ratio and mode belong to the
  * clock adapter (they were the Versio's two switches) and live in the shim.
  */
-enum { M_SEED = 0, M_LEN, M_PITCH, M_RATIO, M_MODE, M_COUNT };
-static const char *const MENU_LABEL[M_COUNT] = { "seed", "len", "ptch", "rat", "clk" };
+enum { M_SEED = 0, M_LEN, M_PITCH, M_RATIO, M_MODE, M_MODS, M_COUNT };
+static const char *const MENU_LABEL[M_COUNT] = { "seed", "len", "ptch", "rat", "clk", "mods" };
 static int g_menu_sel;
 
 static int g_ratio_sel = 1, g_mode_sel = 2;
@@ -237,6 +238,11 @@ static void menu_edit(int inc)
             g_mode_sel = clampi(g_mode_sel + inc, 0, 2);
             apply_clock();
             break;
+        case M_MODS:
+            /* Modal: returns when the user backs out, never if a module was
+             * loaded. encoder() marks this press as spent on return. */
+            picker::run(hw);
+            break;
     }
 }
 
@@ -249,6 +255,7 @@ static void menu_value(int item, char *out, size_t n)
         case M_PITCH: snprintf(out, n, "%d", engine_int("pitch_range")); break;
         case M_RATIO: snprintf(out, n, "%s", RATIO_NAME[g_ratio_sel]); break;
         case M_MODE:  snprintf(out, n, "%s", MODE_NAME[g_mode_sel]); break;
+        case M_MODS:  snprintf(out, n, "%s", "..."); break;
         default:      out[0] = '\0'; break;
     }
 }

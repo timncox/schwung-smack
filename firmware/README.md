@@ -39,8 +39,37 @@ itself done over USB from ST ROM DFU, so nothing extra is needed to get there,
 and it is reversible: flashing any `BOOT_NONE` image over internal flash
 removes it again.
 
-Belt and Mark stay `BOOT_NONE` at 72% and 77%, so they still flash straight
-from ST ROM DFU with no bootloader.
+Belt and Mark are `BOOT_SRAM` too since the module picker, for the reason
+below rather than for size.
+
+## Switching modules from the panel
+
+All three Patch ports share `module_picker.cpp`. The SD card is a module
+library: put `belt.bin`, `smack.bin` and `mark.bin` in a `modules` folder on a
+FAT32 card, leave the card in the slot, and switch from the screen:
+
+1. Push-and-turn on the `mods` menu item. The list appears: `back`, then every
+   `.bin` in `/modules`.
+2. Turn to choose, press to load. The file is written into the Daisy
+   bootloader's QSPI app slot (the same place a USB flash writes), verified
+   byte for byte, and the module resets into the bootloader, which boots it.
+   A few seconds; the card never leaves the slot.
+
+What it needs, once: the Daisy bootloader in internal flash — board in ST ROM
+DFU (hold **BOOT**, tap **RESET**), then `make -C firmware program-boot`. From
+then on every app is a `BOOT_SRAM` build (all three are).
+
+Keep `.bin` files **out of the card's root**: the bootloader itself flashes
+the first root `.bin` it finds at every power-up, a cruder mechanism that would
+fight the picker.
+
+If a load fails the screen says why (`no card`, `no folder`, `flash build` for
+an image built for internal flash, `verify failed`) and the running module
+carries on. A failed write does leave the QSPI slot invalid until the next
+successful load, so a power cycle in that state lands in the bootloader
+waiting for USB — nothing is lost, it just needs a `make program-dfu`.
+
+A switch is a reset: whatever is playing stops.
 
 ## Relationship to smack-versio
 
@@ -68,8 +97,8 @@ play.
 | **Knob 2 + CV 2** | `order_density` — how scrambled the slice order is |
 | **Knob 3 + CV 3** | `wet` — clean loop ↔ glitched pattern |
 | **Knob 4 + CV 4** | `slice_res` — how finely the loop is cut |
-| Encoder turn | Move the menu cursor: `seed` / `len` / `ptch` / `rat` / `clk` |
-| **Encoder push + turn** | Edit the selected menu item |
+| Encoder turn | Move the menu cursor: `seed` / `len` / `ptch` / `rat` / `clk` / `mods` |
+| **Encoder push + turn** | Edit the selected menu item; on `mods`, open the module picker |
 | Encoder tap | **Re-roll** — new pattern, same loop |
 | Encoder hold > 0.6 s | **Capture** |
 | Encoder hold > 2 s | **Clear** |
