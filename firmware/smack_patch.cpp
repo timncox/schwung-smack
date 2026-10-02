@@ -173,7 +173,12 @@ static void dispatch_knobs(void)
  */
 enum { M_SEED = 0, M_LEN, M_PITCH, M_RATIO, M_MODE, M_MODS, M_COUNT };
 static const char *const MENU_LABEL[M_COUNT] = { "seed", "len", "ptch", "rat", "clk", "mods" };
+/* Five rows fit under the header (y = 16..56); the sixth item drew at y = 66,
+ * off the 64-px panel, so "mods" was reachable but invisible. The window
+ * follows the cursor, as in Mark. */
+#define M_VISIBLE 5
 static int g_menu_sel;
+static int g_menu_top;   /* first visible item */
 
 static int g_ratio_sel = 1, g_mode_sel = 2;
 static const char *const RATIO_NAME[3] = { "/2", "=1", "x2" };
@@ -379,7 +384,8 @@ static void update_cv_outs(void)
  * held: the turn edits the selected item, and that press is then spent --
  * releasing it will not re-roll and holding on will not capture. Press, then
  * turn promptly: a hold that has already passed HOLD_CAPTURE_MS has already
- * captured by the time you turn. */
+ * captured by the time you turn. The exception is "mods": a press there has
+ * no capture/clear/re-roll, so the module-picker gesture can be unhurried. */
 #define HOLD_CAPTURE_MS 600u
 #define HOLD_CLEAR_MS   2000u
 #define DOUBLE_TAP_MS   350u
@@ -415,7 +421,18 @@ static void encoder(void)
             g_menu_sel += inc;
             while(g_menu_sel < 0)        g_menu_sel += M_COUNT;
             while(g_menu_sel >= M_COUNT) g_menu_sel -= M_COUNT;
+            if(g_menu_sel < g_menu_top)              g_menu_top = g_menu_sel;
+            if(g_menu_sel >= g_menu_top + M_VISIBLE) g_menu_top = g_menu_sel - M_VISIBLE + 1;
         }
+    }
+
+    /* On "mods" a press only ever opens the picker (push-and-turn, the same
+     * gesture on every Patch module), so a slow turn cannot capture or clear
+     * the loop on the way. */
+    if(g_menu_sel == M_MODS)
+    {
+        if(!hw.encoder.Pressed()) enc_down = false; /* no re-roll on release */
+        return;
     }
 
     if(enc_down && !enc_turned && hw.encoder.Pressed())
@@ -489,12 +506,14 @@ static void draw(void)
         hw.display.WriteString(line, Font_6x8, true);
     }
 
-    for(int i = 0; i < M_COUNT; i++)
+    for(int row = 0; row < M_VISIBLE; row++)
     {
+        int i = g_menu_top + row;
+        if(i >= M_COUNT) break;
         menu_value(i, val, sizeof(val));
         snprintf(line, sizeof(line), "%c%-4s %4s",
                  i == g_menu_sel ? '>' : ' ', MENU_LABEL[i], val);
-        hw.display.SetCursor(MENU_X, 16 + i * 10);
+        hw.display.SetCursor(MENU_X, 16 + row * 10);
         hw.display.WriteString(line, Font_6x8, true);
     }
 
