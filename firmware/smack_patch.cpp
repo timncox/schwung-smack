@@ -295,6 +295,11 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
         bufi[i * 2 + 1] = (int16_t)(r * 32767.0f);
     }
 
+    /* Ticks due in this block go in BEFORE the engine renders it, as
+     * clock_adapter.h asks (and smack-versio does): after, every tick lands
+     * one block late. */
+    clk_advance(&CLK, (int)n, emit_to_engine, S);
+
     smack_process(S, bufi, bufi, (int)n);
 
     for(size_t i = 0; i < n; i++)
@@ -304,8 +309,6 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
         out[2][i] = in[0][i];    /* dry thru */
         out[3][i] = in[1][i];
     }
-
-    clk_advance(&CLK, (int)n, emit_to_engine, S);
 }
 
 /* ---- CV and gate outputs ------------------------------------------------ */
@@ -349,7 +352,9 @@ static void update_cv_outs(void)
     if(smack_get_param(S, "loop_frames", buf, sizeof(buf)) >= 0)
         lf = atol(buf);
 
-    if(pf >= 0 && lf > 0)
+    /* Only while LOOPING. Clear keeps loop_frames and play_frame, so
+     * without this check CV 1 froze wherever the playhead was. */
+    if(engine_int("run_state") == 3 && pf >= 0 && lf > 0)
     {
         if(pf > lf) pf = lf;
         hw.seed.dac.WriteValue(DacHandle::Channel::ONE,
@@ -358,6 +363,8 @@ static void update_cv_outs(void)
             g_gate_until = System::GetNow() + GATE_MS;
         g_pf_prev = pf;
     }
+    else
+        hw.seed.dac.WriteValue(DacHandle::Channel::ONE, 0);
 
     /* play_source is -1 while idle, which parks the output at 0 V. */
     int src = engine_int("play_source");
@@ -378,7 +385,8 @@ static void update_cv_outs(void)
 /* Press gestures are the ones arrived at by playing smack-versio (v0.2.0,
  * after they were REVERSED from the original): tap = re-roll, because re-roll
  * is the gesture used constantly; hold = capture, because capture is
- * deliberate and happens once. Long hold clears, double-tap toggles live.
+ * deliberate and happens once. Long hold clears, double-tap toggles live
+ * (the engine's `monitor`: live input on Out 1/2 -- see main).
  *
  * Turning is new here. Encoder up: the turn moves the menu cursor. Encoder
  * held: the turn edits the selected item, and that press is then spent --
@@ -395,6 +403,10 @@ static bool     enc_turned;     /* this press edited the menu */
 static bool     enc_captured;   /* this press has fired capture */
 static bool     enc_cleared;    /* this press has fired clear */
 static uint32_t enc_last_release;
+/* A single tap has happened, so the next one may complete a double-tap.
+ * Without it, enc_last_release = 0 made a tap in the first 350 ms after
+ * boot count as the second half of one. */
+static bool     enc_tap_armed;
 
 static void encoder(void)
 {
@@ -460,10 +472,22 @@ static void encoder(void)
         enc_down = false;
         if(!enc_turned && !enc_captured)
         {
-            if(now - enc_last_release < DOUBLE_TAP_MS)
-                smack_set_param(S, "live", "1");
+            /* The engine has no "live" key (the first cut sent one and it was
+             * dropped). Live is the engine's `monitor`: the live input layer
+             * on Out 1/2 (see main). The first tap of a double-tap has already
+             * re-rolled -- it cannot know a second is coming, and delaying
+             * every re-roll by DOUBLE_TAP_MS to find out would cost the
+             * gesture used most. */
+            if(enc_tap_armed && now - enc_last_release < DOUBLE_TAP_MS)
+            {
+                set_engine_int("monitor", !engine_int("monitor"));
+                enc_tap_armed = false;   /* a third tap is a fresh single */
+            }
             else
+            {
                 smack_set_param(S, "reroll", "1");
+                enc_tap_armed = true;
+            }
             enc_last_release = now;
         }
     }
@@ -474,7 +498,8 @@ static void encoder(void)
 /*
  * 128x64, Font_6x8: 21 columns, rows at y = 0, 16, 26, 36, 46, 56.
  *
- *   LOOP 120  B          <- state, tempo ('?' until the clock locks), side
+ *   LOOP 120  B  LIVE    <- state, tempo ('?' until the clock locks), side,
+ *                           LIVE while the input is monitored on Out 1/2
  *   fxd 100  >seed 4303  <- knobs on the left, live
  *   ord  35   len    16     menu on the right, '>' is the cursor
  *   wet 100   ptch   12
@@ -490,11 +515,12 @@ static void draw(void)
     hw.display.Fill(false);
 
     int st = engine_int("run_state");
-    snprintf(line, sizeof(line), "%-4s %3d%s  %s",
+    snprintf(line, sizeof(line), "%-4s %3d%s  %s  %s",
              (st >= 0 && st < 4) ? STATE_NAME[st] : "?",
              (int)(clk_bpm(&CLK) + 0.5f),
              clk_locked(&CLK) ? "" : "?",
-             engine_int("ab") ? "B" : "A");
+             engine_int("ab") ? "B" : "A",
+             engine_int("monitor") ? "LIVE" : "");
     hw.display.SetCursor(0, 0);
     hw.display.WriteString(line, Font_6x8, true);
 
@@ -550,6 +576,22 @@ int main(void)
         hw.display.Update();
         for(;;) {}
     }
+
+    /* Engine mode, set as smack-versio does (smack_versio.cpp, before
+     * StartAudio). hw_input=1 selects the engine's input-build mix, in which
+     * `wet` (knob 3) blends the CLEAN loop against the glitched pattern;
+     * without it the engine takes the chain-insert branch, where wet 0 means
+     * "live input only" and the loop is never heard clean.
+     *
+     * monitor=1 is a choice, made explicit here. In this mode monitor puts the
+     * live input on Out 1/2: through it while idle (an effect that is silent
+     * until you press something reads as broken -- the Versio's reason), and
+     * ON TOP of the loop while looping (out = loop + input). The Patch also has
+     * the dry signal alone on Out 3/4, which this does not touch. Double-tap
+     * toggles monitor ("live"), so the live layer on Out 1/2 can be muted to
+     * hear the loop by itself; the header shows LIVE while it is on. */
+    smack_set_param(S, "hw_input", "1");
+    smack_set_param(S, "monitor", "1");
 
     clk_init(&CLK, SMACK_SR, 120.0f);
     apply_clock();

@@ -102,11 +102,11 @@ play.
 | Encoder tap | **Re-roll** — new pattern, same loop |
 | Encoder hold > 0.6 s | **Capture** |
 | Encoder hold > 2 s | **Clear** |
-| Encoder double-tap | **Live** toggle |
+| Encoder double-tap | **Live** toggle — live input on Out 1/2 on/off (engine `monitor`; on at boot, `LIVE` in the header). The first tap still re-rolls |
 | Gate In 1 | Clock / trigger (as on the Versio) |
 | Gate In 2 | Direct capture trigger — footswitchable |
 | Audio In 1/2 | Stereo source |
-| Audio Out 1/2 | Processed out |
+| Audio Out 1/2 | Processed out: the loop (clean ↔ glitched by `wet`), plus the live input while Live is on — input alone while idle |
 | Audio Out 3/4 | **Dry thru** — clean signal for downstream crossfading |
 | **CV Out 1** | **Playhead through the captured loop, 0–5 V ramp per pass** |
 | **CV Out 2** | **Source slice under the playhead, stepped 0–5 V — a sequencer that plays Smack's shuffle** |
@@ -124,10 +124,10 @@ turn promptly — a hold that has already passed 0.6 s has already captured.
 
 128×64, `Font_6x8`. Knobs on the left, live; the encoder menu on the right
 with a `>` cursor. The header is the run state, the tempo (`?` until the clock
-locks) and the A/B side.
+locks), the A/B side, and `LIVE` while the input is on Out 1/2.
 
 ```
-LOOP 120  B
+LOOP 120  B  LIVE
 fxd 100  >seed 4303
 ord  35   len    16
 wet 100   ptch   12
