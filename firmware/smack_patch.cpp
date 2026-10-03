@@ -423,10 +423,17 @@ static void encoder(void)
     int inc = hw.encoder.Increment();
     if(inc)
     {
-        if(enc_down && hw.encoder.Pressed())
+        /* Press tracked by libDaisy's edges, never Pressed(): RisingEdge
+         * comes one 1 ms update before Pressed(), and a bounce while turning
+         * drops Pressed() for up to 8 ms. Gating on Pressed() here, and
+         * releasing on !Pressed() below, lost every push-and-turn on
+         * hardware (found 2026-10-03). */
+        if(enc_down)
         {
-            menu_edit(inc);
             enc_turned = true;
+            menu_edit(inc);
+            /* Back from the picker: its release edge happened in there. */
+            if(g_menu_sel == M_MODS) enc_down = false;
         }
         else
         {
@@ -443,7 +450,7 @@ static void encoder(void)
      * the loop on the way. */
     if(g_menu_sel == M_MODS)
     {
-        if(!hw.encoder.Pressed()) enc_down = false; /* no re-roll on release */
+        if(hw.encoder.FallingEdge()) enc_down = false; /* no re-roll on release */
         return;
     }
 
@@ -467,7 +474,7 @@ static void encoder(void)
         }
     }
 
-    if(enc_down && !hw.encoder.Pressed())
+    if(enc_down && hw.encoder.FallingEdge())
     {
         enc_down = false;
         if(!enc_turned && !enc_captured)
