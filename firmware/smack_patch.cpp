@@ -171,8 +171,15 @@ static void dispatch_knobs(void)
  * changes them shows up without any bookkeeping. Ratio and mode belong to the
  * clock adapter (they were the Versio's two switches) and live in the shim.
  */
-enum { M_SEED = 0, M_LEN, M_PITCH, M_RATIO, M_MODE, M_MODS, M_COUNT };
-static const char *const MENU_LABEL[M_COUNT] = { "seed", "len", "ptch", "rat", "clk", "mods" };
+/* "play" (Tim, 2026-10-03): the encoder's performance gestures -- tap re-roll,
+ * double-tap Live, hold capture / clear -- happen only with the cursor on
+ * this first row, where the module starts. On every other row a click
+ * selects it for editing ('*'), a turn changes it, a click lets go; a click
+ * on "mods" opens the module picker. Push-and-turn never worked on his
+ * Patch: the switch opens while the knob turns. */
+enum { M_PLAY = 0, M_SEED, M_LEN, M_PITCH, M_RATIO, M_MODE, M_MODS, M_COUNT };
+static const char *const MENU_LABEL[M_COUNT] = { "play", "seed", "len", "ptch", "rat", "clk", "mods" };
+static bool g_editing;   /* a non-play row is selected: turns edit it */
 /* Five rows fit under the header (y = 16..56); the sixth item drew at y = 66,
  * off the 64-px panel, so "mods" was reachable but invisible. The window
  * follows the cursor, as in Mark. */
@@ -243,11 +250,8 @@ static void menu_edit(int inc)
             g_mode_sel = clampi(g_mode_sel + inc, 0, 2);
             apply_clock();
             break;
-        case M_MODS:
-            /* Modal: returns when the user backs out, never if a module was
-             * loaded. encoder() marks this press as spent on return. */
-            picker::run(hw);
-            break;
+        case M_PLAY:
+        case M_MODS: break; /* nothing to turn; a click on mods opens the picker */
     }
 }
 
@@ -420,20 +424,17 @@ static void encoder(void)
         enc_cleared  = false;
     }
 
+    /* A press is read from libDaisy's edges, never Pressed(): RisingEdge
+     * comes one 1 ms update before Pressed(), and a bounce drops Pressed()
+     * for up to 8 ms (found 2026-10-03). A turn during a press makes it not a
+     * click / not a tap. */
     int inc = hw.encoder.Increment();
     if(inc)
     {
-        /* Press tracked by libDaisy's edges, never Pressed(): RisingEdge
-         * comes one 1 ms update before Pressed(), and a bounce while turning
-         * drops Pressed() for up to 8 ms. Gating on Pressed() here, and
-         * releasing on !Pressed() below, lost every push-and-turn on
-         * hardware (found 2026-10-03). */
-        if(enc_down)
+        if(enc_down) enc_turned = true;
+        if(g_editing)
         {
-            enc_turned = true;
             menu_edit(inc);
-            /* Back from the picker: its release edge happened in there. */
-            if(g_menu_sel == M_MODS) enc_down = false;
         }
         else
         {
@@ -445,12 +446,19 @@ static void encoder(void)
         }
     }
 
-    /* On "mods" a press only ever opens the picker (push-and-turn, the same
-     * gesture on every Patch module), so a slow turn cannot capture or clear
-     * the loop on the way. */
-    if(g_menu_sel == M_MODS)
+    /* Settings rows: click selects / lets go; on "mods" it opens the picker.
+     * No performance gesture fires off the play row. */
+    if(g_menu_sel != M_PLAY)
     {
-        if(hw.encoder.FallingEdge()) enc_down = false; /* no re-roll on release */
+        if(hw.encoder.FallingEdge())
+        {
+            bool click = enc_down && !enc_turned;
+            enc_down   = false;
+            if(click && g_menu_sel == M_MODS)
+                picker::run(hw); /* modal; returns only if the user backs out */
+            else if(click)
+                g_editing = !g_editing;
+        }
         return;
     }
 
@@ -545,7 +553,7 @@ static void draw(void)
         if(i >= M_COUNT) break;
         menu_value(i, val, sizeof(val));
         snprintf(line, sizeof(line), "%c%-4s %4s",
-                 i == g_menu_sel ? '>' : ' ', MENU_LABEL[i], val);
+                 i == g_menu_sel ? (g_editing ? '*' : '>') : ' ', MENU_LABEL[i], val);
         hw.display.SetCursor(MENU_X, 16 + row * 10);
         hw.display.WriteString(line, Font_6x8, true);
     }
